@@ -108,6 +108,9 @@ final class ListeningObjectUploadTests: XCTestCase {
         try await background.uploadObject(request: request, batch: batch, store: store)
         XCTAssertEqual(try Data(contentsOf: queue.payloadURL(batch.batchId)), payload)
         XCTAssertFalse(try store.recordings().isEmpty, "An S3 200 is not permission to delete local audio")
+        // The active app uses the same immutable file through a foreground session.
+        try await ListeningObjectUpload.upload(request, file: queue.payloadURL(batch.batchId))
+        XCTAssertFalse(try store.recordings().isEmpty)
     }
 }
 

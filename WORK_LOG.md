@@ -5,6 +5,8 @@
 - 2026-09-29 | Verified | Host tests, 94 native tests and one UI smoke test passed without maintainer credentials; one environment-dependent test skipped. Updated retry fixtures to cover automatic retries and manual recovery.
 - 2026-09-29 | Verified | Public files and known local provider credentials checked before the new source baseline; automated secret checks run on pushes and pull requests.
 - 2026-09-29 | Completed | Added the MIT license approved by the maintainer.
-- 2026-09-29 | Planned | Release readiness: broaden service connections, reduce Echo sync delay and backlog, and let the main agent search owned Memory.
+- 2026-09-29 | Planned | Remaining release readiness: broaden service connections and let the main agent search owned Memory.
 - 2026-09-29 | Completed | Echo now uploads immutable files directly to private S3 with signed SHA-256/length-bound URLs; matching durable job receipts gate local deletion, and independent batch jobs remove transcription admission blocking.
 - 2026-09-29 | Verified | Host suite, 24 targeted native cases, real PostgreSQL/Temporal retry/deletion/restart tests, a slow 1.35 MB S3 transfer and real Simulator background S3 upload passed; physical network/background acceptance remains pending.
+- 2026-09-29 | Deployed | S3 upload API and workers are healthy in production; an isolated production test verified signed upload, one real transcription despite duplicate confirmation, and audio deletion. TestFlight 0.1.0 (31) is available to the internal Team group; privacy disclosure is live.
+- 2026-09-29 | Verified | Real Simulator foreground and background S3 transfers both preserved local audio until API confirmation; final server suite passed 53 tests and GitHub secret scanning passed.
