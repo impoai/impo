@@ -145,6 +145,15 @@ import InstantClient
         try await waitFor { self.timeline.records["record-100"] != nil }
         XCTAssertFalse(timeline.records["record-100"]!.isSilent)
     }
+    func testRequestedTranscriptionRetryRefreshesAStillFailedRow() async throws {
+        EchoHistoryProtocol.state.setStatus("record-0", "failed")
+        await timeline.refresh(); timeline.show(["record-0"])
+        try await waitFor { self.timeline.records["record-0"] != nil }
+        XCTAssertEqual(timeline.records["record-0"]?.status, "failed")
+        EchoHistoryProtocol.state.setStatus("record-0", "transcribed")
+        timeline.poll(retrying: ["batch-0"])
+        try await waitFor { self.timeline.records["record-0"]?.status == "transcribed" }
+    }
 }
 
 private final class EchoHistoryProtocol: URLProtocol, @unchecked Sendable {
@@ -164,9 +173,11 @@ private final class EchoHistoryFixture: @unchecked Sendable {
     private let lock=NSLock()
     private var deleted=Set<String>(), shouldHold=false, shouldCancel=false, shouldFail=false
     private var silentCount=0
+    private var statuses: [String: String] = [:]
     private var held:(EchoHistoryProtocol,Data)?
     var waiting:Bool { lock.withLock { held != nil } }
-    func reset() { lock.withLock { deleted=[];shouldHold=false;shouldCancel=false;shouldFail=false;silentCount=0;held=nil } }
+    func reset() { lock.withLock { deleted=[];shouldHold=false;shouldCancel=false;shouldFail=false;silentCount=0;held=nil;statuses=[:] } }
+    func setStatus(_ id: String, _ status: String) { lock.withLock { statuses[id] = status } }
     func failNext() { lock.withLock { shouldFail=true } }
     func silenceFirst(_ count:Int) { lock.withLock { silentCount=count } }
     func remove(_ id:String) { _ = lock.withLock { deleted.insert(id) } }
@@ -182,7 +193,7 @@ private final class EchoHistoryFixture: @unchecked Sendable {
             func value(_ key:String)->String? { query.first { $0.name==key }?.value }
             let formatter=ISO8601DateFormatter(), origin=Date(timeIntervalSince1970:1790553600)
             let available=(0..<600).filter { !deleted.contains("record-\($0)") }
-            func row(_ i:Int)->[String:Any] { ["id":"record-\(i)","clientSegmentId":"client-\(i)","startedAt":formatter.string(from:origin.addingTimeInterval(Double(-i*3600))),"endedAt":formatter.string(from:origin.addingTimeInterval(Double(-i*3600+30))),"status":"transcribed","transcript":i<silentCount ? "" : "Fixture \(i)","cursor":String(i)] }
+            func row(_ i:Int)->[String:Any] { ["id":"record-\(i)","clientSegmentId":"client-\(i)","startedAt":formatter.string(from:origin.addingTimeInterval(Double(-i*3600))),"endedAt":formatter.string(from:origin.addingTimeInterval(Double(-i*3600+30))),"status":statuses["record-\(i)"] ?? "transcribed","batchId":"batch-\(i)","transcript":i<silentCount ? "" : "Fixture \(i)","cursor":String(i)] }
             if p.request.url!.path.hasSuffix("/timeline") {
                 var calendar=Calendar(identifier:.gregorian); calendar.timeZone=TimeZone(identifier:value("timeZone") ?? "UTC")!
                 let groups=Dictionary(grouping:available) { i in

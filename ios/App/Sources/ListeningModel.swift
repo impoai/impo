@@ -598,7 +598,7 @@ final class ListeningModel: NSObject {
         do {
             try await client?.retryListeningBatch(id); retryRequested.insert(id); log("batch.retry_requested",["batchId":id])
             if historyLoaded { await refreshHistory() }
-            if timeline.loaded { await timeline.refresh() }
+            timeline.poll(retrying: retryRequested)
         }
         catch { ListeningDiagnostics.shared.error("batch.retry_failed",error,["batchId":id]); loadError = "Couldn't request retry. Please try again." }
     }
@@ -618,7 +618,8 @@ final class ListeningModel: NSObject {
     }
 
     func pollTranscripts() async {
-        timeline.poll()
+        retryRequested.subtract(timeline.records.values.filter { $0.status != "failed" }.compactMap(\.batchId))
+        timeline.poll(retrying: retryRequested)
         if segments.contains(where: { $0.status == "pending" || $0.status == "transcribing" }) { await refresh() }
         if historyLoaded && (!retryRequested.isEmpty || history.contains(where: { $0.status == "pending" || $0.status == "transcribing" })) { await refreshHistory() }
     }

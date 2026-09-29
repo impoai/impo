@@ -67,8 +67,10 @@ import InstantClient
 
     func retry() { failures.subtract(desired); startWorker() }
 
-    func poll() {
-        stale.formUnion(desired.filter { records[$0].map { ["pending", "transcribing"].contains($0.status) } ?? false })
+    func poll(retrying batches: Set<String> = []) {
+        stale.formUnion(desired.filter { records[$0].map {
+            ["pending", "transcribing"].contains($0.status) || $0.batchId.map { batches.contains($0) } == true
+        } ?? false })
         startWorker()
     }
 
