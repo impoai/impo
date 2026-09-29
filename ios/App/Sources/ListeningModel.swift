@@ -47,6 +47,7 @@ final class ListeningModel: NSObject {
     var loadError: String?
     var selectedDate = Date()
     var segments: [ListeningSegment] = []
+    let timeline = EchoTimelineModel()
     var history: [ListeningSegment] = []
     var historyCursor: String?
     var historyLoaded = false
@@ -170,6 +171,7 @@ final class ListeningModel: NSObject {
     }
 
     func configure(scope newScope: String?, client: InstantClient?) {
+        timeline.configure(scope: newScope, client: client)
         guard newScope != scope else { self.client = client; return }
         stop()
         generation = UUID(); scope = newScope; self.client = client; store = nil
@@ -589,10 +591,15 @@ final class ListeningModel: NSObject {
             }
         }
         if generation == token, historyLoaded { await refreshHistory(); await refreshHistoryCalendar() }
+        if generation == token, timeline.loaded { await timeline.refresh() }
     }
 
     func retryBatch(_ id: String) async {
-        do { try await client?.retryListeningBatch(id); retryRequested.insert(id); log("batch.retry_requested",["batchId":id]); await refreshHistory() }
+        do {
+            try await client?.retryListeningBatch(id); retryRequested.insert(id); log("batch.retry_requested",["batchId":id])
+            if historyLoaded { await refreshHistory() }
+            if timeline.loaded { await timeline.refresh() }
+        }
         catch { ListeningDiagnostics.shared.error("batch.retry_failed",error,["batchId":id]); loadError = "Couldn't request retry. Please try again." }
     }
 
@@ -611,6 +618,7 @@ final class ListeningModel: NSObject {
     }
 
     func pollTranscripts() async {
+        timeline.poll()
         if segments.contains(where: { $0.status == "pending" || $0.status == "transcribing" }) { await refresh() }
         if historyLoaded && (!retryRequested.isEmpty || history.contains(where: { $0.status == "pending" || $0.status == "transcribing" })) { await refreshHistory() }
     }
@@ -732,6 +740,7 @@ final class ListeningModel: NSObject {
         let token = generation
         let updated = try await client.setListeningLocationLabel(segment.id, label: label)
         guard token == generation, !deletedSegmentIDs.contains(segment.id) else { throw CancellationError() }
+        timeline.update(updated)
         if let index = history.firstIndex(where: { $0.id == updated.id }) { history[index] = updated }
         if let index = segments.firstIndex(where: { $0.id == updated.id }) { segments[index] = updated }
         return updated
@@ -744,6 +753,7 @@ final class ListeningModel: NSObject {
             try await client.deleteListeningSegment(segment.id)
             if token == generation {
                 deletedSegmentIDs.insert(segment.id)
+                timeline.remove(segment.id)
                 segments.removeAll { $0.id == segment.id }; history.removeAll { $0.id == segment.id }
                 await refreshHistoryCalendar()
             }

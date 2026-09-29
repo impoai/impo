@@ -58,6 +58,21 @@ export class ListeningRepository {
     return { timeZone, days: result.rows };
   }
 
+  async timeline(userId: string, timeZone: string) {
+    // Stable identities reserve the entire scroll range without reading S3 or
+    // transferring transcript text. Hydration uses the owned records endpoint;
+    // insertions/deletions cannot shift an offset page onto different recordings.
+    const result = await this.db.execute<{ date: string; ids: string[] }>(sql`
+      SELECT to_char(started_at AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') AS date,
+        array_agg(id ORDER BY started_at DESC, id DESC) AS ids
+      FROM (
+        SELECT id, started_at FROM ${segments} WHERE user_id = ${userId} AND status <> 'deleted'
+        UNION ALL
+        SELECT id, started_at FROM ${batches} WHERE user_id = ${userId} AND status <> 'deleted'
+      ) recordings GROUP BY 1 ORDER BY 1 DESC`);
+    return { timeZone, days: result.rows };
+  }
+
   async records(userId: string, ids: string[]) {
     const legacy = await this.db.select(publicFields).from(segments).where(and(eq(segments.userId, userId), inArray(segments.id, ids), sql`${segments.status} <> 'deleted'`));
     const current = await this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId, userId), inArray(batches.id, ids), sql`${batches.status} <> 'deleted'`));

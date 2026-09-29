@@ -159,11 +159,22 @@ test('Echo date index counts owned legacy and batch records in the requested loc
   assert.equal(index.timeZone, 'America/New_York');
   const shanghai = await (await fetch(`${base}/api/v1/listening/calendar?timeZone=Asia%2FShanghai`, { headers })).json() as any;
   assert.deepEqual(shanghai.days, [{date:'2026-11-01',count:3}]);
+  const timeline = await (await fetch(`${base}/api/v1/listening/timeline?timeZone=America%2FNew_York`, { headers })).json() as any;
+  assert.deepEqual(timeline.days.map((d: any) => ({date:d.date,count:d.ids.length})), index.days);
+  assert.equal(new Set(timeline.days.flatMap((d: any) => d.ids)).size, 3);
+  assert.equal(timeline.days[0].ids[0], b.body.id);
+  assert.deepEqual(timeline.days[1].ids, [a.body.id]);
+  assert.ok(timeline.days.every((d: any) => Object.keys(d).sort().join(',') === 'date,ids'));
+  const otherTimeline = await (await fetch(`${base}/api/v1/listening/timeline?timeZone=UTC`, { headers:{Authorization:'Bearer instant-dev-bob'} })).json() as any;
+  assert.equal(otherTimeline.days.flatMap((d: any) => d.ids).length, 1);
+  assert.ok(!timeline.days.flatMap((d: any) => d.ids).includes(otherTimeline.days[0].ids[0]));
+  assert.equal((await fetch(`${base}/api/v1/listening/timeline?timeZone=UTC`)).status,401);
   const bob = await (await fetch(`${base}/api/v1/listening/calendar?timeZone=UTC`, { headers:{Authorization:'Bearer instant-dev-bob'} })).json() as any;
   assert.equal(bob.days.reduce((n:number,d:any)=>n+d.count,0), 1);
   assert.equal((await fetch(`${base}/api/v1/listening/calendar?timeZone=UTC`)).status,401);
   for (const query of ['', 'timeZone=bad/zone', 'timeZone=UTC&timeZone=UTC', 'timeZone=UTC&cursor=a']) {
     assert.equal((await fetch(`${base}/api/v1/listening/calendar?${query}`, { headers })).status,400,query);
+    assert.equal((await fetch(`${base}/api/v1/listening/timeline?${query}`, { headers })).status,400,query);
   }
 });
 

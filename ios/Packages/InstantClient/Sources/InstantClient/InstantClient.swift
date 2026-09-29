@@ -198,6 +198,10 @@ public struct InstantClient: Sendable {
         try await send("GET", ["listening", "calendar"], query: [URLQueryItem(name: "timeZone", value: timeZone)])
     }
 
+    public func listeningTimeline(timeZone: String) async throws -> ListeningTimeline {
+        try await send("GET", ["listening", "timeline"], query: [URLQueryItem(name: "timeZone", value: timeZone)])
+    }
+
     public func listeningRecords(ids: [String]) async throws -> [ListeningSegment] {
         guard !ids.isEmpty else { return [] }
         struct Page: Decodable { let segments: [ListeningSegment] }

@@ -15,6 +15,20 @@ public struct ListeningDay: Codable, Equatable, Identifiable, Sendable {
     public let date: String
     public let count: Int
     public var id: String { date }
+    public init(date: String, count: Int) { self.date = date; self.count = count }
+}
+
+/// Complete lightweight inventory. Transcript bodies are fetched only near the viewport.
+public struct ListeningTimeline: Codable, Equatable, Sendable {
+    public let timeZone: String
+    public let days: [ListeningTimelineDay]
+}
+
+public struct ListeningTimelineDay: Codable, Equatable, Identifiable, Sendable {
+    public let date: String
+    public let ids: [String]
+    public var id: String { date }
+    public init(date: String, ids: [String]) { self.date = date; self.ids = ids }
 }
 
 public struct ListeningSegment: Codable, Equatable, Identifiable, Sendable {

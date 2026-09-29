@@ -213,7 +213,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 200, {batchId, sequence:batch.sequence, status:batch.status, attempts:batch.attempts, error:batch.error, updatedAt:batch.updatedAt}); return;
       }
     }
-    if (path === '/api/v1/listening/calendar' && method === 'GET') {
+    if (['/api/v1/listening/calendar', '/api/v1/listening/timeline'].includes(path) && method === 'GET') {
       if (!options.listening) throw new ServiceError(503, 'listening_unavailable', 'Echo is not available on this server');
       const zone = url.searchParams.get('timeZone');
       if ([...url.searchParams.keys()].some(k => k !== 'timeZone') || url.searchParams.getAll('timeZone').length !== 1
@@ -221,7 +221,9 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       let timeZone: string;
       try { timeZone = new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone; }
       catch { throw new ServiceError(400, 'invalid_request', 'A valid time zone is required'); }
-      sendJSON(res, 200, await options.listening.calendar(user.id, timeZone)); return;
+      sendJSON(res, 200, path.endsWith('/timeline')
+        ? await options.listening.timeline(user.id, timeZone)
+        : await options.listening.calendar(user.id, timeZone)); return;
     }
     if (path === '/api/v1/listening/segments'  || path.startsWith('/api/v1/listening/segments/')) {
       if (!options.listening) throw new ServiceError(503, 'listening_unavailable', 'Listening is not available on this server');

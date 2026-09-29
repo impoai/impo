@@ -30,6 +30,21 @@ of a run. Reconnect using the server's persisted history, and issue an explicit
 cancel command when cancellation is intended. Replaying a tool event only renders
 it; clients execute a device request after claiming the owned pending command.
 
+## Echo timeline
+
+`GET /api/v1/listening/timeline?timeZone=Asia%2FShanghai` returns the complete
+owned inventory as `{timeZone, days:[{date:"2026-09-29", ids:["record-uuid"]}]}`.
+Days and IDs are newest first, ordered by recording time and UUID for ties.
+Deleted recordings are omitted. The inventory contains no audio, transcript
+text, or location, and does not read the transcript archive. The response is a
+snapshot; refresh it to discover new recordings.
+
+`GET /api/v1/listening/segments?ids=uuid1,uuid2` hydrates up to 180 IDs, with
+ownership checked again on every request. Missing/deleted IDs are omitted;
+clients reconcile those slots. The iOS timeline requests at most 30 at once.
+These commands avoid mutable offset pagination for distant viewport loads.
+The older calendar/count and cursor-history endpoints remain supported.
+
 ## Direct Echo uploads
 
 1. Seal one immutable JSON batch on disk. Compute its byte length and SHA-256.

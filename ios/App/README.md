@@ -56,6 +56,10 @@ local fixture on port 3009; start `node --env-file=.env scripts/echo-ui-fixture.
 only with a local development database. Opt-in `InstantDeviceLive` tests require
 your own device, backend, permissions and short-lived authentication tickets.
 
+The Echo slow-network UI test also needs `node scripts/echo-ui-proxy.mjs`, a
+loopback-only fault proxy on port 3010. It exercises placeholders, direct date
+seeks, retries and scrolling past the text cache against the 20,000-record fixture.
+
 The app uses Calendar, Health, microphone and optional location authorization.
 Device tool execution comes from owned pending/claim requests. Echo preserves
 immutable audio/location batches across offline retries. Background recording,

@@ -26,7 +26,7 @@ struct EchoDateRail: View {
     let days: [ListeningDay]
     let visibleDate: String?
     let jump: (String) -> Void
-    @State private var byMonth = true
+    @State private var byMonth = false
     @State private var dragging: Int?
     private var stops: [ListeningDay] { byMonth ? EchoDates.months(days) : days }
     private var selected: Int {
@@ -59,7 +59,7 @@ struct EchoDateRail: View {
                     Capsule().fill(InstantStyle.forest).frame(width: 6, height: 32)
                         .overlay(Image(systemName: "arrow.up.and.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(InstantStyle.paper).opacity(dragging == nil ? 0 : 1))
                         .frame(width: 44, height: 44).offset(x: -2, y: position)
-                    if let stop = stops[safe: selected] {
+                    if dragging != nil, let stop = stops[safe: selected] {
                         Text(EchoDates.label(stop.date, month: byMonth))
                             .font(.system(size: dragging == nil ? 10 : 15, weight: .semibold)).monospacedDigit()
                             .foregroundStyle(dragging == nil ? InstantStyle.muted : InstantStyle.paper)

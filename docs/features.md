@@ -29,6 +29,15 @@ Processed audio is deleted from S3. Failed jobs retain audio for retry until the
 recording is deleted. Unconfirmed staging objects expire after one day when the
 documented bucket lifecycle is configured. Legacy clients remain supported.
 
+Echo's timeline defaults to Day. A complete, owned date/record-ID inventory
+reserves the entire scroll range before transcript bodies load. Native reusable
+cells hydrate the viewport and nearby rows by ID, with at most 180 cached bodies;
+evicting text does not remove scroll positions. Distant date jumps fetch their
+own records directly. Fixed-height previews keep placeholders and loaded rows in
+the same position; the detail screen shows the full text. Failed loads retry in
+place, and silent recordings retain an explicit no-speech row. Refresh reconciles
+new/deleted IDs while preserving a visible recording where possible.
+
 Optional recording-time location uses iOS permission and Apple's place-name
 service. It runs only while Echo capture is active, including a locked screen.
 It stops on pause, stop, account change or disabling the setting. Raw coordinates
