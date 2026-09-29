@@ -1,0 +1,39 @@
+{
+  "name": "@instant/server",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "dev:fixture": "tsx src/main.ts",
+    "db:push": "node --env-file-if-exists=../.env ../node_modules/drizzle-kit/bin.cjs push",
+    "db:seed": "node --env-file-if-exists=../.env --import tsx src/db/seed.ts",
+    "dev:api": "node --env-file-if-exists=../.env --import tsx src/api-main.ts",
+    "dev:worker": "node --env-file-if-exists=../.env --import tsx src/worker-main.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1142.0",
+    "@clerk/backend": "^3.20.1",
+    "@libsql/client": "^0.18.0",
+    "@rebyteai/agent-sdk": "0.2.4",
+    "@temporalio/activity": "1.24.0",
+    "@temporalio/client": "1.24.0",
+    "@temporalio/common": "1.24.0",
+    "@temporalio/worker": "1.24.0",
+    "@temporalio/workflow": "1.24.0",
+    "ai": "7.0.108",
+    "drizzle-orm": "1.0.0-rc.4",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@temporalio/testing": "1.24.0",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "1.0.0-rc.4",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

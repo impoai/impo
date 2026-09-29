@@ -1,0 +1,61 @@
+import { ListeningBatchRepository } from './listening/batch-repository.js';
+import { TodayRepository } from './today/repository.js';
+import { createListeningBatchService } from './listening/temporal/client.js';
+import { ListeningRepository } from './listening/repository.js';
+import { createDatabase } from './db/client.js';
+import { loadConfig, databaseRequiresSsl } from './config.js';
+import { createApiServer } from './http/api-server.js';
+import { createRuntimeRepository } from './runtime.js';
+import { RebyteGateway } from './rebyte/gateway.js';
+import { GmailConnectorService } from './composio/gmail-service.js';
+import { S3TranscriptArchive } from './listening/transcript-archive.js';
+import { createMemoryStore } from './memory/index.js';
+
+async function main(): Promise<void> {
+  const config = loadConfig('api');
+  const database = createDatabase(config.databaseUrl, { ssl: databaseRequiresSsl(config.databaseUrl) });
+  const repository = createRuntimeRepository(database.db, config);
+  try { await repository.health(); }
+  catch (error) { await database.close(); throw error; }
+  const gmail = config.composio ? new GmailConnectorService(database.db, config.composio) : undefined;
+  const auth = config.authMode === 'clerk' ? { mode: 'clerk' as const, secretKey: config.clerk!.secretKey } : { mode: 'local-dev' as const };
+  const batches = new ListeningBatchRepository(database.db);
+  const batchService = config.temporal ? await createListeningBatchService(config.temporal, batches) : undefined;
+  const archive = config.transcriptArchive ? new S3TranscriptArchive(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
+  const memories = createMemoryStore(database.db, config.memory);
+  const server = createApiServer(repository, { memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, gmail, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development' });
+  let stopping = false;
+  async function shutdown(): Promise<void> {
+    if (stopping) return;
+    stopping = true;
+    // Closing HTTP streams stops only their subscriptions. The Worker owns execution.
+    const closed = new Promise<void>(resolve => server.close(() => resolve()));
+    server.closeAllConnections();
+    await closed;
+    await batchService?.close();
+    memories?.close();
+    await database.close();
+  }
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => { void shutdown().catch(() => { process.exitCode = 1; }); });
+  }
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(config.port, config.host, () => {
+      server.off('error', reject);
+      const address = server.address();
+      if (!address || typeof address === 'string') { reject(new Error('No API listening address')); return; }
+      console.log(JSON.stringify({
+        event: 'listening', mode: 'development', runtime: config.runtime === 'rebyte' ? 'rebyte' : 'deterministic',
+        port: address.port, url: `http://${config.host === '::1' ? '[::1]' : config.host}:${address.port}/api/v1`,
+      }));
+      resolve();
+    });
+  }).catch(async error => { await shutdown(); throw error; });
+}
+
+void main().catch(() => {
+  // Database driver errors may contain connection details; never dump them to stdout.
+  console.error(JSON.stringify({ event: 'startup_failed', message: 'Check development configuration, database readiness and API port.' }));
+  process.exitCode = 1;
+});

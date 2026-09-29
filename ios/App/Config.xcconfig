@@ -1,0 +1,5 @@
+// Public defaults. Put deployment-specific values in the ignored local override.
+IMPO_CLERK_KEY_DEBUG =
+IMPO_CLERK_KEY_RELEASE =
+IMPO_API_BASE_URL = https:/$()/api.example.invalid
+#include? "Config.local.xcconfig"

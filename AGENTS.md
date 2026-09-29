@@ -1,0 +1,19 @@
+# Impo contributor instructions
+
+- Keep product copy and documentation in English.
+- Keep a short dated entry in `WORK_LOG.md` for completed work and validation.
+- Read `README.md`, `docs/architecture.md`, and the relevant platform guide.
+- Keep platform boundaries: `ios/`, `android/`, `server/`, `contracts/`, `docs/`, `scripts/`.
+- Use the root npm workspace commands for installation and verification.
+- Keep all provider secrets on the server. Local `.env`, signing files and build output stay untracked.
+- The client connects only to the Impo API. An HTTP stream is a subscription, not the lifetime of a run.
+- Enforce user ownership on every conversation, task, recording, file and device request.
+- Generated product content comes from a Rebyte Agent. Keep model calls out of API request handlers.
+- Use `@rebyteai/agent-sdk` and `client.beta.agents`; keep provider protocol separate from the client API.
+- Drizzle entities are the schema source of truth. During development use `npm run db:push`; do not create migration histories.
+- Keep ordinary execution separate from scheduled triggers. Temporal owns durable background coordination.
+- Preserve native permission boundaries. Empty HealthKit results are unknown, not evidence of denial or zero activity.
+- Preserve the existing paper/forest-green design, readable type, safe areas and accessible touch targets.
+- Regenerate the Xcode project from `ios/App/project.yml` when adding native files.
+- Verify changed behavior with relevant tests. Simulator checks do not replace physical microphone, location or background validation.
+- Android and Web clients are planned. Do not present them or prototype settings as implemented features.

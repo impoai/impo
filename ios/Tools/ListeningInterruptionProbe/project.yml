@@ -1,0 +1,28 @@
+name: ImpoMicProbe
+options:
+  deploymentTarget:
+    iOS: '18.0'
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    CODE_SIGN_IDENTITY: '-'
+    TARGETED_DEVICE_FAMILY: '1'
+targets:
+  ImpoMicProbe:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    info:
+      path: Info.plist
+      properties:
+        NSMicrophoneUsageDescription: Temporary local microphone interruption test.
+        UIBackgroundModes: [audio]
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.impo.interruptionqa
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSBrief: 'Microphone interruption test only'
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: 'Temporary local microphone interruption test.'
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES

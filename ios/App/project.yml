@@ -1,0 +1,150 @@
+name: Instant
+options:
+  bundleIdPrefix: ai.impo
+  deploymentTarget:
+    iOS: '18.0'
+  createIntermediateGroups: true
+  developmentLanguage: en
+packages:
+  ONNXRuntime:
+    url: https://github.com/microsoft/onnxruntime-swift-package-manager
+    exactVersion: 1.24.2
+  InstantClient:
+    path: ../Packages/InstantClient
+  # Only ClerkKit (headless) is used, never ClerkKitUI — Instant keeps its own
+  # onboarding/login screens and drives Clerk from them directly.
+  Clerk:
+    url: https://github.com/clerk/clerk-ios
+    from: 1.2.0
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    IPHONEOS_DEPLOYMENT_TARGET: '18.0'
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '29'
+    INSTANT_DEVELOPMENT_SERVER_URL: ''
+    TARGETED_DEVICE_FAMILY: '1'
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+    SUPPORTS_MACCATALYST: NO
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+targets:
+  Instant:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+        excludes:
+          - '**/*.md'
+          - README.md
+      - path: ListeningShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.impo
+        PRODUCT_NAME: Instant
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Instant.entitlements
+        # The post-build fix changes/re-signs only the copied ONNX framework.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # xcodegen's iOS target defaults would otherwise override the project-level iPhone-only family.
+        TARGETED_DEVICE_FAMILY: '1'
+    postBuildScripts:
+      - name: Verify ONNX minimum iOS version
+        script: /usr/bin/python3 "$SRCROOT/../../scripts/fix-onnx-framework.py"
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - target: ListeningWidget
+        embed: true
+      - package: InstantClient
+        product: InstantClient
+      - package: Clerk
+        product: ClerkKit
+      - package: ONNXRuntime
+        product: onnxruntime
+  ListeningWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ListeningWidget
+      - path: ListeningShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.impo.listening
+        INFOPLIST_FILE: ListeningWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: YES
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) LISTENING_WIDGET_EXTENSION
+  InstantNativeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NativeTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.impo.nativetests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Instant.app/Instant
+        BUNDLE_LOADER: $(TEST_HOST)
+    dependencies:
+      - target: Instant
+  InstantDeviceLiveTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LiveTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.impo.devicelivetests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Instant
+    dependencies:
+      - target: Instant
+  InstantUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.impo.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Instant
+    dependencies:
+      - target: Instant
+schemes:
+  InstantDeviceLive:
+    build:
+      targets:
+        Instant: all
+        InstantDeviceLiveTests: [test]
+    test:
+      config: Debug
+      targets:
+        - InstantDeviceLiveTests
+  Instant:
+    build:
+      targets:
+        Instant: all
+        InstantUITests: [test]
+        InstantNativeTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - InstantUITests
+        - InstantNativeTests
+    profile:
+      config: Release
+    archive:
+      config: Release

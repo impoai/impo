@@ -1,0 +1,38 @@
+{
+  "name": "instant",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "typecheck": "npm --workspace @instant/server run typecheck",
+    "test:server": "npm --workspace @instant/server test",
+    "dev:fixture": "npm --workspace @instant/server run dev:fixture",
+    "test": "node scripts/test.mjs",
+    "test:swift": "swift test --package-path ios/Packages/InstantClient",
+    "test:e2e": "node scripts/test.mjs --e2e-only",
+    "test:ios": "node scripts/test.mjs --ios",
+    "db:start": "node scripts/local-db.mjs start",
+    "db:stop": "node scripts/local-db.mjs stop",
+    "db:status": "node scripts/local-db.mjs status",
+    "db:push": "npm --workspace @instant/server run db:push",
+    "db:seed": "npm --workspace @instant/server run db:seed",
+    "dev:api": "npm --workspace @instant/server run dev:api",
+    "dev:worker": "npm --workspace @instant/server run dev:worker",
+    "test:db": "node scripts/test-db.mjs",
+    "test:devices": "node scripts/test-db.mjs --devices",
+    "test:rebyte": "node scripts/test-db.mjs --rebyte",
+    "test:live": "node --env-file-if-exists=.env scripts/test-db.mjs --live",
+    "test:gmail": "node scripts/test-db.mjs --gmail",
+    "test:listening": "node scripts/test-db.mjs --listening",
+    "test:listening-batches": "node scripts/test-db.mjs --listening-batches",
+    "test:background": "node scripts/test-db.mjs --background",
+    "test:today": "node scripts/test-db.mjs --today",
+    "test:memory": "node scripts/test-db.mjs --memory",
+    "check:secrets": "node scripts/check-secrets.mjs"
+  }
+}

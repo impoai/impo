@@ -1,0 +1,6 @@
+// Copy to Config.local.xcconfig; never commit the local file.
+// Clerk publishable keys belong in the client. Clerk secret keys never do.
+IMPO_CLERK_KEY_DEBUG =
+IMPO_CLERK_KEY_RELEASE =
+IMPO_API_BASE_URL = https:/$()/api.example.invalid
+DEVELOPMENT_TEAM =

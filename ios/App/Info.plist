@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>$(DEVELOPMENT_LANGUAGE)</string>
+  <key>CFBundleDisplayName</key>
+  <string>Impo</string>
+  <key>CFBundleExecutable</key>
+  <string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key>
+  <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>$(PRODUCT_NAME)</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key>
+  <string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>ImpoClerkKeyDebug</key>
+  <string>$(IMPO_CLERK_KEY_DEBUG)</string>
+  <key>ImpoClerkKeyRelease</key>
+  <string>$(IMPO_CLERK_KEY_RELEASE)</string>
+  <key>ImpoAPIBaseURL</key>
+  <string>$(IMPO_API_BASE_URL)</string>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Impo uses your city for personal briefs and, when enabled, adds nearby places to Echo while you record, including with the screen locked. Only place names, recording-time context, and location accuracy are shared with Impo and its AI service. Coordinates are not sent to Impo.</string>
+  <key>NSLocationDefaultAccuracyReduced</key>
+  <true/>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+  </dict>
+  <key>UILaunchScreen</key>
+  <dict>
+    <key>UIColorName</key>
+    <string>LaunchPaper</string>
+  </dict>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+  <key>UIUserInterfaceStyle</key>
+  <string>Light</string>
+  <key>InstantDevelopmentServerURL</key>
+  <string>$(INSTANT_DEVELOPMENT_SERVER_URL)</string>
+  <key>UIBackgroundModes</key>
+  <array><string>audio</string><string>location</string></array>
+  <key>NSSupportsLiveActivities</key>
+  <true/>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>ai.impo</string>
+    <key>CFBundleURLSchemes</key><array><string>ai.impo</string></array>
+  </dict></array>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>When you tap Echo, Impo records audio, including while your iPhone is locked, and sends it to Impo and Google Gemini to create transcripts in Memories. Tap Stop to end recording.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Impo uses your local network to connect to your private assistant server.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>When you ask about your schedule, Impo reads matching events. In Live chat, event details are sent to the Impo server and our AI service to answer you. Impo does not change your calendars.</string>
+  <key>NSHealthShareUsageDescription</key>
+  <string>When you ask about your activity or sleep, Impo reads the Health data you choose. In Live chat, relevant summaries and sleep samples are sent to the Impo server and our AI service to answer you. Impo does not write Health data.</string>
+  <key>NSHealthUpdateUsageDescription</key>
+  <string>Impo only reads the Health data you choose to share and never saves or changes anything in Health.</string>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+    <!-- Development HTTP access is limited to loopback and private IPv4 ranges. -->
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>127.0.0.0/8</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+      <key>10.0.0.0/8</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+      <key>172.16.0.0/12</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+      <key>192.168.0.0/16</key>
+      <dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+    </dict>
+  </dict>
+</dict>
+</plist>

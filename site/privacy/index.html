@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — Impo</title>
+  <meta name="description" content="How Impo collects, uses, shares and protects your information, including Health, Calendar and Gmail data.">
+  <meta name="theme-color" content="#f4eee3">
+  <link rel="icon" href="/assets/favicon.ico" sizes="any">
+  <link rel="icon" href="/assets/instant-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="/"><img src="/assets/instant-mark.svg" alt=""><span>Impo</span></a>
+      <nav class="site-nav"><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a></nav>
+    </div>
+  </header>
+
+  <main class="legal">
+    <div class="wrap">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated September 29, 2026</p>
+
+      <p>Impo is a personal assistant app made by IMPO ("IMPO", "we", "us"). This policy explains what information Impo collects, how we use and share it, how long we keep it, and the choices and rights you have. It applies to the Impo apps for iPhone and Android, to impo.ai, and to the services behind them (together, the "Service").</p>
+
+      <div class="callout">
+        <p><strong>The short version</strong></p>
+        <ul>
+          <li>Every data connection (Health, Calendar, Gmail) is optional and off until you turn it on.</li>
+          <li>Listening starts only when you tap Listen and grant microphone access. It continues in the background until you stop it or recording is interrupted.</li>
+          <li>Impo reads connected data only to answer a request you make, not in the background.</li>
+          <li>We never sell your data, never use it for advertising, and never use it to train AI models.</li>
+          <li>Health data is used only to answer your questions. It is never used for advertising, marketing or data mining, and never shared with data brokers.</li>
+          <li>You can ask us to delete your account and all associated data at any time.</li>
+        </ul>
+      </div>
+
+      <nav aria-label="Contents">
+        <h2>Contents</h2>
+        <ol>
+          <li><a href="#collect">Information we collect</a></li>
+          <li><a href="#health">Health data</a></li>
+          <li><a href="#calendar">Calendar data</a></li>
+          <li><a href="#google">Gmail and Google user data</a></li>
+          <li><a href="#use">How we use information</a></li>
+          <li><a href="#ai">AI processing and model training</a></li>
+          <li><a href="#share">How we share information</a></li>
+          <li><a href="#retention">How long we keep information</a></li>
+          <li><a href="#delete">Deleting your data</a></li>
+          <li><a href="#security">Security</a></li>
+          <li><a href="#transfers">Where data is processed</a></li>
+          <li><a href="#rights">Your rights</a></li>
+          <li><a href="#children">Children</a></li>
+          <li><a href="#changes">Changes to this policy</a></li>
+          <li><a href="#contact">Contact us</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="collect">1. Information we collect</h2>
+      <h3>Account information</h3>
+      <p>When you create an account or sign in, we receive your email address and an account identifier. If you sign in with Google, we also receive your name and profile picture from Google. Sign-in is handled by our authentication provider, Clerk.</p>
+
+      <h3>Your conversations</h3>
+      <p>We store the messages you send to Impo and the replies it produces, so your conversation history is available across sessions and devices. This includes anything you type or paste into a conversation. Please do not share information you do not want stored.</p>
+
+      <h3>Data you choose to connect</h3>
+      <p>Health, Calendar and Gmail are each optional. When connected, Impo reads from them only when you ask something that needs them. The results needed to answer that request are sent to our servers and our AI service, and are kept as part of that conversation's record (see <a href="#retention">How long we keep information</a>). Details for each are in the sections below.</p>
+
+      <h3 id="listening">Echo recordings, transcripts and locations</h3>
+      <p>If you start Echo, Impo records microphone audio, including while your iPhone is locked. Tap Stop to end recording. On-device speech detection selects speech segments, which are saved locally and uploaded in batches to Impo and Google Gemini for transcription. Impo removes processed audio and keeps the transcript and recording times in Echo. We do not identify people from their voices. Obtain permission from others before recording them.</p>
+      <p>With “Add location to Echo” enabled and iPhone location permission, Impo collects location while Echo is recording, including on the lock screen. Collection stops when recording stops or pauses, or when you turn the setting off. Apple’s location and place-name services resolve an approximate city or district. Impo receives the place name, recording interval, measurement time and reported accuracy, not raw coordinates. Transcripts can span multiple places. Missing or stale locations remain unknown; recording still works without location.</p>
+      <p>You can add or remove your own place label, such as Home or Office. These labels are separate from device measurements. Recording locations and labels are stored with your Echo record and may be supplied to our AI service for Brief and memory processing. Deleting an Echo recording also removes its saved location metadata; memories already derived from it can be removed separately in Memories. Location names are not sent as instructions for speech transcription.</p>
+
+      <h3>Device and request information</h3>
+      <p>To answer questions about "today" or "this week" correctly, each request includes your device's current date and time zone. We also register your device with our servers (a device identifier and which on-device features, such as Health or Calendar, are available and enabled) so the right device can answer tool requests.</p>
+
+      <h3>Brief, city and language</h3>
+      <p>Brief uses recent saved messages, completed Echo transcripts and tasks to generate personal briefs in scheduled background runs. We store your device language and time zone to choose the language and local timing of these briefs.</p>
+      <p>After setup, Impo asks to use location while you use the app. If allowed, it periodically refreshes a city-level snapshot in the foreground. Only city, country and update time are sent to Impo and its AI service; precise coordinates are not sent to Impo, and this Brief city refresh runs only in the foreground. Echo has its own recording-time location setting described above. Device location snapshots older than 24 hours are not used as current context. If access is denied, you can choose a city manually; that choice remains until you change or remove it or enable automatic location. It does not prove your current physical location. Notification permission is controlled separately in iPhone Settings.</p>
+
+      <h3>Information that stays on your device</h3>
+      <p>Your assistant's name and appearance, a profile photo you choose for it, and preview notes and tasks are stored on your device and are not sent to us, unless a feature clearly says otherwise.</p>
+
+      <h3>Technical and log information</h3>
+      <p>Our servers keep operational records, such as request times, IP addresses, error details and the status of each request, to run, secure and troubleshoot the Service. We do not use third-party advertising or analytics SDKs in the app.</p>
+
+      <h2 id="health">2. Health data</h2>
+      <p>If you enable Health, Impo asks for read-only permission through Apple Health (or the equivalent system on Android). Apple and Google control these permissions; you can change them at any time in your device settings.</p>
+      <ul>
+        <li><strong>What Impo can read:</strong> only the categories you allow, currently steps, active energy, heart rate and sleep.</li>
+        <li><strong>When:</strong> only when you ask a question that needs it, for example "How did I sleep this week?". Impo does not read Health data in the background.</li>
+        <li><strong>What is sent:</strong> the summaries and samples needed for your question are sent to our servers and our AI service to produce the answer.</li>
+        <li><strong>Impo never writes</strong> to Health, and never changes or deletes your Health records.</li>
+        <li><strong>Never for advertising or marketing.</strong> We do not use Health data for advertising, marketing or data mining, do not sell it, do not share it with data brokers or advertisers, and do not use it to train AI models.</li>
+        <li><strong>Not a medical service.</strong> Impo's answers are informational and are not medical advice, diagnosis or treatment.</li>
+        <li>We do not store Health data in iCloud.</li>
+      </ul>
+
+      <h2 id="calendar">3. Calendar data</h2>
+      <p>If you enable Calendar, Impo asks for permission through your device's calendar settings. It reads events (such as titles, times, locations and notes) only when you ask about your schedule, and sends the matching events to our servers and AI service to answer you. Impo does not create, change or delete calendar events.</p>
+
+      <h2 id="google">4. Gmail and Google user data</h2>
+      <p>If you connect Gmail, you authorize access through Google's own consent screen. The connection is managed by our integration provider, Composio, and your Google credentials are never shared with Impo's app.</p>
+      <ul>
+        <li><strong>What Impo can do:</strong> search and read your email messages and labels, read your Gmail profile (email address), and create and read drafts, when you ask.</li>
+        <li><strong>What Impo cannot do:</strong> send email, or delete or modify existing messages. Drafts are only sent if you send them yourself in Gmail.</li>
+        <li>Email content is treated as information for your request, not as instructions to Impo.</li>
+      </ul>
+      <p><strong>Limited Use disclosure.</strong> Impo's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular:</p>
+      <ul>
+        <li>We use Google user data only to provide and improve user-facing features that are visible in Impo, such as signing you in, finding an email, or drafting a reply.</li>
+        <li>We do not transfer Google user data to others except as needed to provide those features (for example, to our AI service to answer your request), to comply with law, or as part of a merger or acquisition with notice to you.</li>
+        <li>We do not use Google user data for advertising, and we do not sell it.</li>
+        <li>We do not use Google user data to develop, improve or train generalized AI or machine-learning models.</li>
+        <li>Humans do not read your Google user data unless you give us permission (for example, for support), it is necessary for security purposes or to comply with law, or the data has been aggregated and anonymized for internal operations.</li>
+      </ul>
+      <p>You can disconnect Gmail at any time in Impo, or remove Impo's access in your <a href="https://myaccount.google.com/permissions">Google Account permissions</a>.</p>
+
+      <h2 id="use">5. How we use information</h2>
+      <ul>
+        <li>To answer your requests and complete the tasks you ask for.</li>
+        <li>To keep your conversation history, account and settings.</li>
+        <li>To operate, secure, troubleshoot and maintain the reliability of the Service, including preventing abuse.</li>
+        <li>To communicate with you about your account, security, or important changes.</li>
+        <li>To comply with legal obligations.</li>
+      </ul>
+      <p>We do not sell your personal information, we do not share it for cross-context behavioral advertising, and we do not use it for advertising of any kind.</p>
+
+      <h2 id="ai">6. AI processing and model training</h2>
+      <p>Impo's answers are generated by AI. To produce an answer, your message, relevant conversation history, and the connected data needed for your request are sent to our AI service, which is operated through our agent platform provider, Rebyte, and the AI model providers it uses. They process this information to generate responses on our behalf.</p>
+      <p><strong>We do not use your conversations, Health, Calendar or Gmail data to train AI models</strong>, whether ours or anyone else's.</p>
+
+      <h2 id="share">7. How we share information</h2>
+      <p>We share information only as described here. We use the following service providers, which process data on our behalf to provide the Service:</p>
+      <ul>
+        <li><strong>Clerk</strong> — sign-in and account management.</li>
+        <li><strong>Amazon Web Services</strong> — hosting of our servers and database.</li>
+        <li><strong>Rebyte</strong> and the AI model providers it uses — generating answers to your requests.</li>
+        <li><strong>Google Gemini</strong> — converting audio you record with Listening into text.</li>
+        <li><strong>Composio</strong> — managing the Gmail connection, if you enable it.</li>
+        <li><strong>Cloudflare</strong> — delivery and security of impo.ai.</li>
+      </ul>
+      <p>We may also disclose information when required by law or valid legal process; to protect the rights, property or safety of our users, IMPO or others; or as part of a merger, acquisition or sale of assets, in which case this policy will continue to apply to your information or you will be notified of any change.</p>
+
+      <h2 id="retention">8. How long we keep information</h2>
+      <ul>
+        <li><strong>Account information and conversation history</strong>, including the connected data (such as Health, Calendar or email results) used to answer your requests, are kept while your account is active, so you can continue your conversations. They are deleted when you delete your account.</li>
+        <li><strong>Listening audio:</strong> audio awaiting upload stays on your iPhone, excluded from device backups, until our server accepts it. Our server removes its active copy after successful transcription, after retries are exhausted, or when you delete the segment. We request deletion of the temporary Google file after each attempt; if deletion fails or a worker is interrupted, Google's temporary file expires within 48 hours. Copies in server backups expire with those backups.</li>
+        <li><strong>Listening transcripts:</strong> text stays until you delete the recording in Memories or delete your account. Deleting a recording clears its audio and text from our active database. Minimal recording identifiers, timestamps and an audio hash remain to prevent a delayed upload from recreating deleted content.</li>
+        <li><strong>Server logs</strong> are kept for 30 days for security and troubleshooting, then deleted automatically.</li>
+        <li>We may keep limited records longer where required by law, or to resolve disputes and enforce our agreements.</li>
+      </ul>
+
+      <h2 id="delete">9. Deleting your data</h2>
+      <p>You can stop Impo's access at any time:</p>
+      <ul>
+        <li><strong>Listening:</strong> tap Stop in Impo or its Live Activity to stop recording, or revoke microphone permission in iPhone Settings. Open Chat → Transcripts or Memories → Transcripts, select a recording, then tap Delete to remove it and its transcript. The Lock Screen Live Activity shows recording status and time, not transcript text; you can disable it in iPhone Settings.</li>
+        <li><strong>Health and Calendar:</strong> turn off access in Impo or in your device's privacy settings.</li>
+        <li><strong>Gmail:</strong> disconnect it in Impo or remove access in your Google Account.</li>
+      </ul>
+      <p><strong>To delete your account and data</strong>, email <a href="mailto:cj@impo.ai">cj@impo.ai</a> from the address on your account. We will delete your account, your conversation history (including any Health, Calendar and email data stored with it), your Listening audio and transcripts, your connected-account links, and the related records held by our service providers, within 30 days, and confirm when it is done. Data in backups is removed as those backups expire. Deletion is permanent and cannot be undone.</p>
+
+      <h2 id="security">10. Security</h2>
+      <p>We protect your information with measures including encryption in transit (TLS) between the app, our servers and our database, restricted access to production systems, and keeping third-party credentials on our servers rather than on your device. No method of transmission or storage is completely secure, but we work to protect your information and will notify you of a breach where required by law.</p>
+
+      <h2 id="transfers">11. Where data is processed</h2>
+      <p>Our servers and database are hosted in the United States. Our service providers may process data in the United States and other countries. Where required, we rely on appropriate safeguards for international transfers.</p>
+
+      <h2 id="rights">12. Your rights</h2>
+      <p>Depending on where you live (for example, in the European Economic Area, the United Kingdom, or California), you may have the right to:</p>
+      <ul>
+        <li>access the personal information we hold about you and receive a copy of it;</li>
+        <li>correct inaccurate information;</li>
+        <li>delete your information;</li>
+        <li>object to or restrict certain processing, and withdraw consent where processing is based on consent;</li>
+        <li>not be discriminated against for exercising these rights.</li>
+      </ul>
+      <p>To exercise any of these rights, contact us at <a href="mailto:cj@impo.ai">cj@impo.ai</a>. We may need to verify your identity before acting on a request. You may also have the right to lodge a complaint with your local data protection authority.</p>
+
+      <h2 id="children">13. Children</h2>
+      <p>Impo is not directed to children under 13, or under the minimum age required in your country, and we do not knowingly collect their personal information. If you believe a child has provided us information, contact us and we will delete it.</p>
+
+      <h2 id="changes">14. Changes to this policy</h2>
+      <p>We will update this page when our practices change and revise the date at the top. If we make material changes, we will notify you in the app or by email before they take effect.</p>
+
+      <h2 id="contact">15. Contact us</h2>
+      <p>IMPO<br>Email: <a href="mailto:cj@impo.ai">cj@impo.ai</a></p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 IMPO · impo.ai</span>
+      <nav><a href="/">Home</a><a href="/terms/">Terms of Service</a></nav>
+    </div>
+  </footer>
+</body>
+</html>

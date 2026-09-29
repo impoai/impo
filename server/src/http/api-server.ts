@@ -1,0 +1,477 @@
+import { ListeningBatchRepository } from '../listening/batch-repository.js';
+import type { TodayRepository } from '../today/repository.js';
+import type { MemoryStore } from '../memory/store.js';
+import { memoryCategories, type MemoryCategory } from '../memory/contract.js';
+import type { ListeningBatchService } from '../listening/temporal/client.js';
+import { parseListeningBatch } from '../listening/batch-input.js';
+import { maxBatchBytes } from '../listening/batch-contract.js';
+import { randomUUID } from 'node:crypto';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
+import { setTimeout as delay } from 'node:timers/promises';
+import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageChunk } from 'ai';
+import { verifyToken } from '@clerk/backend';
+import { ServiceError } from '../errors.js';
+import type { RuntimeRepository } from '../persistence/runtime-repository.js';
+import { clientContext } from '../tools/device-tools.js';
+import type { GmailConnectorAPI } from '../composio/gmail-service.js';
+import { ListeningRepository, maxAudioBytes } from '../listening/repository.js';
+import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON, uuid } from './request.js';
+
+export type ApiRepository = Pick<RuntimeRepository,
+  'health' | 'findUser' | 'findOrCreateUser' | 'acceptMessage' | 'getConversation' | 'getSubmission' | 'cancelSubmission' | 'readEvents'>
+  & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage'>>;
+
+export interface ApiOptions {
+  today?: TodayRepository;
+  /** Read and forget the user's long-term memories; the hourly pipeline is the only writer. */
+  memories?: MemoryStore;
+  gmail?: GmailConnectorAPI;
+  listening?: ListeningRepository;
+  listeningEnabled?: boolean;
+  batches?: ListeningBatchRepository;
+  batchService?: ListeningBatchService;
+  runtime?: 'development' | 'rebyte';
+  pollIntervalMs?: number;
+  requestTimeoutMs?: number;
+  /** Idle interval before an SSE keepalive comment; must stay below proxy idle timeouts. */
+  streamKeepAliveMs?: number;
+  /** local-dev is the fixed fixture identity; clerk verifies a real Bearer session token. */
+  auth?: { mode: 'local-dev' } | { mode: 'clerk'; secretKey: string };
+}
+
+const terminal = (status: string) => ['completed', 'failed', 'cancelled'].includes(status);
+
+/** Local-development HTTP adapter. Entry-point configuration gates development identities. */
+export function createApiServer(repository: ApiRepository, options: ApiOptions = {}) {
+  const pollIntervalMs = options.pollIntervalMs ?? 100;
+  const requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
+  const streamKeepAliveMs = options.streamKeepAliveMs ?? 15_000;
+  if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 1 || pollIntervalMs > 60_000) {
+    throw new Error('Invalid API poll interval');
+  }
+  if (!Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 120_000) {
+    throw new Error('Invalid API request timeout');
+  }
+  // Connection metrics only: durable execution and deduplication always live in PostgreSQL.
+  const subscriberCounts = new Map<string, number>();
+
+  const server = createServer((req, res) => {
+    const requestId = randomUUID();
+    const started = Date.now();
+    // Record only route templates: never query values, user content, or credentials.
+    const requestPath = (req.url ?? '').split('?')[0]!.replace(/^\/instant(?=\/)/, '');
+    const area = requestPath.startsWith('/api/v1/today/') ? 'today' : requestPath.startsWith('/api/v1/listening/') ? 'listening' : requestPath.startsWith('/api/v1/memories') ? 'memories' : undefined;
+    const routeName = area === 'memories' ? (requestPath === '/api/v1/memories' ? 'list' : requestPath === '/api/v1/memories/summary' ? 'summary' : 'memory')
+      : area === 'today'
+      ? requestPath === '/api/v1/today/settings' ? 'settings'
+        : requestPath === '/api/v1/today/briefs' ? 'briefs'
+          : /^\/api\/v1\/today\/briefs\/[^/]+\/sources\/[^/]+$/.test(requestPath) ? 'source'
+            : /^\/api\/v1\/today\/briefs\/[^/]+$/.test(requestPath) ? 'brief' : 'unknown'
+      : undefined;
+    if (area) res.once('finish', () => console.log(JSON.stringify({event:`${area}.http`,at:new Date().toISOString(),requestId,route:routeName,method:req.method,status:res.statusCode,ms:Date.now()-started})));
+    res.setHeader('X-Request-Id', requestId);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    void route(req, res).catch(error => {
+      if (res.destroyed) return;
+      if (res.headersSent) { res.destroy(); return; }
+      const safe = error instanceof ServiceError ? error : new ServiceError(500, 'internal_error', 'Impo server error', true);
+      if (area) console.log(JSON.stringify({event:`${area}.request_failed`,at:new Date().toISOString(),requestId,route:routeName,code:safe.code,status:safe.status}));
+      if (safe.status === 429) res.setHeader('Retry-After', '30');
+      // Do not keep a socket open with a rejected, incomplete request body.
+      if (!req.complete) res.setHeader('Connection', 'close');
+      sendJSON(res, safe.status, { error: { code: safe.code, message: safe.message, retryable: safe.retryable }, requestId });
+    });
+  });
+  server.headersTimeout = 10_000;
+  server.requestTimeout = requestTimeoutMs + 5_000;
+  server.keepAliveTimeout = 5_000;
+  const auth = options.auth ?? { mode: 'local-dev' as const };
+
+  /** local-dev matches a fixed fixture header; clerk verifies a real Bearer session token. */
+  async function authenticate(req: IncomingMessage): Promise<{ id: string }> {
+    const header = req.headers.authorization;
+    if (auth.mode === 'local-dev') {
+      const subject = header === 'Bearer instant-dev-alice' ? 'alice' : header === 'Bearer instant-dev-bob' ? 'bob' : undefined;
+      if (!subject) throw new ServiceError(401, 'unauthorized', 'Local development identity required');
+      return repository.findUser(subject);
+    }
+    const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+    if (!token) { throw new ServiceError(401, 'unauthorized', 'A session token is required'); }
+    let claims;
+    try { claims = await verifyToken(token, { secretKey: auth.secretKey }); }
+    catch (error) { throw new ServiceError(401, 'unauthorized', 'Invalid or expired session token'); }
+    return repository.findOrCreateUser('clerk', claims.sub, 'Impo user');
+  }
+
+  async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    let url: URL;
+    try { url = new URL(req.url ?? '/', 'http://127.0.0.1'); }
+    catch { throw new ServiceError(400, 'invalid_request', 'Invalid request URL'); }
+    // The ALB forwards /instant/* without stripping the prefix (path-based
+    // routing shares the existing port-443 listener/cert with other services
+    // on the same load balancer; a dedicated port was blocked on some networks).
+    if (url.pathname === '/instant') url.pathname = '/';
+    else if (url.pathname.startsWith('/instant/')) url.pathname = url.pathname.slice('/instant'.length);
+    const method = req.method;
+    if (url.pathname === '/health' && method === 'GET') {
+      sendJSON(res, 200, { status: 'ok', mode: 'development', runtime: options.runtime === 'rebyte' ? 'rebyte' : 'deterministic' }); return;
+    }
+    if (url.pathname === '/ready' && method === 'GET') {
+      try { await repository.health(); }
+      catch { throw new ServiceError(503, 'database_unavailable', 'Database is unavailable', true); }
+      sendJSON(res, 200, { status: 'ready' }); return;
+    }
+    const user = await authenticate(req);
+    const path = url.pathname;
+    if (path.startsWith('/api/v1/today/')) {
+      if (!options.today) throw new ServiceError(503, 'today_unavailable', 'Today is temporarily unavailable', true);
+      if (path === '/api/v1/today/settings' && method === 'GET') {
+        sendJSON(res, 200, { settings: await options.today.settings(user.id) }); return;
+      }
+      if (path === '/api/v1/today/settings' && method === 'PUT') {
+        sendJSON(res, 200, { settings: await options.today.configure(user.id, await readJSON(req, requestTimeoutMs)) }); return;
+      }
+      if (path === '/api/v1/today/briefs' && method === 'GET') {
+        if ([...url.searchParams.keys()].some(k => !['limit', 'cursor', 'date'].includes(k))
+          || ['limit', 'cursor', 'date'].some(k => url.searchParams.getAll(k).length > 1)) throw new ServiceError(400, 'invalid_request', 'Invalid brief history query');
+        const date = url.searchParams.get('date') ?? undefined;
+        if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) throw new ServiceError(400, 'invalid_request', 'Invalid calendar date');
+        sendJSON(res, 200, await options.today.list(user.id, integerQuery(url, 'limit', 10, 1, 30), url.searchParams.get('cursor') ?? undefined, date)); return;
+      }
+      const briefRoute = /^\/api\/v1\/today\/briefs\/([^/]+)(?:\/sources\/([^/]+))?$/.exec(path);
+      if (briefRoute) {
+        const id = uuid(briefRoute[1]);
+        if (method === 'DELETE' && !briefRoute[2]) { await options.today.delete(user.id, id); sendJSON(res, 200, { status: 'deleted' }); return; }
+        if (method === 'GET') {
+          const row = await options.today.owned(user.id, id);
+          const view = await options.today.view(row);
+          if (!briefRoute[2]) { sendJSON(res, 200, view); return; }
+          const source = view.sources.find(s => s.recordId === briefRoute[2]);
+          const current = source && await options.today.currentSource(user.id, source);
+          if (!current) throw new ServiceError(404, 'not_found', 'Source is no longer available');
+          sendJSON(res, 200, current); return;
+        }
+      }
+      throw new ServiceError(404, 'not_found', 'Today route not found');
+    }
+    if (path === '/api/v1/memories' || path.startsWith('/api/v1/memories/')) {
+      if (!options.memories) throw new ServiceError(503, 'memories_unavailable', 'Memories are temporarily unavailable', true);
+      if (path === '/api/v1/memories/summary' && method === 'GET') { sendJSON(res, 200, await options.memories.summary(user.id)); return; }
+      if (path === '/api/v1/memories' && method === 'GET') {
+        if ([...url.searchParams.keys()].some(k => !['limit', 'cursor', 'category'].includes(k))
+          || ['limit', 'cursor', 'category'].some(k => url.searchParams.getAll(k).length > 1)) throw new ServiceError(400, 'invalid_request', 'Invalid memory query');
+        const category = url.searchParams.get('category') ?? undefined;
+        if (category !== undefined && !memoryCategories.includes(category as MemoryCategory)) throw new ServiceError(400, 'invalid_request', 'Unknown memory category');
+        sendJSON(res, 200, await options.memories.page(user.id, { category: category as MemoryCategory | undefined, limit: integerQuery(url, 'limit', 30, 1, 100), cursor: url.searchParams.get('cursor') ?? undefined })); return;
+      }
+      const memoryRoute = /^\/api\/v1\/memories\/([^/]+)$/.exec(path);
+      if (memoryRoute && method === 'DELETE') {
+        if (!await options.memories.forget(user.id, uuid(memoryRoute[1]))) throw new ServiceError(404, 'not_found', 'Memory not found');
+        sendJSON(res, 200, { status: 'deleted' }); return;
+      }
+      throw new ServiceError(404, 'not_found', 'Memory route not found');
+    }
+    if (path === '/api/v1/listening/batches' && method === 'POST') {
+      if (!options.batchService || !options.listeningEnabled) throw new ServiceError(503, 'listening_unavailable', 'Batch listening is temporarily unavailable.', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      const batch = parseListeningBatch(await readJSON(req, requestTimeoutMs, maxBatchBytes), user.id);
+      const requestId = res.getHeader('X-Request-Id');
+      console.log(JSON.stringify({event:'listening.batch_received',at:new Date().toISOString(),requestId,batchId:batch.batchId,streamId:batch.streamId,sequence:batch.sequence,segments:batch.items.length}));
+      const receipt = await options.batchService.submit(batch);
+      console.log(JSON.stringify({event:'listening.batch_accepted',at:new Date().toISOString(),requestId,batchId:batch.batchId,sequence:batch.sequence}));
+      sendJSON(res, 202, receipt); return;
+    }
+    const batchRoute = /^\/api\/v1\/listening\/batches\/([^/]+)(?:\/(retry))?$/.exec(path);
+    if (batchRoute && options.batches) {
+      const batchId = uuid(batchRoute[1]);
+      const batch = await options.batches.receipt(user.id, batchId);
+      if (!batch) throw new ServiceError(404, 'not_found', 'Batch not found');
+      if (batchRoute[2] === 'retry' && method === 'POST') {
+        if (!options.batchService) throw new ServiceError(503, 'listening_unavailable', 'Retry is temporarily unavailable.', true);
+        await options.batchService.retry(user.id, batchId);
+        sendJSON(res, 202, {status:'retry_requested'}); return;
+      }
+      if (!batchRoute[2] && method === 'GET') {
+        sendJSON(res, 200, {batchId, sequence:batch.sequence, status:batch.status, attempts:batch.attempts, error:batch.error, updatedAt:batch.updatedAt}); return;
+      }
+    }
+    if (path === '/api/v1/listening/calendar' && method === 'GET') {
+      if (!options.listening) throw new ServiceError(503, 'listening_unavailable', 'Echo is not available on this server');
+      const zone = url.searchParams.get('timeZone');
+      if ([...url.searchParams.keys()].some(k => k !== 'timeZone') || url.searchParams.getAll('timeZone').length !== 1
+        || !zone || zone.length > 100 || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/.test(zone)) throw new ServiceError(400, 'invalid_request', 'A valid time zone is required');
+      let timeZone: string;
+      try { timeZone = new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone; }
+      catch { throw new ServiceError(400, 'invalid_request', 'A valid time zone is required'); }
+      sendJSON(res, 200, await options.listening.calendar(user.id, timeZone)); return;
+    }
+    if (path === '/api/v1/listening/segments'  || path.startsWith('/api/v1/listening/segments/')) {
+      if (!options.listening) throw new ServiceError(503, 'listening_unavailable', 'Listening is not available on this server');
+      const timestamp = (value: string | null): Date => {
+        if (!value || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
+          throw new ServiceError(400, 'invalid_request', 'A timestamp with a time zone is required');
+        }
+        return new Date(value);
+      };
+      if (path === '/api/v1/listening/segments' && method === 'POST') {
+        if (!options.listeningEnabled) throw new ServiceError(503, 'listening_not_configured', 'Transcription is not configured on this server', true);
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        const header = (name: string) => typeof req.headers[name] === 'string' ? req.headers[name] as string : null;
+        const clientSegmentId = uuid(header('x-client-segment-id') ?? '');
+        const startedAt = timestamp(header('x-recording-started-at'));
+        const endedAt = timestamp(header('x-recording-ended-at'));
+        const duration = endedAt.getTime() - startedAt.getTime();
+        if (duration <= 0 || duration > 600_000 || endedAt.getTime() > Date.now() + 300_000) {
+          throw new ServiceError(400, 'invalid_request', 'Recordings must be between zero and ten minutes long and cannot be in the future');
+        }
+        const mimeType = header('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
+        if (!['audio/mp4', 'audio/m4a', 'audio/wav', 'audio/mpeg', 'audio/aac'].includes(mimeType)) {
+          throw new ServiceError(415, 'unsupported_audio', 'Upload an M4A, AAC, WAV or MP3 recording');
+        }
+        const audio = await readBody(req, maxAudioBytes, requestTimeoutMs, 'Audio exceeds 8 MiB');
+        if (!audio.length) throw new ServiceError(400, 'invalid_request', 'Audio cannot be empty');
+        sendJSON(res, 202, await options.listening.upload(user.id, { clientSegmentId, startedAt, endedAt, mimeType, audio })); return;
+      }
+      if (path === '/api/v1/listening/segments' && method === 'GET') {
+        if (url.searchParams.has('ids')) {
+          const ids = (url.searchParams.get('ids') ?? '').split(',');
+          if ([...url.searchParams.keys()].some(k => k !== 'ids') || url.searchParams.getAll('ids').length !== 1 || ids.length > 180) throw new ServiceError(400, 'invalid_request', 'Specify at most 180 recording IDs');
+          sendJSON(res, 200, await options.listening.records(user.id, [...new Set(ids.map(uuid))])); return;
+        }
+        if (!url.searchParams.has('from') && !url.searchParams.has('to')) {
+          const allowed = ['limit', 'cursor', 'before', 'direction'];
+          const direction = url.searchParams.get('direction') ?? 'older';
+          if ([...url.searchParams.keys()].some(key => !allowed.includes(key))
+            || allowed.some(key => url.searchParams.getAll(key).length > 1)
+            || !['older', 'newer'].includes(direction) || (url.searchParams.has('cursor') && url.searchParams.has('before'))
+            || (direction === 'newer' && !url.searchParams.has('cursor'))) {
+            throw new ServiceError(400, 'invalid_request', 'Invalid history page parameters');
+          }
+          const limit = integerQuery(url, 'limit', 30, 1, 100);
+          const before = url.searchParams.has('before') ? timestamp(url.searchParams.get('before')) : undefined;
+          sendJSON(res, 200, await options.listening.history(user.id, limit, url.searchParams.get('cursor') ?? undefined, before, direction as 'older' | 'newer')); return;
+        }
+        if ([...url.searchParams.keys()].some(key => !['from', 'to'].includes(key))
+          || url.searchParams.getAll('from').length !== 1 || url.searchParams.getAll('to').length !== 1) {
+          throw new ServiceError(400, 'invalid_request', 'Specify from and to exactly once');
+        }
+        const from = timestamp(url.searchParams.get('from')); const to = timestamp(url.searchParams.get('to'));
+        if (to.getTime() <= from.getTime() || to.getTime() - from.getTime() > 26 * 3600_000) {
+          throw new ServiceError(400, 'invalid_request', 'Request one calendar day at a time');
+        }
+        sendJSON(res, 200, { segments: await options.listening.list(user.id, from, to) }); return;
+      }
+      const locationRoute = /^\/api\/v1\/listening\/segments\/([^/]+)\/location$/.exec(path);
+      if (locationRoute && method === 'PATCH') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        const input = await readJSON(req, requestTimeoutMs);
+        onlyFields(input, ['label']);
+        sendJSON(res, 200, await options.listening.labelLocation(user.id, uuid(locationRoute[1]), input.label)); return;
+      }
+      const segment = /^\/api\/v1\/listening\/segments\/([^/]+)$/.exec(path);
+      if (segment && method === 'DELETE') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        const batchId = await options.listening.delete(user.id, uuid(segment[1]));
+        if (batchId) await options.batchService?.retry(user.id, batchId);
+        sendJSON(res, 200, { status: 'deleted' }); return;
+      }
+    }
+    const gmail = /^\/api\/v1\/connectors\/gmail(?:\/(connect|refresh))?$/.exec(path);
+    if (gmail) {
+      if (!options.gmail) throw new ServiceError(503, 'gmail_not_configured', 'Gmail is not configured on this Impo server');
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Gmail routes do not accept query parameters');
+      if (!gmail[1] && method === 'GET') { sendJSON(res, 200, await options.gmail.getStatus(user.id)); return; }
+      if (!gmail[1] && method === 'DELETE') {
+        if (Number(req.headers['content-length'] ?? '0') > 0 || req.headers['transfer-encoding'] !== undefined) onlyFields(await readJSON(req, requestTimeoutMs), []);
+        await options.gmail.disconnect(user.id); sendJSON(res, 200, { status: 'disconnected' }); return;
+      }
+      if (gmail[1] && method === 'POST') {
+        onlyFields(await readJSON(req, requestTimeoutMs), []);
+        sendJSON(res, 200, gmail[1] === 'connect' ? await options.gmail.connect(user.id) : await options.gmail.refresh(user.id)); return;
+      }
+    }
+    if (path === '/api/v1/conversation/messages' && method === 'POST') {
+      const data = await readJSON(req, requestTimeoutMs);
+      onlyFields(data, ['clientMessageId', 'text', 'deviceId', 'clientContext']);
+      const receipt = await repository.acceptMessage(user.id, {
+        clientMessageId: requiredString(data, 'clientMessageId', 256),
+        text: requiredString(data, 'text', 32_768),
+        ...(data.deviceId === undefined ? {} : { deviceId: uuid(requiredString(data, 'deviceId', 36)) }),
+        ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
+      });
+      sendJSON(res, 202, receipt); return;
+    }
+    if (path.startsWith('/api/v1/devices/') || path.startsWith('/api/v1/device-tool-invocations/')) {
+      if (!repository.devices) throw new ServiceError(404, 'not_found', 'Device routes are unavailable');
+      if (path === '/api/v1/devices/register' && method === 'POST') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        const data = await readJSON(req, requestTimeoutMs);
+        onlyFields(data, ['installationId', 'tools']);
+        if (!Array.isArray(data.tools) || data.tools.some(tool => typeof tool !== 'string')) throw new ServiceError(400, 'invalid_request', 'tools must be a string array');
+        sendJSON(res, 200, await repository.devices.register(user.id, { installationId: requiredString(data, 'installationId', 256), tools: data.tools as string[] })); return;
+      }
+      const pending = /^\/api\/v1\/devices\/([^/]+)\/tool-invocations$/.exec(path);
+      if (pending && method === 'GET') {
+        if ([...url.searchParams.keys()].some(key => key !== 'status') || url.searchParams.getAll('status').length > 1 || (url.searchParams.has('status') && url.searchParams.get('status') !== 'pending')) throw new ServiceError(400, 'invalid_request', 'Only pending invocations can be requested');
+        sendJSON(res, 200, await repository.devices.pending(user.id, uuid(pending[1]))); return;
+      }
+      const invocation = /^\/api\/v1\/device-tool-invocations\/([^/]+)\/(claim|result)$/.exec(path);
+      if (invocation && method === 'POST') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        const id = uuid(invocation[1]);
+        const data = await readJSON(req, requestTimeoutMs);
+        onlyFields(data, invocation[2] === 'claim' ? ['deviceId'] : ['deviceId', 'executionId', 'success', 'output', 'error']);
+        const deviceId = uuid(requiredString(data, 'deviceId', 36));
+        if (invocation[2] === 'claim') { sendJSON(res, 200, await repository.devices.claim(user.id, id, deviceId)); return; }
+        if (typeof data.success !== 'boolean') throw new ServiceError(400, 'invalid_request', 'success must be a boolean');
+        sendJSON(res, 200, await repository.devices.result(user.id, id, {
+          deviceId, executionId: uuid(requiredString(data, 'executionId', 36)), success: data.success,
+          ...('output' in data ? { output: data.output } : {}),
+          ...('error' in data ? { error: requiredString(data, 'error', 4096) } : {}),
+        })); return;
+      }
+    }
+    if (path === '/api/v1/conversation' && method === 'GET') {
+      for (const key of url.searchParams.keys()) {
+        if (key !== 'afterSequence' && key !== 'limit') throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      }
+      const after = integerQuery(url, 'afterSequence', 0, 0, Number.MAX_SAFE_INTEGER);
+      const limit = integerQuery(url, 'limit', 50, 1, 100);
+      sendJSON(res, 200, await repository.getConversation(user.id, after, limit)); return;
+    }
+    if (path === '/api/v1/tasks' || path.startsWith('/api/v1/tasks/')) {
+      const { listTasks, createUserTask, getTaskConversation, acceptTaskMessage } = repository;
+      if (!listTasks || !createUserTask || !getTaskConversation || !acceptTaskMessage) throw new ServiceError(404, 'not_found', 'Task routes are unavailable');
+      if (path === '/api/v1/tasks' && method === 'GET') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        sendJSON(res, 200, await listTasks.call(repository, user.id)); return;
+      }
+      if (path === '/api/v1/tasks' && method === 'POST') {
+        const data = await readJSON(req, requestTimeoutMs);
+        onlyFields(data, ['clientMessageId', 'text', 'clientContext']);
+        sendJSON(res, 202, await createUserTask.call(repository, user.id, {
+          clientMessageId: requiredString(data, 'clientMessageId', 256),
+          text: requiredString(data, 'text', 4000),
+          ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
+        })); return;
+      }
+      const task = /^\/api\/v1\/tasks\/([^/]+)\/(conversation|messages)$/.exec(path);
+      if (task?.[2] === 'conversation' && method === 'GET') {
+        for (const key of url.searchParams.keys()) {
+          if (key !== 'afterSequence' && key !== 'limit') throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        }
+        sendJSON(res, 200, await getTaskConversation.call(repository, user.id, uuid(task[1]),
+          integerQuery(url, 'afterSequence', 0, 0, Number.MAX_SAFE_INTEGER), integerQuery(url, 'limit', 50, 1, 100))); return;
+      }
+      if (task?.[2] === 'messages' && method === 'POST') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        const data = await readJSON(req, requestTimeoutMs);
+        onlyFields(data, ['clientMessageId', 'text', 'clientContext']);
+        sendJSON(res, 202, await acceptTaskMessage.call(repository, user.id, uuid(task[1]), {
+          clientMessageId: requiredString(data, 'clientMessageId', 256),
+          text: requiredString(data, 'text', 32_768),
+          ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
+        })); return;
+      }
+    }
+    const match = /^\/api\/v1\/submissions\/([^/]+)(?:\/(stream|cancel))?$/.exec(path);
+    if (match) {
+      const id = uuid(match[1]);
+      if (url.search.length) throw new ServiceError(400, 'invalid_request', 'Submission routes do not accept query parameters');
+      if (!match[2] && method === 'GET') {
+        const submission = await repository.getSubmission(user.id, id);
+        sendJSON(res, 200, { ...submission, subscriberCount: subscriberCounts.get(id) ?? 0 }); return;
+      }
+      if (match[2] === 'cancel' && method === 'POST') {
+        onlyFields(await readJSON(req, requestTimeoutMs), []);
+        const submission = await repository.cancelSubmission(user.id, id);
+        sendJSON(res, 200, { ...submission, subscriberCount: subscriberCounts.get(id) ?? 0 }); return;
+      }
+      if (match[2] === 'stream' && method === 'GET') { await stream(user.id, id, res); return; }
+    }
+    throw new ServiceError(404, 'not_found', 'Route not found');
+  }
+
+  async function stream(userId: string, id: string, res: ServerResponse): Promise<void> {
+    // Authorization and the initial database read happen before sending SSE headers.
+    const first = await repository.readEvents(userId, id, 0);
+    if (res.destroyed) return;
+    const controller = new AbortController();
+    let releaseBatch: (() => void) | undefined;
+    const disconnect = () => { controller.abort(); releaseBatch?.(); };
+    res.once('close', disconnect);
+    subscriberCounts.set(id, (subscriberCounts.get(id) ?? 0) + 1);
+    let written = 0;
+    let forwarded = 0;
+    const output = createUIMessageStream({
+      execute: async ({ writer }) => {
+        let cursor = 0;
+        let batch = first;
+        try {
+          while (!controller.signal.aborted) {
+            let finished = false;
+            for (const event of batch.events) {
+              if (!Number.isSafeInteger(event.sequence) || event.sequence <= cursor) throw new Error('Invalid event order');
+              cursor = event.sequence;
+              writer.write(event.chunk);
+              written += 1;
+              if (event.chunk.type === 'finish') finished = true;
+            }
+            // The persisted finish, not a disconnected subscriber, closes this UI message.
+            if (finished) return;
+            if (terminal(batch.submission.status) && batch.events.length === 0) {
+              throw new Error('Terminal submission is missing its finish event');
+            }
+            // Bound SDK buffering to one repository batch when the HTTP reader is slow.
+            if (forwarded < written) {
+              await new Promise<void>(resolve => { releaseBatch = resolve; });
+              releaseBatch = undefined;
+            }
+            if (controller.signal.aborted) return;
+            await delay(pollIntervalMs, undefined, { signal: controller.signal });
+            if (controller.signal.aborted) return;
+            batch = await repository.readEvents(userId, id, cursor);
+          }
+        } catch (error) {
+          if (!controller.signal.aborted) throw error;
+        }
+      },
+      onError: () => 'stream_unavailable',
+    });
+    const bounded = output.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform(chunk, downstream) {
+        downstream.enqueue(chunk);
+        forwarded += 1;
+        if (forwarded >= written) releaseBatch?.();
+      },
+    }));
+    let keepAlive: NodeJS.Timeout | undefined;
+    try {
+      const response = createUIMessageStreamResponse({ stream: bounded, headers: { 'Cache-Control': 'no-store' } });
+      res.writeHead(response.status, Object.fromEntries(response.headers));
+      res.flushHeaders();
+      // A run can go minutes without output (sandbox commands, reasoning). Proxies such as the
+      // ALB close idle connections after 60 s, so send an SSE comment while nothing else flows.
+      // Each chunk is a complete SSE event, so a comment between chunks never splits one.
+      let lastWrite = Date.now();
+      const body = Readable.fromWeb(response.body as NodeReadableStream<Uint8Array>);
+      body.on('data', () => { lastWrite = Date.now(); });
+      keepAlive = setInterval(() => {
+        if (Date.now() - lastWrite >= streamKeepAliveMs && !res.writableEnded) { res.write(': keepalive\n\n'); lastWrite = Date.now(); }
+      }, Math.min(5_000, streamKeepAliveMs));
+      await pipeline(body, res);
+    } finally {
+      clearInterval(keepAlive);
+      disconnect();
+      res.off('close', disconnect);
+      const count = (subscriberCounts.get(id) ?? 1) - 1;
+      if (count) subscriberCounts.set(id, count);
+      else subscriberCounts.delete(id);
+    }
+  }
+
+  return server;
+}
