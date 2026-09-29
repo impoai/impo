@@ -378,7 +378,6 @@ private struct TaskDetailView: View {
     private func assistantText(_ text: String) -> some View {
         AssistantMarkdown(text: text)
             .font(.system(size: 17)).lineSpacing(5).frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
             .accessibilityIdentifier("task.message.assistant")
     }
 }

@@ -76,3 +76,25 @@ archive and exported IPA before distributing your own build.
 Implemented features and demo boundaries are documented in
 [feature behavior](../../docs/features.md). The static website, backend, Android
 placeholder and future Web client have separate repository-root boundaries.
+
+## Response rendering and selection
+
+Chat and Task replies render headings, paragraphs, lists, quotes, code and GFM
+tables through Swift Markdown. Wide tables, code and display equations scroll
+horizontally. LaTeXSwiftUI renders inline and display math locally, including
+`$...$`, `$$...$$`, `\(...\)` and `\[...\]`. Currency and code remain literal.
+The vendored [LaTeXSwiftUI package](../Packages/LaTeXSwiftUI/README.md) records a
+small fix to the upstream MathJax number pattern. Third-party notices ship in
+the app's `ResponseRenderingLicenses.txt` resource.
+
+Long-press an assistant reply for **Select Text** or **Copy**. Select Text opens
+one native, read-only text view for the full response, supporting range selection
+across paragraphs. It freezes the response at opening so streaming cannot move
+the handles. Copy keeps readable text, LaTeX source and tab-separated table cells;
+code blocks also have their own copy action. The reading surface uses SwiftUI
+views and caches its last parse instead of creating a native text view per block.
+
+`ResponseDocumentTests` covers parsing and the real offline math engine.
+`ResponseRenderingUITests` covers rendering, native selection, streaming snapshots,
+100-message scrolling and the actual Chat menu. Its `--response-render-fixture`
+launch surface is compiled only in Debug.

@@ -6,6 +6,11 @@ options:
   createIntermediateGroups: true
   developmentLanguage: en
 packages:
+  Markdown:
+    url: https://github.com/swiftlang/swift-markdown
+    exactVersion: 0.6.0
+  LaTeXSwiftUI:
+    path: ../Packages/LaTeXSwiftUI
   ONNXRuntime:
     url: https://github.com/microsoft/onnxruntime-swift-package-manager
     exactVersion: 1.24.2
@@ -64,6 +69,10 @@ targets:
     dependencies:
       - target: ListeningWidget
         embed: true
+      - package: Markdown
+        product: Markdown
+      - package: LaTeXSwiftUI
+        product: LaTeXSwiftUI
       - package: InstantClient
         product: InstantClient
       - package: Clerk

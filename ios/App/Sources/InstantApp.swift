@@ -15,11 +15,19 @@ struct InstantApp: App {
     init() {
         if ClerkConfig.isConfigured { Clerk.configure(publishableKey: ClerkConfig.publishableKey) }
     }
+    @ViewBuilder private var appContent: some View {
+        if model.isOnboarded { MainView() } else { OnboardingView() }
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
-                if model.isOnboarded { MainView() }
-                else { OnboardingView() }
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--response-render-fixture") { ResponseRenderingFixture() }
+                else { appContent }
+                #else
+                appContent
+                #endif
             }
             .environment(model)
             .environment(tasks)

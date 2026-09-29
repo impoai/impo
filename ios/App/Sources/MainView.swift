@@ -340,7 +340,7 @@ private struct ChatView: View {
     private func bubble(_ text: String, user: Bool) -> some View {
         HStack {
             if user { Spacer(minLength: 55) }
-            Group { if user { Text(text) } else { AssistantMarkdown(text: text) } }.font(.system(size: 17)).lineSpacing(5)
+            Group { if user { Text(text).textSelection(.enabled) } else { AssistantMarkdown(text: text) } }.font(.system(size: 17)).lineSpacing(5)
                 .padding(.horizontal, 13).padding(.vertical, 10)
                 .background(user ? InstantStyle.peach : InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(InstantStyle.border.opacity(0.8), lineWidth: 0.7))
@@ -349,7 +349,6 @@ private struct ChatView: View {
                         .frame(width: 9, height: 7).scaleEffect(x: user ? -1 : 1, y: 1)
                         .padding(.horizontal, 7).offset(y: 4)
                 }
-                .textSelection(.enabled)
                 .accessibilityIdentifier(user ? "chat.message.user" : "chat.message.assistant")
             if !user { Spacer(minLength: 23) }
         }.frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
@@ -463,51 +462,6 @@ private struct ComposerTextView: UIViewRepresentable {
             if text == "\n" { parent.onSend(); return false }
             return true
         }
-    }
-}
-
-/// Assistant text: inline Markdown for prose, and fenced ``` blocks kept as monospaced code
-/// with their line breaks (inline-only parsing would fold them into one line).
-struct AssistantMarkdown: View {
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(Self.blocks(text).enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .prose(let prose):
-                    Text((try? AttributedString(markdown: prose, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(prose))
-                case .code(let code):
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Text(code).font(.system(size: 14, design: .monospaced)).lineSpacing(3).fixedSize().padding(12)
-                    }
-                    .background(InstantStyle.border.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
-                }
-            }
-        }
-    }
-
-    enum Block: Equatable { case prose(String), code(String) }
-
-    static func blocks(_ text: String) -> [Block] {
-        var result: [Block] = []
-        var prose: [Substring] = []
-        var code: [Substring]?
-        func flushProse() {
-            let joined = prose.joined(separator: "\n").trimmingCharacters(in: .newlines)
-            if !joined.isEmpty { result.append(.prose(joined)) }
-            prose = []
-        }
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
-                if let lines = code { result.append(.code(lines.joined(separator: "\n"))); code = nil }
-                else { flushProse(); code = [] }
-            } else if code != nil { code!.append(line) } else { prose.append(line) }
-        }
-        // A reply still streaming may not have closed its fence yet.
-        if let lines = code { result.append(.code(lines.joined(separator: "\n"))) }
-        flushProse()
-        return result
     }
 }
 
