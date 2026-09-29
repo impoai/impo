@@ -2,11 +2,11 @@ import { sql } from 'drizzle-orm';
 import { boolean, check, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { users } from './chat.js';
 
-/** OAuth tokens stay with Composio; Instant stores only owned account/session handles. */
+/** One row per (user, Composio toolkit). OAuth tokens stay with Composio; Instant stores only owned account/session handles. */
 export const connectorConnections = pgTable('connector_connections', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id),
-  toolkit: text('toolkit').notNull().default('gmail'),
+  toolkit: text('toolkit').notNull(),
   generation: uuid('generation').notNull(),
   entityId: text('entity_id').notNull(),
   authConfigId: text('auth_config_id').notNull(),
@@ -28,7 +28,7 @@ export const connectorConnections = pgTable('connector_connections', {
   unique('connector_connections_entity_unique').on(table.entityId),
   unique('connector_connections_account_unique').on(table.connectedAccountId),
   unique('connector_connections_router_unique').on(table.routerSessionId),
-  check('connector_connections_toolkit_check', sql`${table.toolkit} = 'gmail'`),
+  check('connector_connections_toolkit_check', sql`${table.toolkit} ~ '^[a-z0-9_]{1,64}$'`),
   check('connector_connections_status_check', sql`${table.status} IN ('disconnected', 'pending', 'connected', 'expired')`),
   check('connector_connections_connected_check', sql`${table.status} <> 'connected' OR (${table.connectedAccountId} IS NOT NULL AND ${table.routerSessionId} IS NOT NULL)`),
   check('connector_connections_lease_check', sql`(${table.operationToken} IS NULL) = (${table.operationLeaseUntil} IS NULL)`),

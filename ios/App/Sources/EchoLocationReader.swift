@@ -70,14 +70,15 @@ import UIKit
             manager.stopUpdatingLocation(); lookup?.cancel(); lookup = nil; geocoder.cancelGeocode()
             generation = UUID(); cached = nil
             status = "Location is off in iPhone Settings. Echo can still record."
-        default: status = "Location unavailable. Echo can still record."
+        default: status = ""
         }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { updateAuthorization() }
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // A missing fix is not worth announcing; recording continues without location.
         guard active else { return }
-        status = "Location unavailable. Echo can still record."
+        status = ""
     }
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard active, manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways,
@@ -101,7 +102,7 @@ import UIKit
                 cached = (fix, String(city.prefix(100)), String(country.prefix(100)), district.map { String($0.prefix(100)) })
                 record(fix, city: cached!.city, country: cached!.country, district: cached!.district)
             } catch {
-                if active, generation == token { status = "Place name unavailable. Echo can still record." }
+                if active, generation == token { status = "" }
             }
         }
     }
@@ -115,7 +116,7 @@ import UIKit
 /// Isolated recording tests inject a reader; a temporary audio store never requests device location.
 @MainActor final class UnavailableEchoLocationReader: EchoLocationReading {
     private(set) var history = EchoLocationHistory()
-    var status: String { "Location unavailable. Echo can still record." }
+    var status: String { "" }
     func prepare() { history = EchoLocationHistory() }
     func start(requestPermission: Bool) {}
     func stop() {}

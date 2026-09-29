@@ -7,22 +7,24 @@ extension EchoLocationSpan {
         let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let start = formatter.date(from: from) ?? ISO8601DateFormatter().date(from: from),
               let end = formatter.date(from: to) ?? ISO8601DateFormatter().date(from: to) else { return "Recording time" }
-        return "\(start.formatted(.dateTime.hour().minute().second())) – \(end.formatted(.dateTime.hour().minute().second()))"
+        let first = start.formatted(date: .omitted, time: .shortened), last = end.formatted(date: .omitted, time: .shortened)
+        return first == last ? first : "\(first) – \(last)"
     }
 }
 
 extension EchoLocationContext {
-    var displayLabel: String {
+    /// nil when there is nothing to say: missing location is simply not shown.
+    var displayLabel: String? {
         if let label, !label.isEmpty { return label }
         let places = Set(spans.map { $0.placeLabel + ", " + $0.country })
         if places.count > 1 { return "Multiple locations" }
-        return spans.first.map { "Near \($0.placeLabel)" } ?? "Location unavailable"
+        return spans.first.map { "Near \($0.placeLabel)" }
     }
-    /// Coalesce adjacent samples of the same area for readable detail; gaps remain visible.
+    /// One entry per stay: consecutive samples of the same area merge even across pauses in speech.
     var displaySpans: [EchoLocationSpan] {
         var result: [EchoLocationSpan] = []
         for span in spans {
-            if let last = result.last, last.placeLabel == span.placeLabel, last.country == span.country, last.to == span.from {
+            if let last = result.last, last.placeLabel == span.placeLabel, last.country == span.country {
                 result[result.count - 1] = EchoLocationSpan(from: last.from, to: span.to, capturedAt: last.capturedAt,
                     accuracyMeters: max(last.accuracyMeters, span.accuracyMeters), granularity: span.granularity,
                     city: span.city, country: span.country, district: span.district)
@@ -41,7 +43,7 @@ struct EchoLocationSettings: View {
             .accessibilityIdentifier("echo.location.enabled")
         Text("Adds the city or area where you record, including while your iPhone is locked. Stops when recording stops. Coordinates are not sent to Impo.")
             .font(.footnote).foregroundStyle(InstantStyle.muted)
-        if listening.locationEnabled {
+        if listening.locationEnabled, !listening.locationStatus.isEmpty {
             Text(listening.locationStatus).font(.footnote).foregroundStyle(InstantStyle.muted)
                 .accessibilityIdentifier("echo.location.status")
             Button("Location permission settings") {
@@ -57,22 +59,24 @@ struct EchoLocationDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Label(location?.displayLabel ?? "Location unavailable", systemImage: "mappin.and.ellipse")
-                    .accessibilityIdentifier("echo.detail.location")
+                if let text = location?.displayLabel {
+                    Label(text, systemImage: "mappin.and.ellipse")
+                        .accessibilityIdentifier("echo.detail.location")
+                }
                 Spacer(minLength: 12)
-                Button(location?.label == nil ? "Add label" : "Edit label", action: edit)
+                Button(location?.label == nil ? (location?.displayLabel == nil ? "Add location" : "Add label") : "Edit label", action: edit)
                     .accessibilityIdentifier("echo.location.edit")
             }
             if location?.label != nil { Text("Your label").font(.caption).foregroundStyle(InstantStyle.muted) }
-            ForEach(Array((location?.displaySpans ?? []).enumerated()), id: \.offset) { _, span in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Near \(span.placeLabel), \(span.country)")
-                    Text("\(span.timeLabel) · Approximate area")
-                        .font(.caption).foregroundStyle(InstantStyle.muted)
+            // A single place is already the heading; list stays only when there is more to tell.
+            if let spans = location?.displaySpans, spans.count > 1 || (location?.label != nil && !spans.isEmpty) {
+                ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Near \(span.placeLabel), \(span.country)")
+                        Text(span.timeLabel).font(.caption).foregroundStyle(InstantStyle.muted)
+                    }
                 }
             }
-            Text(location?.spans.isEmpty == false ? "Only the recorded intervals above have location context." : "No device location was saved for this recording.")
-                .font(.caption).foregroundStyle(InstantStyle.muted)
         }.font(.subheadline)
     }
 }

@@ -2,12 +2,12 @@ import Foundation
 import XCTest
 @testable import InstantClient
 
-final class GmailConnectorTests: XCTestCase {
+final class ConnectorTests: XCTestCase {
     func testStatusDecodesEachConnectionStateAndOptionalAccountFields() async throws {
         for state in ["disconnected", "pending", "connected", "expired"] {
             let (client, session) = fixture("status-\(state)")
             defer { session.invalidateAndCancel() }
-            let result = try await client.gmailStatus()
+            let result = try await client.connectorStatus("gmail")
             XCTAssertEqual(result.status.rawValue, state)
             XCTAssertEqual(result.email, state == "connected" ? "reader@example.test" : nil)
             XCTAssertEqual(result.expiresAt, state == "pending" ? "2026-09-23T00:00:00Z" : nil)
@@ -17,7 +17,7 @@ final class GmailConnectorTests: XCTestCase {
     func testConnectPostsEmptyObjectAndDecodesAuthorizationURL() async throws {
         let (client, session) = fixture("connect")
         defer { session.invalidateAndCancel() }
-        let result = try await client.connectGmail()
+        let result = try await client.connectConnector("gmail")
         XCTAssertEqual(result.redirectURL, "https://connect.example.test/authorize?state=synthetic")
         XCTAssertEqual(result.expiresAt, "2026-09-23T00:00:00Z")
     }
@@ -25,7 +25,7 @@ final class GmailConnectorTests: XCTestCase {
     func testRefreshPostsEmptyObjectAndDecodesConnectedAccount() async throws {
         let (client, session) = fixture("refresh")
         defer { session.invalidateAndCancel() }
-        let result = try await client.refreshGmail()
+        let result = try await client.refreshConnector("gmail")
         XCTAssertEqual(result.status, .connected)
         XCTAssertEqual(result.email, "reader@example.test")
     }
@@ -33,17 +33,17 @@ final class GmailConnectorTests: XCTestCase {
     func testDisconnectUsesDeleteWithoutRequestBody() async throws {
         let (client, session) = fixture("disconnect")
         defer { session.invalidateAndCancel() }
-        let result = try await client.disconnectGmail()
+        let result = try await client.disconnectConnector("gmail")
         XCTAssertEqual(result.status, .disconnected)
         XCTAssertNil(result.email)
         XCTAssertNil(result.expiresAt)
     }
 
-    func testGmailFailurePreservesStructuredAPIError() async throws {
+    func testConnectorFailurePreservesStructuredAPIError() async throws {
         let (client, session) = fixture("error")
         defer { session.invalidateAndCancel() }
         do {
-            _ = try await client.gmailStatus()
+            _ = try await client.connectorStatus("gmail")
             XCTFail("Expected the API's connector error")
         } catch let error as InstantAPIError {
             XCTAssertEqual(error.statusCode, 409)
@@ -52,6 +52,18 @@ final class GmailConnectorTests: XCTestCase {
             XCTAssertFalse(error.retryable)
             XCTAssertEqual(error.requestId, "synthetic-request")
         }
+    }
+
+    func testListDecodesTheShelfWithOptionalMetadata() async throws {
+        let (client, session) = fixture("list")
+        defer { session.invalidateAndCancel() }
+        let result = try await client.connectors()
+        XCTAssertEqual(result.map(\.toolkit), ["gmail", "ynab"])
+        XCTAssertEqual(result[0].connection, ConnectorStatus(status: .connected, email: "reader@example.test"))
+        XCTAssertTrue(result[0].featured)
+        XCTAssertEqual(result[1].name, "YNAB")
+        XCTAssertNil(result[1].logoURL)
+        XCTAssertEqual(result[1].status, .disconnected)
     }
 
     private func fixture(_ scenario: String) -> (InstantClient, URLSession) {
@@ -74,7 +86,7 @@ private final class GmailFixtureProtocol: URLProtocol, @unchecked Sendable {
             let scenario = String(request.url!.host!.split(separator: ".")[0])
             let operation = scenario.hasPrefix("status-") || scenario == "error" ? "status" : scenario
             let method = operation == "disconnect" ? "DELETE" : ["connect", "refresh"].contains(operation) ? "POST" : "GET"
-            let path = "/api/v1/connectors/gmail" + (["connect", "refresh"].contains(operation) ? "/\(operation)" : "")
+            let path = operation == "list" ? "/api/v1/connectors" : "/api/v1/connectors/gmail" + (["connect", "refresh"].contains(operation) ? "/\(operation)" : "")
             XCTAssertEqual(request.httpMethod, method)
             XCTAssertEqual(request.url?.path, path)
             XCTAssertNil(request.url?.query)
@@ -92,6 +104,12 @@ private final class GmailFixtureProtocol: URLProtocol, @unchecked Sendable {
             if scenario == "error" {
                 status = 409
                 body = ["error": ["code": "connector_connection_required", "message": "Connect Gmail first", "retryable": false], "requestId": "synthetic-request"]
+            } else if scenario == "list" {
+                status = 200
+                body = ["connectors": [
+                    ["toolkit": "gmail", "name": "Gmail", "description": "Mail", "logoURL": "https://logos.example.test/gmail", "featured": true, "status": "connected", "email": "reader@example.test"],
+                    ["toolkit": "ynab", "name": "YNAB", "featured": false, "status": "disconnected"],
+                ]]
             } else if scenario == "connect" {
                 status = 200
                 body = ["redirectURL": "https://connect.example.test/authorize?state=synthetic", "expiresAt": "2026-09-23T00:00:00Z"]

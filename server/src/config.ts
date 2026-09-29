@@ -64,9 +64,10 @@ export function loadConfig(role: 'api' | 'worker') {
   }
   const runtime = process.env.INSTANT_RUNTIME as 'development' | 'rebyte';
   const composioKey = process.env.COMPOSIO_API_KEY;
-  const composioAuthConfig = process.env.COMPOSIO_GMAIL_AUTH_CONFIG_ID;
-  if (Boolean(composioKey) !== Boolean(composioAuthConfig)) throw new Error('Set both COMPOSIO_API_KEY and COMPOSIO_GMAIL_AUTH_CONFIG_ID, or neither');
-  const composio = composioKey && composioAuthConfig ? { apiKey: composioKey, authConfigId: composioAuthConfig, baseURL: process.env.COMPOSIO_BASE_URL ?? 'https://backend.composio.dev', requestTimeoutMs: integer('COMPOSIO_REQUEST_TIMEOUT_MS', 20_000, 1000, 120_000) } : undefined;
+  // The connector shelf is Rebyte's: every managed auth config named `<prefix><toolkit>`.
+  const authConfigPrefix = process.env.COMPOSIO_AUTH_CONFIG_PREFIX ?? 'rebyte-dev-';
+  if (!/^[a-z0-9-]{1,64}$/.test(authConfigPrefix)) throw new Error('COMPOSIO_AUTH_CONFIG_PREFIX must be lowercase letters, digits and dashes');
+  const composio = composioKey ? { apiKey: composioKey, authConfigPrefix, baseURL: process.env.COMPOSIO_BASE_URL ?? 'https://backend.composio.dev', requestTimeoutMs: integer('COMPOSIO_REQUEST_TIMEOUT_MS', 20_000, 1000, 120_000) } : undefined;
   const rebyte = runtime === 'rebyte' ? {
     apiKey: process.env.REBYTE_API_KEY ?? '',
     baseURL: process.env.REBYTE_BASE_URL ?? 'https://api.rebyte.ai/v1',

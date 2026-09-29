@@ -68,7 +68,7 @@ can be claimed again after its lease expires.
 | `DEVICE_TOOL_TIMEOUT_MS` | Device tool deadline; default `300000`. |
 | `REBYTE_API_KEY` | Required for the Rebyte runtime; server-only. |
 | `REBYTE_BASE_URL` / `REBYTE_MODEL` | Rebyte endpoint and model ID; see `.env.example`. |
-| `COMPOSIO_API_KEY` / `COMPOSIO_GMAIL_AUTH_CONFIG_ID` | Optional Gmail connector configuration. |
+| `COMPOSIO_API_KEY` / `COMPOSIO_AUTH_CONFIG_PREFIX` | Optional app connectors; the shelf is every enabled managed auth config named `<prefix><toolkit>` (default `rebyte-dev-`). |
 | `GEMINI_API_KEY` | Real Echo transcription; development uses a deterministic transcriber. |
 | `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` | Set both to enable batch coordination and background workflows. |
 | `TEMPORAL_API_KEY` | Authentication for the configured Temporal Cloud service. |
@@ -169,14 +169,24 @@ claims and first result submissions; an already accepted identical receipt stays
 idempotent. Device work waits for the phone or expires. Tasks do not have device
 tools and cannot create nested tasks. See [device tools](../docs/features.md).
 
-## Gmail connector
+## App connectors
 
-Configure `COMPOSIO_API_KEY` and `COMPOSIO_GMAIL_AUTH_CONFIG_ID`, synchronize the
-schema, and restart the API and worker. In iOS Settings → Connectors, authorize
-Gmail through the hosted OAuth flow. Only a server-verified account is connected.
-Search, reads, and draft creation use the current user's account and continue
-server-side when the app closes. Sending mail is not implemented.
-See [Gmail](../docs/features.md) for ownership and recovery contracts.
+Impo uses Rebyte's Composio shelf: every enabled, Composio-managed auth config
+named `<COMPOSIO_AUTH_CONFIG_PREFIX><toolkit>` (about 120 apps, Gmail, Google
+Calendar, Notion, GitHub, Outlook and more) is a connector. The server reads that
+directory from Composio and caches it for ten minutes; there is nothing to seed.
+Configure `COMPOSIO_API_KEY`, synchronize the schema, and restart the API and
+worker. In iOS Library → Connections, authorize an app through the hosted OAuth
+flow. Only a server-verified account is connected.
+
+Each connection owns one Composio Tool Router Session pinned to that account. As in
+Rebyte, the agent never receives per-app tools: it always has the same four
+Functions — `instant_list_connectors`, `instant_search_connector_tools`,
+`instant_get_connector_tool_schemas` and `instant_execute_connector_tools` — each
+naming one connected app. Search returns the concrete Composio tools for the task,
+and every tool the app's Composio toolkit offers can run, exactly as in Rebyte.
+Work continues server-side when the app closes. See
+[tools and permissions](../docs/features.md) for ownership and recovery contracts.
 
 ## Echo and Listening batches
 
@@ -255,7 +265,7 @@ the same schema synchronization path.
 | `npm run test:db` | PostgreSQL; transactions, idempotency, ownership, restarts, leases, cancellation, and constraints. |
 | `npm run test:rebyte` | PostgreSQL; real SDK against a local protocol double, including uncertain requests and recovery. |
 | `npm run test:devices` | PostgreSQL; durable native dispatch, receipts, and permissions. |
-| `npm run test:gmail` | PostgreSQL; connector ownership and durable external-tool recovery with protocol doubles. |
+| `npm run test:connectors` | PostgreSQL; connector ownership and durable external-tool recovery with protocol doubles. |
 | `npm run test:listening` | PostgreSQL; recording persistence and recovery. |
 | `npm run test:listening-batches` | PostgreSQL and Temporal CLI; durable batch coordination across API/worker instances. |
 | `npm run test:background` | PostgreSQL and Temporal CLI; hourly timers, Continue-As-New, provisioning, and recovery. Apple Silicon time-skipping tests require Rosetta. |

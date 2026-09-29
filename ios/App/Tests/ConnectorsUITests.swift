@@ -1,8 +1,8 @@
 import XCTest
 
 @MainActor
-final class GmailConnectionsUITests: XCTestCase {
-    func testOfflineGmailExplainsLiveRequirementWithoutAuthorization() {
+final class ConnectorsUITests: XCTestCase {
+    func testOfflineAppsExplainLiveRequirementWithoutAuthorization() {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--reset-demo", "--show-main"]
@@ -14,14 +14,14 @@ final class GmailConnectionsUITests: XCTestCase {
         for _ in 0..<6 where !connections.isHittable { app.swipeUp() }
         XCTAssertTrue(connections.isHittable)
         connections.tap()
-        let notice = app.staticTexts["connection.gmail.offline"]
+        let notice = app.staticTexts["connection.apps.offline"]
         for _ in 0..<6 where !notice.isHittable { app.swipeUp() }
         XCTAssertTrue(notice.isHittable)
         XCTAssertTrue(notice.label.contains("offline Demo"))
-        XCTAssertFalse(app.buttons["connection.gmail"].exists)
-        XCTAssertFalse(app.buttons["connection.gmail.refresh"].exists)
+        XCTAssertFalse(app.buttons["connection.apps.browse"].exists)
+        XCTAssertFalse(app.buttons["connector.gmail"].exists)
         let capture = XCTAttachment(screenshot: app.screenshot())
-        capture.name = "Gmail connection in offline Demo"
+        capture.name = "App connections in offline Demo"
         capture.lifetime = .keepAlways
         add(capture)
     }

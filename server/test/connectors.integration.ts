@@ -11,24 +11,25 @@ import { deviceHash } from '../src/tools/device-tools.js';
 
 const directory = fileURLToPath(new URL('../', import.meta.url));
 const databaseURL = process.env.DATABASE_URL;
-if (!databaseURL || new URL(databaseURL).pathname !== '/instant_test') throw new Error('Run the isolated test-db.mjs --gmail harness.');
+if (!databaseURL || new URL(databaseURL).pathname !== '/instant_test') throw new Error('Run the isolated test-db.mjs --connectors harness.');
 const pool = new pg.Pool({ connectionString: databaseURL, max: 4 });
 const aliceID = '00000000-0000-4000-8000-000000000001';
 const bobID = '00000000-0000-4000-8000-000000000002';
-const search: PlannedTool = { name: 'instant_search_external_tools', arguments: { queries: [{ use_case: 'Find Gmail tools for synthetic protocol acceptance' }] } };
-const schema: PlannedTool = { name: 'instant_get_external_tool_schemas', arguments: { tool_slugs: ['GMAIL_FETCH_EMAILS'] } };
-const execute = (tool_slug: string, args: JSONRecord): PlannedTool => ({ name: 'instant_execute_external_tools', arguments: { tools: [{ tool_slug, arguments: args }] } });
+const list: PlannedTool = { name: 'instant_list_connectors', arguments: {} };
+const search: PlannedTool = { name: 'instant_search_connector_tools', arguments: { connector: 'gmail', queries: [{ use_case: 'Find Gmail tools for synthetic protocol acceptance' }] } };
+const schema: PlannedTool = { name: 'instant_get_connector_tool_schemas', arguments: { connector: 'gmail', tool_slugs: ['GMAIL_FETCH_EMAILS'] } };
+const execute = (tool_slug: string, args: JSONRecord, connector = 'gmail', extra: JSONRecord = {}): PlannedTool => ({ name: 'instant_execute_connector_tools', arguments: { connector, tools: [{ tool_slug, arguments: args, ...extra }] } });
 const read = execute('GMAIL_FETCH_EMAILS', { user_id: 'me', max_results: 2, query: 'subject:synthetic-protocol-test' });
 const draft = execute('GMAIL_CREATE_EMAIL_DRAFT', { user_id: 'me', subject: 'SYNTHETIC TEST DRAFT - LOCAL FIXTURE ONLY', body: 'No real mailbox has been accessed.' });
 type Managed = { child: ChildProcess; output: string; exited: Promise<number | null> };
 
-test('Gmail control plane and server tool receipts survive independent API/Worker failures without duplicate writes', { timeout: 150000 }, async t => {
+test('Connector control plane and server tool receipts survive independent API/Worker failures without duplicate writes', { timeout: 150000 }, async t => {
   const fake = new FakeRebyte(), composio = new FakeComposio();
   const remoteURL = await fake.listen(), composioURL = await composio.listen();
   const env = {
     ...process.env, DATABASE_URL: databaseURL, PORT: '0', NODE_ENV: 'test', INSTANT_AUTH_MODE: 'local-dev', INSTANT_RUNTIME: 'rebyte',
     REBYTE_API_KEY: 'instant-fake-rebyte-key', REBYTE_BASE_URL: remoteURL, REBYTE_MODEL: 'gpt-5.6-luna',
-    COMPOSIO_API_KEY: 'instant-fake-composio-key', COMPOSIO_GMAIL_AUTH_CONFIG_ID: 'ac_fake_gmail', COMPOSIO_BASE_URL: composioURL, COMPOSIO_REQUEST_TIMEOUT_MS: '10000',
+    COMPOSIO_API_KEY: 'instant-fake-composio-key', COMPOSIO_BASE_URL: composioURL, COMPOSIO_REQUEST_TIMEOUT_MS: '10000',
     INSTANT_WORKER_POLL_MS: '25', WORKER_LEASE_MS: '1500', REBYTE_POLL_MS: '50', REBYTE_REQUEST_TIMEOUT_MS: '10000',
   };
   const processes = new Set<Managed>();
@@ -92,6 +93,17 @@ test('Gmail control plane and server tool receipts survive independent API/Worke
   }
   try {
     await startAPI();
+    await t.test('the shelf is every enabled rebyte-dev auth config, featured first', async () => {
+      const listed = await request('/connectors'); assert.equal(listed.status, 200);
+      const connectors = listed.body.connectors as JSONRecord[];
+      assert.deepEqual(connectors.map(item => item.toolkit), ['gmail', 'googlecalendar']);
+      assert.deepEqual(connectors[0], { toolkit: 'gmail', name: 'Gmail', description: 'Synthetic mail', logoURL: 'https://logos.example.test/gmail', featured: true, status: 'disconnected' });
+      assert.equal(connectors[1]!.name, 'Google Calendar'); assert.equal(connectors[1]!.featured, true);
+      assert.equal((await request('/connectors/notion')).status, 404);
+      assert.equal((await request('/connectors/notion/connect', {})).status, 404);
+      assert.ok(JSON.stringify(listed.body).indexOf('ac_fake') < 0, 'Auth config IDs stay on the server');
+    });
+
     await t.test('OAuth link and refresh pin the exact owned Gmail account and keep provider credentials off client responses', async () => {
       assert.equal((await request('/connectors/gmail')).body.status, 'disconnected');
       const malicious = await request('/connectors/gmail/connect', { userId: bobID, connectedAccountId: 'borrowed-account' });
@@ -100,25 +112,39 @@ test('Gmail control plane and server tool receipts survive independent API/Worke
       assert.equal(linked.status, 200); assert.match(linked.body.redirectURL, /^https:\/\/connect\.example\.test\//);
       assert.equal(typeof linked.body.expiresAt, 'string');
       assert.deepEqual(Object.keys(linked.body).sort(), ['expiresAt', 'redirectURL']);
-      const connection = (await pool.query('SELECT * FROM connector_connections WHERE user_id=$1', [aliceID])).rows[0];
+      const connection = (await pool.query("SELECT * FROM connector_connections WHERE user_id=$1 AND toolkit='gmail'", [aliceID])).rows[0];
       assert.ok(connection.entity_id.startsWith(`instant:development:${aliceID}:`));
       aliceAccount = composio.activate(connection.entity_id);
       const refreshed = await request('/connectors/gmail/refresh', {});
       assert.equal(refreshed.status, 200); assert.equal(refreshed.body.status, 'connected');
       assert.ok(Object.keys(refreshed.body).every(key => ['status', 'email', 'expiresAt'].includes(key)));
-      const persisted = (await pool.query('SELECT * FROM connector_connections WHERE user_id=$1', [aliceID])).rows[0];
+      const persisted = (await pool.query("SELECT * FROM connector_connections WHERE user_id=$1 AND toolkit='gmail'", [aliceID])).rows[0];
       assert.equal(persisted.connected_account_id, aliceAccount); assert.equal(composio.routers.get(persisted.router_session_id)?.account, aliceAccount);
       await stop(api, 'SIGKILL'); await startAPI();
       assert.equal((await request('/connectors/gmail')).body.status, 'connected');
     });
 
+    await t.test('a second app gets its own pinned account and Tool Router Session', async () => {
+      const linked = await request('/connectors/googlecalendar/connect', {}); assert.equal(linked.status, 200);
+      const row = (await pool.query("SELECT * FROM connector_connections WHERE user_id=$1 AND toolkit='googlecalendar'", [aliceID])).rows[0];
+      assert.equal(row.auth_config_id, 'ac_fake_googlecalendar');
+      const account = composio.activate(row.entity_id, 'googlecalendar');
+      assert.equal((await request('/connectors/googlecalendar/refresh', {})).body.status, 'connected');
+      const persisted = (await pool.query("SELECT router_session_id FROM connector_connections WHERE user_id=$1 AND toolkit='googlecalendar'", [aliceID])).rows[0];
+      assert.deepEqual(composio.routers.get(persisted.router_session_id), { entity: row.entity_id, account, toolkit: 'googlecalendar' });
+      const statuses = Object.fromEntries(((await request('/connectors')).body.connectors as JSONRecord[]).map(item => [item.toolkit, item.status]));
+      assert.deepEqual(statuses, { gmail: 'connected', googlecalendar: 'connected' });
+    });
+
     await t.test('discovery, schema and Gmail reads execute in the Worker without device dispatch', async () => {
-      const id = await submit([search, schema, read]);
+      const id = await submit([list, search, schema, read]);
       const worker = start('src/worker-main.ts');
       try {
-        const final = await completed(id); assert.equal(final.resultCount, 3);
+        const final = await completed(id); assert.equal(final.resultCount, 4);
         await assertServerOnly(id);
-        assert.equal((await toolRows(id)).length, 3);
+        const rows = await toolRows(id); assert.equal(rows.length, 4);
+        const listed = [...fake.toolResults.values()].map(event => typeof event.output === 'string' ? JSON.parse(event.output) : undefined).find(output => output?.connectors);
+        assert.deepEqual(listed.connectors, [{ connector: 'gmail', name: 'Gmail' }, { connector: 'googlecalendar', name: 'Google Calendar' }]);
         assert.deepEqual(composio.executions.slice(-3).map(execution => execution.slug).sort(), ['COMPOSIO_GET_TOOL_SCHEMAS', 'COMPOSIO_MULTI_EXECUTE_TOOL', 'COMPOSIO_SEARCH_TOOLS']);
         assert.ok(composio.executions.every(execution => composio.routers.get(execution.router)?.account === aliceAccount));
         assert.ok((await toolRows(id)).every(row => row.result.ok === true));
@@ -195,18 +221,33 @@ test('Gmail control plane and server tool receipts survive independent API/Worke
       } finally { await stop(worker); }
     });
 
-    await t.test('model arguments cannot select another Gmail user, account or a sending action', async () => {
+    await t.test('model arguments cannot pick another account or reach unconnected apps', async () => {
       const before = composio.executions.length;
       const id = await submit([
-        execute('GMAIL_FETCH_EMAILS', { user_id: 'someone-else@example.test' }),
-        execute('GMAIL_FETCH_EMAILS', { user_id: 'me', connected_account_id: 'foreign' }),
-        execute('GMAIL_SEND_EMAIL', { user_id: 'me', recipient_email: 'synthetic@example.test', body: 'must never send' }),
+        execute('GMAIL_FETCH_EMAILS', { user_id: 'me' }, 'gmail', { account: 'foreign' }),
+        { name: 'instant_execute_connector_tools', arguments: { connector: 'gmail', tools: [{ tool_slug: 'GMAIL_FETCH_EMAILS', arguments: {} }], connected_accounts: { gmail: ['foreign'] } } },
+        { ...search, arguments: { ...search.arguments, connector: 'notion' } },
       ]);
       const worker = start('src/worker-main.ts');
       try {
         await completed(id); await assertServerOnly(id);
         assert.equal(composio.executions.length, before);
         const rows = await toolRows(id); assert.equal(rows.length, 3); assert.ok(rows.every(row => row.result.ok === false));
+        assert.equal(rows[2].result.error.code, 'connector_connection_required');
+      } finally { await stop(worker); }
+    });
+
+    await t.test('every tool of the connected app runs, including sending and deleting, as in Rebyte', async () => {
+      const before = composio.executions.length;
+      const id = await submit([
+        execute('GMAIL_SEND_EMAIL', { user_id: 'me', recipient_email: 'synthetic@example.test', body: 'synthetic' }),
+        execute('GMAIL_DELETE_MESSAGE', { user_id: 'me', message_id: 'synthetic' }),
+      ]);
+      const worker = start('src/worker-main.ts');
+      try {
+        await completed(id); await assertServerOnly(id);
+        assert.deepEqual(composio.executions.slice(before).map(execution => (execution.args.tools as JSONRecord[])[0]!.tool_slug), ['GMAIL_SEND_EMAIL', 'GMAIL_DELETE_MESSAGE']);
+        assert.ok((await toolRows(id)).every(row => row.result.ok === true));
       } finally { await stop(worker); }
     });
 

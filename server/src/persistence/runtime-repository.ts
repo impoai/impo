@@ -7,7 +7,7 @@ import { ServiceError, LeaseLostError } from '../errors.js';
 import type { ToolResult, ToolRegistry } from '../tools/registry.js';
 import { DeviceRepository } from './device-repository.js';
 import { clientContext, deviceHash, isDeviceTool, type ClientContext } from '../tools/device-tools.js';
-import { GMAIL_TOOL_NAMES } from '../tools/gmail-tools.js';
+import { CONNECTOR_TOOL_NAMES } from '../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
 
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -84,17 +84,18 @@ export class RuntimeRepository {
 
   /**
    * Narrow a runtime catalog to the tools this user can use now: device tools that one of
-   * their devices enabled, and Gmail only while connected. A change rotates the Session.
+   * their devices enabled, and connector tools only while at least one app is connected. The four connector tools
+   * are fixed, so connecting a second or third app does not rotate the Session.
    */
   protected async userAgentConfig(tx: Transaction, userId: string, config: Record<string, unknown> | undefined) {
     if (!config || !Array.isArray(config.tools)) return config;
     const enabled = new Set((await tx.selectDistinct({ name: deviceCapabilities.toolName }).from(deviceCapabilities).where(eq(deviceCapabilities.userId, userId))).map(row => row.name));
-    const [gmail] = await tx.select({ id: connectorConnections.id }).from(connectorConnections)
-      .where(and(eq(connectorConnections.userId, userId), eq(connectorConnections.status, 'connected'), eq(connectorConnections.disconnectRequested, false)));
+    const [connected] = await tx.select({ id: connectorConnections.id }).from(connectorConnections)
+      .where(and(eq(connectorConnections.userId, userId), eq(connectorConnections.status, 'connected'), eq(connectorConnections.disconnectRequested, false))).limit(1);
     const tools = (config.tools as Array<{ name?: unknown }>).filter(tool => {
       if (typeof tool.name !== 'string') return true;
       if (isDeviceTool(tool.name)) return enabled.has(tool.name);
-      if ((GMAIL_TOOL_NAMES as readonly string[]).includes(tool.name)) return Boolean(gmail);
+      if ((CONNECTOR_TOOL_NAMES as readonly string[]).includes(tool.name)) return Boolean(connected);
       return true;
     });
     // Only existing, user-owned profile fields enter the prompt snapshot. Dates stay per-message

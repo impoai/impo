@@ -1,6 +1,8 @@
 import { ServiceError } from '../errors.js';
 
-export interface ComposioConfig { apiKey: string; authConfigId: string; baseURL?: string; requestTimeoutMs?: number }
+export interface ComposioConfig { apiKey: string; authConfigPrefix: string; baseURL?: string; requestTimeoutMs?: number }
+export interface ComposioAuthConfig { id: string; name: string; toolkit: string; logoURL?: string }
+export interface ComposioToolkit { slug: string; name: string; description?: string; logoURL?: string }
 export interface ConnectedAccount {
   id: string; entityId: string; authConfigId: string; toolkit: string; status: string; disabled: boolean; authConfigDisabled: boolean;
 }
@@ -22,7 +24,7 @@ export class ComposioProvider {
     this.baseURL = url.toString().replace(/\/$/, '');
   }
 
-  async request(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal): Promise<unknown> {
+  async request(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal, maxBytes = 256 * 1024): Promise<unknown> {
     const timeout = AbortSignal.timeout(this.config.requestTimeoutMs ?? 20_000);
     let response: Response;
     try {
@@ -46,7 +48,7 @@ export class ComposioProvider {
         const next = await reader.read();
         if (next.done) break;
         bytes += next.value.byteLength;
-        if (bytes > 256 * 1024) { await reader.cancel(); throw new ServiceError(502, 'connector_response_too_large', 'Gmail returned too much data; request fewer messages or narrower fields'); }
+        if (bytes > maxBytes) { await reader.cancel(); throw new ServiceError(502, 'connector_response_too_large', 'The connected app returned too much data; request fewer items or narrower fields'); }
         chunks.push(next.value);
       }
     } catch (error) {
@@ -59,7 +61,7 @@ export class ComposioProvider {
     catch { throw new ServiceError(502, 'composio_invalid_response', 'Composio returned invalid JSON', true); }
   }
 
-  async createLink(entityId: string, signal?: AbortSignal, authConfigId = this.config.authConfigId): Promise<{ redirectURL: string }> {
+  async createLink(entityId: string, authConfigId: string, signal?: AbortSignal): Promise<{ redirectURL: string }> {
     const data = object(await this.request('POST', '/api/v3.1/connected_accounts/link', { auth_config_id: authConfigId, user_id: entityId }, signal));
     const redirectURL = required(data.redirect_url ?? data.redirect_uri ?? data.link_url ?? data.url);
     const url = new URL(redirectURL);
@@ -78,13 +80,14 @@ export class ComposioProvider {
   async accounts(entityId: string, authConfigId: string, signal?: AbortSignal): Promise<string[]> {
     const query = new URLSearchParams({ user_ids: entityId, auth_config_ids: authConfigId, limit: '100' });
     const data = object(await this.request('GET', `/api/v3.1/connected_accounts?${query}`, undefined, signal));
-    if (!Array.isArray(data.items) || data.items.length >= 100 || data.next_cursor) throw new ServiceError(502, 'composio_account_ambiguous', 'Unable to resolve a unique Gmail connection');
+    if (!Array.isArray(data.items) || data.items.length >= 100 || data.next_cursor) throw new ServiceError(502, 'composio_account_ambiguous', 'Unable to resolve a unique account connection');
     return data.items.map(value => required(object(value).id));
   }
 
-  async createRouter(entityId: string, accountId: string, authConfigId: string, signal?: AbortSignal): Promise<string> {
+  /** One Tool Router Session per Connection: search, schemas and execution are pinned to that one account. */
+  async createRouter(entityId: string, toolkit: string, accountId: string, authConfigId: string, signal?: AbortSignal): Promise<string> {
     const data = object(await this.request('POST', '/api/v3.1/tool_router/session', {
-      user_id: entityId, toolkits: { enable: ['gmail'] }, auth_configs: { gmail: authConfigId }, connected_accounts: { gmail: [accountId] },
+      user_id: entityId, toolkits: { enable: [toolkit] }, auth_configs: { [toolkit]: authConfigId }, connected_accounts: { [toolkit]: [accountId] },
       manage_connections: { enable: false, enable_wait_for_connections: false, enable_connection_removal: false },
       workbench: { enable: false, enable_proxy_execution: false }, execute: { enable_multi_execute: true },
     }, signal));
@@ -93,6 +96,40 @@ export class ComposioProvider {
 
   async execute(routerId: string, slug: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     return this.request('POST', `/api/v3.1/tool_router/session/${encodeURIComponent(routerId)}/execute`, { tool_slug: slug, arguments: args }, signal);
+  }
+
+  /** Every enabled, Composio-managed auth config whose name carries the configured prefix. */
+  async authConfigs(signal?: AbortSignal): Promise<ComposioAuthConfig[]> {
+    const configs: ComposioAuthConfig[] = [];
+    for await (const item of this.pages('/api/v3.1/auth_configs', 200, signal)) {
+      const name = typeof item.name === 'string' ? item.name : '';
+      if (!name.startsWith(this.config.authConfigPrefix) || item.status !== 'ENABLED' || item.is_composio_managed !== true) continue;
+      const toolkit = object(item.toolkit);
+      configs.push({ id: required(item.id), name, toolkit: required(toolkit.slug), ...(typeof toolkit.logo === 'string' ? { logoURL: toolkit.logo } : {}) });
+    }
+    return configs;
+  }
+
+  async toolkits(signal?: AbortSignal): Promise<ComposioToolkit[]> {
+    const toolkits: ComposioToolkit[] = [];
+    for await (const item of this.pages('/api/v3.1/toolkits', 500, signal)) {
+      const meta = item.meta && typeof item.meta === 'object' ? item.meta as Record<string, unknown> : {};
+      toolkits.push({ slug: required(item.slug), name: typeof item.name === 'string' && item.name ? item.name : required(item.slug), ...(typeof meta.description === 'string' ? { description: meta.description } : {}), ...(typeof meta.logo === 'string' ? { logoURL: meta.logo } : {}) });
+    }
+    return toolkits;
+  }
+
+  private async *pages(path: string, limit: number, signal?: AbortSignal): AsyncGenerator<Record<string, unknown>> {
+    let cursor: string | undefined;
+    for (let page = 0; page < 50; page++) {
+      const query = new URLSearchParams({ limit: String(limit), ...(cursor ? { cursor } : {}) });
+      const data = object(await this.request('GET', `${path}?${query}`, undefined, signal, 16 * 1024 * 1024));
+      if (!Array.isArray(data.items)) throw new ServiceError(502, 'composio_invalid_response', 'Composio returned an invalid list');
+      for (const item of data.items) yield object(item);
+      if (!data.next_cursor) return;
+      cursor = required(data.next_cursor);
+    }
+    throw new ServiceError(502, 'composio_invalid_response', 'Composio returned too many pages');
   }
 
   async revoke(id: string): Promise<void> {

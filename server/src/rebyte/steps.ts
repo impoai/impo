@@ -24,7 +24,7 @@ function status(value: unknown): StepData['status'] {
 
 /**
  * Steps of one Turn in stream order. `ownTool` names are skipped: Instant's own functions
- * (device, Gmail, tasks) already stream as tool parts with their receipts.
+ * (device, connectors, tasks) already stream as tool parts with their receipts.
  */
 export function turnSteps(items: AgentItem[], turnId: string, ownTool: (name: string) => boolean): Array<{ id: string; data: StepData }> {
   const steps: Array<{ id: string; data: StepData }> = [];

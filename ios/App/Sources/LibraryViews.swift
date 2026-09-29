@@ -501,11 +501,11 @@ private struct LibraryConnectionsView: View {
                     .font(.system(size: 15)).foregroundStyle(libraryMuted).lineSpacing(4)
                 DeviceAccessCard(kind: "calendar")
                 DeviceAccessCard(kind: "health")
-                GmailAccessCard()
+                ConnectorsSection()
                 Label("Messages", systemImage: "message.fill").font(InstantStyle.serif(21)).padding(.top, 8)
                 Text("iOS does not give Impo access to your existing SMS or iMessage history. You can paste a message into the conversation for help.")
                     .font(.footnote).foregroundStyle(libraryMuted).accessibilityIdentifier("connection.messages.unavailable")
-                Text("Reminders, Contacts and more accounts will be added later.").font(.footnote).foregroundStyle(libraryMuted)
+                Text("Reminders and Contacts will be added later.").font(.footnote).foregroundStyle(libraryMuted)
                 if model.useLiveBackend {
                     Text(model.deviceConnectionStatus).font(.caption).foregroundStyle(libraryMuted)
                 } else {
@@ -515,7 +515,7 @@ private struct LibraryConnectionsView: View {
             }
         }.onAppear {
             model.deviceData.refreshAuthorizationStatus()
-            model.refreshGmailConnection()
+            model.refreshConnectors()
         }
     }
 }

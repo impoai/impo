@@ -353,20 +353,25 @@ public struct InstantClient: Sendable {
         return body
     }
 
-    public func gmailStatus() async throws -> GmailConnectorStatus {
-        try await send("GET", ["connectors", "gmail"])
+    public func connectors() async throws -> [ConnectorSummary] {
+        let list: ConnectorList = try await send("GET", ["connectors"])
+        return list.connectors
     }
 
-    public func connectGmail() async throws -> GmailConnectResponse {
-        try await send("POST", ["connectors", "gmail", "connect"], body: .object([:]))
+    public func connectorStatus(_ toolkit: String) async throws -> ConnectorStatus {
+        try await send("GET", ["connectors", toolkit])
     }
 
-    public func refreshGmail() async throws -> GmailConnectorStatus {
-        try await send("POST", ["connectors", "gmail", "refresh"], body: .object([:]))
+    public func connectConnector(_ toolkit: String) async throws -> ConnectorConnectResponse {
+        try await send("POST", ["connectors", toolkit, "connect"], body: .object([:]))
     }
 
-    public func disconnectGmail() async throws -> GmailConnectorStatus {
-        try await send("DELETE", ["connectors", "gmail"])
+    public func refreshConnector(_ toolkit: String) async throws -> ConnectorStatus {
+        try await send("POST", ["connectors", toolkit, "refresh"], body: .object([:]))
+    }
+
+    public func disconnectConnector(_ toolkit: String) async throws -> ConnectorStatus {
+        try await send("DELETE", ["connectors", toolkit])
     }
 
     /// Explicit cancellation is separate from cancelling an SSE subscription.

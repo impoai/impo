@@ -11,7 +11,7 @@ third-party Swift dependency, model runtime, or Rebyte key.
 - Byte framing, fragmented UTF-8, LF/CRLF/CR, BOM, comments, and multiline SSE data.
 - Message/text/tool IDs, submission/device extensions, ordered updates, and
   terminal-stream validation.
-- Conversation history, task commands, Gmail connections, Listening batches,
+- Conversation history, task commands, app connectors, Listening batches,
   and Today preferences/history.
 - `DeviceToolRunner`: pending-work discovery, claims, permission checks, and
   file-backed execution receipts for native device tools.

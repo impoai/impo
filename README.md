@@ -29,10 +29,10 @@ platform. Work continues on the server when a client disconnects.
 | **Memory** | Consolidate chat and Echo evidence into per-user memories, with categories, expiry and forgetting. Main Chat retrieves relevant memories before each reply. |
 | **Integrations** | Connect the agent to external services through Composio and to native capabilities through permissioned device adapters. |
 
-The integration roadmap targets **Composio's full tool catalog**, with discovery,
-authorization, and execution behind a shared tool layer. Connector support is
-being expanded incrementally; the tools available to a user depend on implemented
-adapters, connected accounts, and granted permissions.
+External apps come from **Rebyte's Composio shelf** (about 120 apps), with
+discovery, authorization, and execution behind four fixed connector tools rather
+than per-app tools. The tools available to a user depend on connected accounts and
+granted permissions.
 
 The project is under active development. Some settings, subscription screens,
 and voice previews are demos. Background long-term memory and main-chat retrieval
@@ -53,7 +53,7 @@ without fixed release dates.
 | **Android frontend** | Planned | Build a native client for the same conversations, tasks, briefings, and Echo history; add recording and device integrations within Android's permission model. |
 | **Web frontend** | Planned | Bring chat, task management, Brief, and Echo history to the browser through the same authenticated API. Add browser-supported capture where practical. |
 | **Shared client contracts** | Implemented foundation; expanding | Extend protocol fixtures and recovery tests so clients share consistent identity, history, task state, and tool results. |
-| **Composio integrations** | Initial integration implemented; expanding | Extend discovery, authorization, and execution across Composio's full catalog through a shared tool layer. |
+| **Composio integrations** | Rebyte connector shelf implemented | Add per-action confirmation for sensitive writes. |
 | **Personal context** | Background memory and main-chat retrieval implemented | Expand proactive assistance using relevant personal context. |
 
 The next client milestone is core chat, history, tasks, and Brief on Android and
@@ -112,7 +112,7 @@ flowchart TB
 | **PostgreSQL + Drizzle** | Application identity, conversations, ownership, execution records, tool receipts, connector bindings, and Brief editions. |
 | **Rebyte** | Managed agent execution and stateful Sessions, Turns, and Items. Impo uses the pinned `@rebyteai/agent-sdk` through `client.beta.agents`. |
 | **Temporal** | Durable audio-batch coordination and per-user hourly background workflows. It schedules application work that can invoke Rebyte Agents. |
-| **Tool integration layer** | Service discovery, account authorization, and tool execution through Composio, plus native-device adapters and internal application services. Full Composio catalog coverage is planned. |
+| **Tool integration layer** | Service discovery, account authorization, and tool execution through Composio, plus native-device adapters and internal application services. Every app on Rebyte's Composio shelf is available. |
 
 ### Conversations and tools
 
@@ -247,7 +247,7 @@ The repository does not maintain SQL migration histories or Drizzle snapshots.
 | `npm run test:ios` | Swift protocol tests on a temporary iOS Simulator. |
 | `npm run test:db` | Durable execution and ownership against an isolated PostgreSQL database. |
 | `npm run test:rebyte` | SDK integration and recovery using a local Rebyte protocol double. |
-| `npm run test:devices` / `npm run test:gmail` | Device dispatch and external-tool ownership/recovery. |
+| `npm run test:devices` / `npm run test:connectors` | Device dispatch and external-tool ownership/recovery. |
 | `npm run test:listening` / `npm run test:listening-batches` | Recording and batch persistence; batch tests also require the Temporal CLI. |
 | `npm run test:background` / `npm run test:today` / `npm run test:memory` | Hourly workflows and briefing generation; background tests require the Temporal CLI. |
 | `npm run test:live` | Real Rebyte acceptance using your configured development organization and credentials. |

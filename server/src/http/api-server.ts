@@ -17,7 +17,7 @@ import { verifyToken } from '@clerk/backend';
 import { ServiceError } from '../errors.js';
 import type { RuntimeRepository } from '../persistence/runtime-repository.js';
 import { clientContext } from '../tools/device-tools.js';
-import type { GmailConnectorAPI } from '../composio/gmail-service.js';
+import type { ConnectorAPI } from '../composio/connector-service.js';
 import { ListeningRepository, maxAudioBytes } from '../listening/repository.js';
 import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON, uuid } from './request.js';
 
@@ -29,7 +29,7 @@ export interface ApiOptions {
   today?: TodayRepository;
   /** Read and forget the user's long-term memories; the hourly pipeline is the only writer. */
   memories?: MemoryStore;
-  gmail?: GmailConnectorAPI;
+  connectors?: ConnectorAPI;
   listening?: ListeningRepository;
   listeningEnabled?: boolean;
   batches?: ListeningBatchRepository;
@@ -297,18 +297,20 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 200, { status: 'deleted' }); return;
       }
     }
-    const gmail = /^\/api\/v1\/connectors\/gmail(?:\/(connect|refresh))?$/.exec(path);
-    if (gmail) {
-      if (!options.gmail) throw new ServiceError(503, 'gmail_not_configured', 'Gmail is not configured on this Impo server');
-      if (url.search) throw new ServiceError(400, 'invalid_request', 'Gmail routes do not accept query parameters');
-      if (!gmail[1] && method === 'GET') { sendJSON(res, 200, await options.gmail.getStatus(user.id)); return; }
-      if (!gmail[1] && method === 'DELETE') {
+    const connector = /^\/api\/v1\/connectors(?:\/([a-z0-9_]{1,64})(?:\/(connect|refresh))?)?$/.exec(path);
+    if (connector) {
+      if (!options.connectors) throw new ServiceError(503, 'connectors_not_configured', 'Connectors are not configured on this Impo server');
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Connector routes do not accept query parameters');
+      const [, toolkit, action] = connector;
+      if (!toolkit && method === 'GET') { sendJSON(res, 200, { connectors: await options.connectors.list(user.id) }); return; }
+      if (toolkit && !action && method === 'GET') { sendJSON(res, 200, await options.connectors.getStatus(user.id, toolkit)); return; }
+      if (toolkit && !action && method === 'DELETE') {
         if (Number(req.headers['content-length'] ?? '0') > 0 || req.headers['transfer-encoding'] !== undefined) onlyFields(await readJSON(req, requestTimeoutMs), []);
-        await options.gmail.disconnect(user.id); sendJSON(res, 200, { status: 'disconnected' }); return;
+        await options.connectors.disconnect(user.id, toolkit); sendJSON(res, 200, { status: 'disconnected' }); return;
       }
-      if (gmail[1] && method === 'POST') {
+      if (toolkit && action && method === 'POST') {
         onlyFields(await readJSON(req, requestTimeoutMs), []);
-        sendJSON(res, 200, gmail[1] === 'connect' ? await options.gmail.connect(user.id) : await options.gmail.refresh(user.id)); return;
+        sendJSON(res, 200, action === 'connect' ? await options.connectors.connect(user.id, toolkit) : await options.connectors.refresh(user.id, toolkit)); return;
       }
     }
     if (path === '/api/v1/conversation/messages' && method === 'POST') {

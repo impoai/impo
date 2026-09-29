@@ -133,8 +133,8 @@ struct ListeningTimeline: View {
                                 } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                                     .accessibilityLabel("Recording options").accessibilityIdentifier("listening.options.\(segment.id)")
                             }
-                            if let location = segment.location {
-                                Label(location.displayLabel, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(InstantStyle.muted)
+                            if let place = segment.location?.displayLabel {
+                                Label(place, systemImage: "mappin.and.ellipse").font(.caption).foregroundStyle(InstantStyle.muted)
                             }
                             if segment.status == "transcribed" {
                                 Text(segment.transcript.isEmpty ? "No speech was detected." : segment.transcript)

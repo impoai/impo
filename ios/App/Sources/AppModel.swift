@@ -12,7 +12,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
 @MainActor @Observable
 final class AppModel {
     let deviceData: DeviceDataService
-    let gmail = GmailConnectionModel()
+    let connectors = ConnectorsModel()
     var calendarEnabled = false
     var healthEnabled = false
     var deviceConnectionStatus = "Connect your iPhone to use its data."
@@ -34,7 +34,7 @@ final class AppModel {
     var mode = "Balanced"
     var backendURL = "http://127.0.0.1:3001" {
         didSet {
-            if oldValue != backendURL { configureGmailConnection() }
+            if oldValue != backendURL { configureConnectors() }
             if oldValue != backendURL && useLiveBackend {
                 stopDeviceConnection()
                 invalidateOperation()
@@ -44,7 +44,7 @@ final class AppModel {
         }
     }
     var useLiveBackend = false {
-        didSet { if oldValue != useLiveBackend { invalidateOperation(); stopDeviceConnection(); configureGmailConnection() } }
+        didSet { if oldValue != useLiveBackend { invalidateOperation(); stopDeviceConnection(); configureConnectors() } }
     }
     /// True once a real Clerk sign-in has completed; switches the token provider
     /// away from the fixed local-dev fixture identity. Settings → Development's
@@ -203,7 +203,7 @@ final class AppModel {
             onboardingStep = Int(ProcessInfo.processInfo.arguments[index + 1]) ?? 0
             isOnboarded = false
         }
-        configureGmailConnection()
+        configureConnectors()
     }
 
     func persistProfile() {
@@ -525,8 +525,8 @@ final class AppModel {
 
     func restoreConversation() async {
         isForeground = true
-        configureGmailConnection()
-        gmail.resume()
+        configureConnectors()
+        connectors.resume()
         deviceData.refreshAuthorizationStatus()
         startDeviceConnection()
         guard useLiveBackend, !isThinking else { return }
@@ -538,7 +538,7 @@ final class AppModel {
 
     func suspendStream() {
         isForeground = false
-        gmail.pause()
+        connectors.pause()
         stopDeviceConnection()
         guard useLiveBackend else { return }
         invalidateOperation()
@@ -555,13 +555,13 @@ final class AppModel {
         persistProfile()
     }
 
-    private func configureGmailConnection() {
-        gmail.configure(endpoint: useLiveBackend ? (try? endpoint()) : nil, identityTag: activeIdentityTag, tokenProvider: activeTokenProvider)
+    private func configureConnectors() {
+        connectors.configure(endpoint: useLiveBackend ? (try? endpoint()) : nil, identityTag: activeIdentityTag, tokenProvider: activeTokenProvider)
     }
 
-    func refreshGmailConnection() {
-        configureGmailConnection()
-        if isForeground { gmail.refreshStatus() }
+    func refreshConnectors() {
+        configureConnectors()
+        if isForeground { connectors.reload() }
     }
 
     private var installationID: String {

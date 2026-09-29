@@ -164,7 +164,7 @@ private final class ChatRetryProtocol: URLProtocol, @unchecked Sendable {
             json = ["conversationId":"conversation","messages":messages,"activeSubmissions":[],"hasMore":false,"nextAfterSequence":succeeded ? 4 : 2]
         } else if path == "/api/v1/devices/register" { json = ["deviceId":"device"] }
         else if path.contains("tool-invocations") { json = ["invocations":[]] }
-        else if path == "/api/v1/connectors/gmail" { json = ["status":"disconnected"] }
+        else if path == "/api/v1/connectors" { json = ["connectors":[]] }
         else { client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL)); return }
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type":"application/json"])!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: json))

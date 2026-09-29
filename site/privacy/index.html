@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy — Impo</title>
-  <meta name="description" content="How Impo collects, uses, shares and protects your information, including Health, Calendar and Gmail data.">
+  <meta name="description" content="How Impo collects, uses, shares and protects your information, including Health, Calendar, Gmail and other connected app data.">
   <meta name="theme-color" content="#f4eee3">
   <link rel="icon" href="/assets/favicon.ico" sizes="any">
   <link rel="icon" href="/assets/instant-mark.svg" type="image/svg+xml">
@@ -28,9 +28,9 @@
       <div class="callout">
         <p><strong>The short version</strong></p>
         <ul>
-          <li>Every data connection (Health, Calendar, Gmail) is optional and off until you turn it on.</li>
+          <li>Every data connection (Health, Calendar, Gmail and other apps) is optional and off until you turn it on.</li>
           <li>Listening starts only when you tap Listen and grant microphone access. It continues in the background until you stop it or recording is interrupted.</li>
-          <li>Impo reads connected data only to answer a request you make, not in the background.</li>
+          <li>Impo uses connected data and apps only to carry out a request you make, not in the background.</li>
           <li>We never sell your data, never use it for advertising, and never use it to train AI models.</li>
           <li>Health data is used only to answer your questions. It is never used for advertising, marketing or data mining, and never shared with data brokers.</li>
           <li>You can ask us to delete your account and all associated data at any time.</li>
@@ -43,7 +43,7 @@
           <li><a href="#collect">Information we collect</a></li>
           <li><a href="#health">Health data</a></li>
           <li><a href="#calendar">Calendar data</a></li>
-          <li><a href="#google">Gmail and Google user data</a></li>
+          <li><a href="#google">Gmail, Google and other connected apps</a></li>
           <li><a href="#use">How we use information</a></li>
           <li><a href="#ai">AI processing and model training</a></li>
           <li><a href="#share">How we share information</a></li>
@@ -66,7 +66,7 @@
       <p>We store the messages you send to Impo and the replies it produces, so your conversation history is available across sessions and devices. This includes anything you type or paste into a conversation. Please do not share information you do not want stored.</p>
 
       <h3>Data you choose to connect</h3>
-      <p>Health, Calendar and Gmail are each optional. When connected, Impo reads from them only when you ask something that needs them. The results needed to answer that request are sent to our servers and our AI service, and are kept as part of that conversation's record (see <a href="#retention">How long we keep information</a>). Details for each are in the sections below.</p>
+      <p>Health, Calendar, Gmail and other connected apps are each optional. When connected, Impo uses them only when you ask something that needs them. The results needed to answer that request are sent to our servers and our AI service, and are kept as part of that conversation's record (see <a href="#retention">How long we keep information</a>). Details for each are in the sections below.</p>
 
       <h3 id="listening">Echo recordings, transcripts and locations</h3>
       <p>If you start Echo, Impo records microphone audio, including while your iPhone is locked. Tap Stop to end recording. On-device speech detection selects speech segments, which are saved locally and uploaded directly to Impo's private Amazon S3 storage using temporary upload URLs. Our worker retrieves the audio for Google Gemini transcription. Impo removes successfully processed audio and keeps the transcript and recording times in Echo. We do not identify people from their voices. Obtain permission from others before recording them.</p>
@@ -101,12 +101,11 @@
       <h2 id="calendar">3. Calendar data</h2>
       <p>If you enable Calendar, Impo asks for permission through your device's calendar settings. It reads events (such as titles, times, locations and notes) only when you ask about your schedule, and sends the matching events to our servers and AI service to answer you. Impo does not create, change or delete calendar events.</p>
 
-      <h2 id="google">4. Gmail and Google user data</h2>
-      <p>If you connect Gmail, you authorize access through Google's own consent screen. The connection is managed by our integration provider, Composio, and your Google credentials are never shared with Impo's app.</p>
+      <h2 id="google">4. Gmail, Google and other connected apps</h2>
+      <p>If you connect Gmail or another app (such as Google Calendar, Google Drive, Notion, GitHub or Outlook), you authorize access through that service's own consent screen. Connections are managed by our integration provider, Composio, and your credentials for those services are never shared with Impo's app.</p>
       <ul>
-        <li><strong>What Impo can do:</strong> search and read your email messages and labels, read your Gmail profile (email address), and create and read drafts, when you ask.</li>
-        <li><strong>What Impo cannot do:</strong> send email, or delete or modify existing messages. Drafts are only sent if you send them yourself in Gmail.</li>
-        <li>Email content is treated as information for your request, not as instructions to Impo.</li>
+        <li><strong>What Impo can do:</strong> when you ask, use the actions the connected service allows for your account, such as searching and reading email, sending email, creating drafts, managing labels, or creating, updating and deleting items.</li>
+        <li>Content from connected apps is treated as information for your request, not as instructions to Impo.</li>
       </ul>
       <p><strong>Limited Use disclosure.</strong> Impo's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular:</p>
       <ul>
@@ -116,7 +115,7 @@
         <li>We do not use Google user data to develop, improve or train generalized AI or machine-learning models.</li>
         <li>Humans do not read your Google user data unless you give us permission (for example, for support), it is necessary for security purposes or to comply with law, or the data has been aggregated and anonymized for internal operations.</li>
       </ul>
-      <p>You can disconnect Gmail at any time in Impo, or remove Impo's access in your <a href="https://myaccount.google.com/permissions">Google Account permissions</a>.</p>
+      <p>You can disconnect Gmail or any other app at any time in Impo, or remove Impo's access in your <a href="https://myaccount.google.com/permissions">Google Account permissions</a>.</p>
 
       <h2 id="use">5. How we use information</h2>
       <ul>
@@ -130,7 +129,7 @@
 
       <h2 id="ai">6. AI processing and model training</h2>
       <p>Impo's answers are generated by AI. To produce an answer, your message, relevant conversation history, and the connected data needed for your request are sent to our AI service, which is operated through our agent platform provider, Rebyte, and the AI model providers it uses. They process this information to generate responses on our behalf.</p>
-      <p><strong>We do not use your conversations, Health, Calendar or Gmail data to train AI models</strong>, whether ours or anyone else's.</p>
+      <p><strong>We do not use your conversations, Health, Calendar, Gmail or other connected app data to train AI models</strong>, whether ours or anyone else's.</p>
 
       <h2 id="share">7. How we share information</h2>
       <p>We share information only as described here. We use the following service providers, which process data on our behalf to provide the Service:</p>
@@ -139,7 +138,7 @@
         <li><strong>Amazon Web Services</strong> — hosting of our servers and database.</li>
         <li><strong>Rebyte</strong> and the AI model providers it uses — generating answers to your requests.</li>
         <li><strong>Google Gemini</strong> — converting audio you record with Listening into text.</li>
-        <li><strong>Composio</strong> — managing the Gmail connection, if you enable it.</li>
+        <li><strong>Composio</strong> — managing Gmail and other app connections, if you enable them.</li>
         <li><strong>Cloudflare</strong> — delivery and security of impo.ai.</li>
       </ul>
       <p>We may also disclose information when required by law or valid legal process; to protect the rights, property or safety of our users, IMPO or others; or as part of a merger, acquisition or sale of assets, in which case this policy will continue to apply to your information or you will be notified of any change.</p>
@@ -158,7 +157,7 @@
       <ul>
         <li><strong>Listening:</strong> tap Stop in Impo or its Live Activity to stop recording, or revoke microphone permission in iPhone Settings. Open Chat → Transcripts or Memories → Transcripts, select a recording, then tap Delete to remove it and its transcript. The Lock Screen Live Activity shows recording status and time, not transcript text; you can disable it in iPhone Settings.</li>
         <li><strong>Health and Calendar:</strong> turn off access in Impo or in your device's privacy settings.</li>
-        <li><strong>Gmail:</strong> disconnect it in Impo or remove access in your Google Account.</li>
+        <li><strong>Gmail and other apps:</strong> disconnect them in Impo or remove access in the service's account settings.</li>
       </ul>
       <p><strong>To delete your account and data</strong>, email <a href="mailto:cj@impo.ai">cj@impo.ai</a> from the address on your account. We will delete your account, your conversation history (including any Health, Calendar and email data stored with it), your Listening audio and transcripts, your connected-account links, and the related records held by our service providers, within 30 days, and confirm when it is done. Data in backups is removed as those backups expire. Deletion is permanent and cannot be undone.</p>
 

@@ -56,15 +56,19 @@ an alternative persistent API specification.
 
 `npm test` typechecks and runs TypeScript tests, Swift unit tests, then Swift HTTP integration tests against an automatically started fixture server on a random port. Server lifecycle is owned by the runner and cleaned up on failure/signals. `npm run test:ios` runs both Swift suites on a temporary iOS Simulator without an App UI, verifies results through xcresulttool, then deletes the temporary device. Both commands fail if the selected integration suite is empty or skipped.
 
-## Gmail connector commands
+## Connector commands
 
-Authenticated ICA commands under `/api/v1/connectors/gmail` support GET status,
-POST `/connect` and `/refresh` with `{}`, and DELETE disconnect. Status is
+`GET /api/v1/connectors` returns `{ connectors: [...] }`, the shelf in display
+order (featured first), each with `toolkit`, `name`, optional `description` and
+`logoURL`, `featured`, and this user's connection state. Commands for one app
+under `/api/v1/connectors/{toolkit}` support GET status, POST `/connect` and
+`/refresh` with `{}`, and DELETE disconnect. Status is
 `disconnected|pending|connected|expired`; a connect result contains `redirectURL`
-and `expiresAt`. Provider account IDs and credentials are server-owned. The Swift
-client implements this contract; see [Gmail connector](../docs/client-api.md).
-Gmail calls use the existing UI tool input/output stream events and durable
-submission commands; they do not dispatch to the device.
+and `expiresAt`. Provider account and auth config IDs and credentials are
+server-owned. The Swift client implements this contract; see
+[client API](../docs/client-api.md). Connector tool calls use the existing UI tool
+input/output stream events and durable submission commands; they do not dispatch
+to the device.
 
 ## Listening
 

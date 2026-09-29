@@ -248,7 +248,7 @@ export class RebyteRepository extends RuntimeRepository {
       const definition = this.runtime.serverTools?.get(invocation.toolName, invocation.toolVersion);
       if (!definition) throw new Error('Stored server tool is no longer registered');
       if (invocation.status === 'running' && definition.retry === 'never') {
-        await tx.update(toolInvocations).set({ status: 'result_saved', result: { ok: false, error: { code: 'execution_outcome_unknown', message: 'The previous Gmail request may have completed before interruption. Do not repeat draft creation; check Gmail drafts first.', retryable: false } }, updatedAt: new Date() }).where(eq(toolInvocations.id, invocation.id));
+        await tx.update(toolInvocations).set({ status: 'result_saved', result: { ok: false, error: { code: 'execution_outcome_unknown', message: 'The previous connected-app request may have completed before interruption. Do not repeat it; ask the user to check the app first.', retryable: false } }, updatedAt: new Date() }).where(eq(toolInvocations.id, invocation.id));
         return;
       }
       await tx.update(toolInvocations).set({ status: 'running', updatedAt: new Date() }).where(eq(toolInvocations.id, invocation.id));

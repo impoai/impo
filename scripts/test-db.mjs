@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const rebyte = process.argv.includes('--rebyte');
 const devices = process.argv.includes('--devices');
-const gmail = process.argv.includes('--gmail');
+const connectors = process.argv.includes('--connectors');
 const batches = process.argv.includes('--listening-batches');
 const background = process.argv.includes('--background');
 const today = process.argv.includes('--today');
@@ -134,7 +134,7 @@ try {
   // Re-running setup must leave an existing database usable, without duplicate seeds.
   await run('npm', ['run', 'db:push'], { env, expectOutput: /No changes detected/i });
   await run(process.execPath, ['--import', 'tsx', 'src/db/seed.ts'], { env });
-  await run(process.execPath, ['--import', 'tsx', '--test', memory ? 'test/memory.integration.ts' : today ? 'test/today.integration.ts' : background ? 'test/background.integration.ts' : batches ? 'test/listening-batches.integration.ts' : listening ? 'test/listening.integration.ts' : live ? 'test/rebyte.live.ts' : gmail ? 'test/gmail.integration.ts' : devices ? 'test/devices.integration.ts' : rebyte ? 'test/rebyte.integration.ts' : 'test/database.integration.ts'], { env });
+  await run(process.execPath, ['--import', 'tsx', '--test', memory ? 'test/memory.integration.ts' : today ? 'test/today.integration.ts' : background ? 'test/background.integration.ts' : batches ? 'test/listening-batches.integration.ts' : listening ? 'test/listening.integration.ts' : live ? 'test/rebyte.live.ts' : connectors ? 'test/connectors.integration.ts' : devices ? 'test/devices.integration.ts' : rebyte ? 'test/rebyte.integration.ts' : 'test/database.integration.ts'], { env });
   console.log(memory ? '\nPASS: Memory consolidation over chat and Echo evidence: planner deferral, bounded windows, idempotent add/update/delete, failure skip and expiry sweep.' : today ? '\nPASS: Today scheduling, append-only editions, ownership, source invalidation and real SDK recovery against a protocol double.' : background
     ? '\nPASS: per-user hourly Temporal lifecycle, empty ticks, Continue-As-New, Worker recovery and extension isolation.'
     : batches
@@ -143,8 +143,8 @@ try {
     ? '\nPASS: durable Listening uploads, ownership, transcription leases/retries and deletion against isolated PostgreSQL.'
     : live
     ? '\nPASS: Swift ↔ persistent API/Worker/PostgreSQL ↔ remote Rebyte (real development organization).'
-    : gmail
-    ? '\nPASS: durable Gmail tools ↔ real API/Worker/PostgreSQL ↔ local Composio/Rebyte doubles (no real mailbox changes).'
+    : connectors
+    ? '\nPASS: durable connector tools ↔ real API/Worker/PostgreSQL ↔ local Composio/Rebyte doubles (no real account changes).'
     : devices
     ? '\nPASS: durable device grants/receipts ↔ real API/Worker/PostgreSQL ↔ Rebyte SDK (explicit synthetic device data; no native access).'
     : rebyte

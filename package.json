@@ -27,7 +27,7 @@
     "test:devices": "node scripts/test-db.mjs --devices",
     "test:rebyte": "node scripts/test-db.mjs --rebyte",
     "test:live": "node --env-file-if-exists=.env scripts/test-db.mjs --live",
-    "test:gmail": "node scripts/test-db.mjs --gmail",
+    "test:connectors": "node scripts/test-db.mjs --connectors",
     "test:listening": "node scripts/test-db.mjs --listening",
     "test:listening-batches": "node scripts/test-db.mjs --listening-batches",
     "test:background": "node scripts/test-db.mjs --background",

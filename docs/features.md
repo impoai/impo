@@ -73,10 +73,12 @@ claim to erase facts already derived from them; users can forget those separatel
 
 Device, external-service and internal business tools share a server dispatcher.
 iOS Calendar and Health reads require native permissions and owned device claims.
-Empty HealthKit data is unknown, not zero or proof of denied access. Gmail connects
-through Composio OAuth with server ownership checks and supports implemented reads
-and drafts. The roadmap targets Composio's catalog; full connector coverage is
-not implemented. OAuth consent and real-account verification are separate from
+Empty HealthKit data is unknown, not zero or proof of denied access. External apps
+come from Rebyte's Composio shelf (about 120 apps) and connect through Composio
+OAuth with server ownership checks; each connection is one pinned Tool Router
+Session. The agent uses four fixed connector Functions (list, search, schemas,
+execute) instead of per-app tools. Every tool of a connected app's Composio toolkit is available,
+as in Rebyte. OAuth consent and real-account verification are separate from
 tests with protocol doubles.
 
 Subscription screens, some connection previews and voice previews remain demos.
