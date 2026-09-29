@@ -2,26 +2,35 @@ import SwiftUI
 import LaTeXSwiftUI
 
 /// Structured reading stays in SwiftUI. Native range selection is allocated only
-/// when requested, as one text view for the whole answer rather than per paragraph.
+/// when requested, for the selected paragraph or a complete-response sheet.
 struct AssistantMarkdown: View {
     let text: String
     @State private var snapshot: ResponseSelection?
+    @State private var selectedBlock: UUID?
+    @State private var frozenDocument: ResponseDocument?
     @State private var cache = ResponseDocumentCache()
 
     var body: some View {
-        let current = cache.document(for: text)
+        let current = frozenDocument ?? cache.document(for: text)
         ResponseBlocks(blocks: current.blocks)
+            .environment(\.responseSelectionActions, ResponseSelectionActions(
+                activeID: selectedBlock,
+                begin: { id in frozenDocument = current; selectedBlock = id },
+                end: { id in if selectedBlock == id { selectedBlock = nil; frozenDocument = nil } },
+                fullResponse: { snapshot = ResponseSelection(document: current); selectedBlock = nil; frozenDocument = nil },
+                copy: { UIPasteboard.general.string = current.plainText }))
+            .preference(key: ResponseSelectionActiveKey.self, value: selectedBlock != nil)
             .textSelection(.disabled)
             .contentShape(Rectangle())
             .contextMenu {
-                Button("Select Text", systemImage: "text.cursor") { snapshot = ResponseSelection(document: current) }
+                Button("Select Full Response", systemImage: "text.cursor") { snapshot = ResponseSelection(document: current) }
                 Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = current.plainText }
             } preview: {
                 Text(current.plainText.prefix(600)).font(.body).lineLimit(8)
                     .foregroundStyle(InstantStyle.ink).padding(18).frame(width: 300, alignment: .leading)
                     .background(InstantStyle.paperElevated.ignoresSafeArea())
             }
-            .accessibilityAction(named: "Select Text") { snapshot = ResponseSelection(document: current) }
+            .accessibilityAction(named: "Select Full Response") { snapshot = ResponseSelection(document: current) }
             .accessibilityAction(named: "Copy") { UIPasteboard.general.string = current.plainText }
             .sheet(item: $snapshot) { ResponseSelectionSheet(selection: $0) }
 
@@ -46,11 +55,10 @@ private struct ResponseBlocks: View {
     @ViewBuilder private func block(_ value: ResponseDocument.Block) -> some View {
         switch value {
         case .paragraph(let inline):
-            ResponseInline(value: inline).lineSpacing(5).fixedSize(horizontal: false, vertical: true)
+            ResponseSelectableInline(value: inline, size: bodySize, semibold: false, lineSpacing: 5)
         case .heading(let level, let inline):
-            ResponseInline(value: inline)
-                .font(.system(size: bodySize + (level == 1 ? 6 : level == 2 ? 3 : 0), weight: .semibold))
-                .lineSpacing(3).padding(.top, 3)
+            ResponseSelectableInline(value: inline, size: bodySize + (level == 1 ? 6 : level == 2 ? 3 : 0), semibold: true, lineSpacing: 3)
+                .padding(.top, 3)
                 .accessibilityAddTraits(.isHeader)
         case .math(let source):
             ScrollView(.horizontal) {
@@ -100,7 +108,7 @@ private struct ResponseBlocks: View {
     }
 }
 
-private struct ResponseInline: View {
+struct ResponseInline: View {
     let value: ResponseDocument.Inline
     var body: some View {
         if let latex = value.latex {

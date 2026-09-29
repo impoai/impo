@@ -87,12 +87,14 @@ The vendored [LaTeXSwiftUI package](../Packages/LaTeXSwiftUI/README.md) records 
 small fix to the upstream MathJax number pattern. Third-party notices ship in
 the app's `ResponseRenderingLicenses.txt` resource.
 
-Long-press an assistant reply for **Select Text** or **Copy**. Select Text opens
-one native, read-only text view for the full response, supporting range selection
-across paragraphs. It freezes the response at opening so streaming cannot move
-the handles. Copy keeps readable text, LaTeX source and tab-separated table cells;
-code blocks also have their own copy action. The reading surface uses SwiftUI
-views and caches its last parse instead of creating a native text view per block.
+Long-press a paragraph, heading or list item and choose **Select Text** to select
+in place with native handles. **Done** returns to reading. The reply stays fixed
+while selecting, and Chat pauses automatic scrolling so streaming cannot move
+the handles. **Select Full Response** opens one read-only native text view for
+selection across paragraphs, including LaTeX source and tab-separated table
+cells. Blocks containing math use this full-response fallback. **Copy** copies
+the complete reply; code blocks also have their own copy action. Reading uses
+SwiftUI and a cached parse; a native text view exists only while selecting.
 
 `ResponseDocumentTests` covers parsing and the real offline math engine.
 `ResponseRenderingUITests` covers rendering, native selection, streaming snapshots,

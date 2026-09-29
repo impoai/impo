@@ -18,9 +18,11 @@ struct FollowsBottom: ViewModifier {
 
     @State private var following = true
     @State private var atBottom = true
+    @State private var selectingText = false
 
     func body(content view: Content) -> some View {
         view
+            .onPreferenceChange(ResponseSelectionActiveKey.self) { selectingText = $0 }
             .defaultScrollAnchor(.bottom)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - geometry.contentInsets.bottom - 40
@@ -31,7 +33,7 @@ struct FollowsBottom: ViewModifier {
                 if new == .idle, old == .interacting || old == .decelerating { following = atBottom }
             }
             .onChange(of: content) { _, _ in
-                guard enabled, following else { return }
+                guard enabled, following, !selectingText else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(bottomID, anchor: .bottom) }
             }
             .overlay(alignment: .bottom) {
