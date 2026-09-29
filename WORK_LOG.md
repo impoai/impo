@@ -12,3 +12,4 @@
 - 2026-09-29 | Verified | Real Simulator foreground and background S3 transfers both preserved local audio until API confirmation; final server suite passed 53 tests and GitHub secret scanning passed.
 - 2026-09-29 | Completed | Echo defaults to Day and reserves the complete timeline from an owned date/ID inventory; reusable cells load nearby bodies, keep at most 180 cached transcripts and retry in place without removing scroll positions.
 - 2026-09-29 | Verified | Host suite, 9 PostgreSQL Echo cases, 10 native history/timeline cases and two 20,000-record/500-day UI flows passed, including a five-second body delay, failed-load retry, distant seeks and scrolling beyond the text cache.
+- 2026-09-29 | Deployed | Complete Echo timeline API is healthy in production; a read-only check covered 1,010 recordings without fetching transcripts. TestFlight 0.1.0 (32) is available to the internal Team group; physical-device timeline acceptance remains pending.
