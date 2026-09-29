@@ -248,7 +248,7 @@ struct OnboardingView: View {
                             .foregroundStyle(InstantStyle.forest)
                         noticeSection("What Data We Send", text: "Your messages are sent to the Impo server and then to our AI service to generate a response.")
                         noticeSection("How Your Data Is Used", text: "Your messages and conversation history are processed by the Impo server and our AI service so you can continue the same conversation. Include only information you want to share.")
-                        noticeSection("Your Connections", text: "Calendar and Health use Apple’s permission screens. When you ask about that data in live chat, selected results go to Impo and its AI service. Other connections are previews. Every connection is optional.")
+                        noticeSection("Your Connections", text: "Calendar and Health use Apple’s permission screens. Gmail and other apps connect through their own sign-in screens. When you ask about connected data, selected results go to Impo and its AI service. Every connection is optional.")
                         noticeSection("Your Choice", text: "Continue only with information you want to include in the conversation. You can cancel to return to the welcome screen.")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

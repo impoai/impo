@@ -10,7 +10,6 @@ struct MainView: View {
     @State private var showSettings = false
     @State private var showSearch = false
     @State private var showAttachment = false
-    @State private var showTranscripts = false
     @State private var composer = ""
     @State private var search = ""
     @State private var voiceActive = ProcessInfo.processInfo.arguments.contains("--voice-preview")
@@ -45,12 +44,11 @@ struct MainView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if listening.isListening {
-                ListeningStatusView { composerFocused = false; showTranscripts = true }
+                ListeningStatusView { composerFocused = false; model.selectedTab = 3; model.transcriptNavigationID = UUID() }
                     .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
             }
         }
         .animation(.easeOut(duration: 0.18), value: voiceActive)
-        .fullScreenCover(isPresented: $showTranscripts) { ListeningLibraryScreen().swipeToDismiss() }
         .sheet(isPresented: $showAttachment) {
             VStack(spacing: 22) {
                 Image(systemName: "paperclip").font(.largeTitle).foregroundStyle(InstantStyle.accent)
@@ -90,10 +88,6 @@ struct MainView: View {
                     }.frame(minHeight: 44).padding(.trailing, 3).contentShape(Rectangle())
                 }.buttonStyle(PressStyle()).accessibilityLabel("Your assistant, \(model.assistantName)").accessibilityIdentifier("chat.assistant")
                 Spacer()
-                Button { composerFocused = false; showTranscripts = true } label: {
-                    Text("Echo").font(.system(size: 12, weight: .medium))
-                        .padding(.horizontal, 10).frame(minHeight: 44)
-                }.foregroundStyle(InstantStyle.forest).accessibilityIdentifier("chat.transcripts")
                 CircleButton(symbol: "magnifyingglass", label: "Search conversation") { withAnimation { showSearch.toggle(); if !showSearch { search = "" } } }
                     .accessibilityIdentifier("chat.search")
                 CircleButton(symbol: "gearshape", label: "Settings") { composerFocused = false; showSettings = true }

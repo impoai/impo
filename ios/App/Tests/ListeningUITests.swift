@@ -4,7 +4,7 @@ import XCTest
 final class ListeningUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
     func testDebugLogsVisibleAndExportable() {
-        let app = XCUIApplication(); app.launchArguments = ["--reset-demo","--show-main"]
+        let app = XCUIApplication(); app.launchArguments = ["--reset-demo","--show-main","--debug-mode"]
         app.launch()
         XCTAssertTrue(app.buttons["chat.settings"].waitForExistence(timeout:10));app.buttons["chat.settings"].tap()
         let debug = app.buttons["settings.listening-debug"]
@@ -57,8 +57,8 @@ final class ListeningUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--reset-demo", "--show-main", "--live-backend", backend]
         app.launch()
-        XCTAssertTrue(app.buttons["chat.transcripts"].waitForExistence(timeout: 10))
-        app.buttons["chat.transcripts"].tap()
+        XCTAssertTrue(app.buttons["tab.memories"].waitForExistence(timeout: 10))
+        app.buttons["tab.memories"].tap()
         let transcript = app.staticTexts["Development transcript for \(audio.count) bytes of audio."]
         XCTAssertTrue(transcript.waitForExistence(timeout: 15))
         let image = XCTAttachment(screenshot: app.screenshot()); image.name = "Transcribed recording timeline"; image.lifetime = .keepAlways; add(image)

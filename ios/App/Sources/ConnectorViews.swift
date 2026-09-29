@@ -14,7 +14,7 @@ struct ConnectorsSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Apps", systemImage: "square.grid.2x2.fill").font(InstantStyle.serif(21)).padding(.top, 8)
             if !connectors.isAvailable {
-                Text("Apps are unavailable in offline Demo. Enable your local server in Settings → Development, then return to connect.")
+                Text(model.debugMode ? "Apps are unavailable in offline Demo. Enable your local server in Settings → Debug, then return to connect." : "Sign in to connect apps.")
                     .font(.caption).foregroundStyle(InstantStyle.muted).lineSpacing(2)
                     .accessibilityIdentifier("connection.apps.offline")
             } else if !connectors.loaded {

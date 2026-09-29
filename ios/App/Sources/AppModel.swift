@@ -51,6 +51,12 @@ final class AppModel {
     /// live-backend toggle keeps working independently, for local testing against
     /// a server running in local-dev auth mode.
     var usesRealAuth = false
+    /// Hidden tools (demo plan screens, local server, Echo logs). Tap the Settings
+    /// avatar seven times to toggle; stays on this device across sign-outs.
+    var debugMode = false {
+        didSet { if oldValue != debugMode { defaults.set(debugMode, forKey: Self.debugModeKey) } }
+    }
+    nonisolated private static let debugModeKey = "instant.debugMode"
     var selectedTab = 0
     var transcriptNavigationID = UUID()
     var messages: [ChatMessage] = []
@@ -150,6 +156,27 @@ final class AppModel {
     /// process. Call once at startup so a returning signed-in user's requests
     /// use their real session token instead of silently falling back to the
     /// local-dev fixture identity.
+    /// The signed-in account, for Settings. Nil in offline Demo or local-dev identity.
+    var accountEmail: String? { usesRealAuth && ClerkConfig.isConfigured ? Clerk.shared.user?.primaryEmailAddress?.emailAddress : nil }
+    var accountImageURL: URL? {
+        guard usesRealAuth, ClerkConfig.isConfigured, let user = Clerk.shared.user, user.hasImage else { return nil }
+        return URL(string: user.imageUrl)
+    }
+    var accountName: String {
+        if !displayName.isEmpty { return displayName }
+        guard usesRealAuth, ClerkConfig.isConfigured, let user = Clerk.shared.user else { return "" }
+        return [user.firstName, user.lastName].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// End the Clerk session and clear this device's per-user state, then return to sign-in.
+    /// Queued Echo audio stays on disk bound to its owner and resumes on that account's next sign-in.
+    func signOut() async throws {
+        if ClerkConfig.isConfigured, Clerk.shared.session != nil { try await Clerk.shared.auth.signOut() }
+        usesRealAuth = false
+        resetDemo()
+        onboardingStep = 1
+    }
+
     func syncRealAuthFromClerkSession() async {
         guard ClerkConfig.isConfigured else { return }
         while !Clerk.shared.isLoaded {
@@ -170,6 +197,7 @@ final class AppModel {
         if ProcessInfo.processInfo.arguments.contains("--reset-demo") {
             for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && key != "instant.installationID" { defaults.removeObject(forKey: key) }
         }
+        debugMode = defaults.bool(forKey: Self.debugModeKey) || ProcessInfo.processInfo.arguments.contains("--debug-mode")
         deviceData = DeviceDataService()
         calendarEnabled = defaults.bool(forKey: "instant.device.calendarEnabled")
         healthEnabled = defaults.bool(forKey: "instant.device.healthEnabled")
@@ -227,7 +255,7 @@ final class AppModel {
     func resetDemo() {
         invalidateOperation()
         stopDeviceConnection()
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && key != "instant.installationID" { defaults.removeObject(forKey: key) }
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && key != "instant.installationID" && key != Self.debugModeKey { defaults.removeObject(forKey: key) }
         isOnboarded = false; onboardingStep = 0; selectedTab = 0
         assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; messages = []
         selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil

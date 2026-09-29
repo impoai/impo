@@ -8,11 +8,22 @@ private let libraryAction = InstantStyle.forest
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     var onBack: () -> Void
     @State private var sheet: SettingsSheet?
-    @State private var modeExpanded = true
-    @State private var developmentExpanded = false
+    @State private var modeExpanded = false
     @State private var showReset = false
+    @State private var confirmSignOut = false
+    @State private var confirmDelete = false
+    @State private var signingOut = false
+    @State private var accountError: String?
+    @State private var avatarTaps = 0
+    @State private var lastAvatarTap = Date.distantPast
+    @State private var debugNotice: String?
+
+    private static let privacyURL = URL(string: "https://impo.ai/privacy/")!
+    private static let termsURL = URL(string: "https://impo.ai/terms/")!
+    private static let supportEmail = "cj@impo.ai"
 
     var body: some View {
         @Bindable var model = model
@@ -28,79 +39,56 @@ struct SettingsView: View {
                 }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        sectionLabel("Plan (Demo)")
-                        LibraryCard {
-                            VStack(alignment: .leading, spacing: 24) {
-                                membershipCard
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Impo Preview (Demo)").font(InstantStyle.serif(21)).foregroundStyle(libraryInk)
-                                        Text("A little space to try things out.").font(.footnote).foregroundStyle(libraryMuted)
-                                    }
-                                    Spacer(minLength: 8)
-                                    Button("Manage") { sheet = .plan }
-                                        .font(.subheadline.weight(.medium)).foregroundStyle(InstantStyle.paperElevated)
-                                        .padding(.horizontal, 17).padding(.vertical, 11).background(InstantStyle.forest, in: Capsule())
-                                        .accessibilityIdentifier("settings.manage")
-                                }
-                                Button { withAnimation(.easeInOut(duration: 0.2)) { modeExpanded.toggle() } } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Mode (Demo)").font(InstantStyle.serif(21))
-                                            Text("Choose your preferred style.").font(.footnote).foregroundStyle(libraryMuted)
-                                        }
-                                        Spacer()
-                                        Text(model.mode).foregroundStyle(libraryMuted)
-                                        Image(systemName: modeExpanded ? "chevron.down" : "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(libraryMuted)
-                                    }.contentShape(Rectangle())
-                                }.buttonStyle(.plain)
-                                if modeExpanded {
-                                    VStack(spacing: 10) {
-                                        modeChoice("Balanced", description: "A thoughtful pace for everyday things.")
-                                        modeChoice("Power", description: "Space for more involved questions.")
-                                    }
-                                    Text("Preview preference · Model selection is not connected yet.")
-                                        .font(.caption).foregroundStyle(libraryMuted)
-                                }
-                                settingsRow("Monthly Usage (Demo)", detail: "Available when plans launch") { sheet = .usage }
-                                settingsRow("Billing (Demo)") { sheet = .plan }
-                            }.padding(18)
-                        }
-                        sectionLabel("Capabilities & Connections")
+                        accountCard
+                        sectionLabel("You")
                         LibraryCard {
                             VStack(spacing: 0) {
-                                settingsRow("Connectors", detail: "Calendar, Health & more") { sheet = .connections }
-                                    .accessibilityIdentifier("settings.connections")
-                                Rectangle().fill(InstantStyle.border).frame(height: 0.5)
-                                settingsRow("Echo Debug", detail: "View and export device logs") { sheet = .debug }
-                                    .accessibilityIdentifier("settings.listening-debug")
-                                Rectangle().fill(InstantStyle.border).frame(height: 0.5)
-                                settingsRow("Your profile") { sheet = .profile }
+                                settingsRow("Your profile", detail: "Your name and what \(model.assistantName) knows about you") { sheet = .profile }
                                     .accessibilityIdentifier("settings.profile")
+                                divider
+                                settingsRow("Connections", detail: "Calendar, Health, Gmail and 100+ apps") { sheet = .connections }
+                                    .accessibilityIdentifier("settings.connections")
+                                divider
+                                settingsRow("Notifications", detail: "Manage in iPhone Settings", symbol: "arrow.up.right") {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                                }.accessibilityIdentifier("settings.notifications")
                             }.padding(.horizontal, 18)
                         }
-                        DisclosureGroup(isExpanded: $developmentExpanded) {
-                            VStack(alignment: .leading, spacing: 15) {
-                                Toggle("Use local API server", isOn: $model.useLiveBackend)
-                                    .accessibilityIdentifier("settings.backend")
-                                    .onChange(of: model.useLiveBackend) { _, _ in model.persistProfile() }
-                                TextField("http://127.0.0.1:3001", text: $model.backendURL)
-                                    .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                                    .font(.footnote).padding(12).paperSurface(cornerRadius: 12)
-                                    .accessibilityIdentifier("settings.backendURL")
-                                    .onSubmit { model.persistProfile() }
-                                    .onChange(of: model.backendURL) { _, _ in model.persistProfile() }
-                                Text("Chat connects to your Impo API server. API keys stay on that server.")
-                                    .font(.caption).foregroundStyle(libraryMuted)
-                                Button("Restart welcome experience") { showReset = true }
-                                    .font(.subheadline).foregroundStyle(libraryAction)
-                                    .accessibilityIdentifier("settings.restart")
-                            }.padding(.top, 16)
-                        } label: { Text("Development").font(InstantStyle.serif(19)) }
-                            .tint(libraryAction).padding(18)
-                            .paperSurface(cornerRadius: 16)
-                        Text("Impo · Development preview").font(.caption).foregroundStyle(libraryMuted)
-                            .frame(maxWidth: .infinity).padding(.bottom, 20)
+                        sectionLabel("About")
+                        LibraryCard {
+                            VStack(spacing: 0) {
+                                settingsRow("Privacy Policy", symbol: "arrow.up.right") { openURL(Self.privacyURL) }
+                                    .accessibilityIdentifier("settings.privacy")
+                                divider
+                                settingsRow("Terms of Service", symbol: "arrow.up.right") { openURL(Self.termsURL) }
+                                    .accessibilityIdentifier("settings.terms")
+                                divider
+                                settingsRow("Contact support", detail: Self.supportEmail, symbol: "envelope") { mail(subject: "Impo support") }
+                                    .accessibilityIdentifier("settings.support")
+                            }.padding(.horizontal, 18)
+                        }
+                        if model.usesRealAuth {
+                            sectionLabel("Account")
+                            LibraryCard {
+                                VStack(spacing: 0) {
+                                    settingsRow("Sign out", symbol: nil) { confirmSignOut = true }
+                                        .disabled(signingOut)
+                                        .accessibilityIdentifier("settings.signout")
+                                    divider
+                                    settingsRow("Delete account", detail: "Request deletion of your account and data", symbol: nil, destructive: true) { confirmDelete = true }
+                                        .accessibilityIdentifier("settings.delete-account")
+                                }.padding(.horizontal, 18)
+                            }
+                            if let accountError {
+                                Text(accountError).font(.caption).foregroundStyle(InstantStyle.accent).padding(.horizontal, 4)
+                                    .accessibilityIdentifier("settings.account-error")
+                            }
+                        }
+                        if model.debugMode { debugSections }
+                        VStack(spacing: 4) {
+                            Text("Impo \(Self.version)").font(.caption).foregroundStyle(libraryMuted)
+                            if let debugNotice { Text(debugNotice).font(.caption2).foregroundStyle(libraryMuted).accessibilityIdentifier("settings.debug-notice") }
+                        }.frame(maxWidth: .infinity).padding(.bottom, 20).accessibilityIdentifier("settings.version")
                     }.padding(.horizontal, 16).padding(.top, 10)
                 }.scrollIndicators(.hidden)
             }
@@ -118,9 +106,167 @@ struct SettingsView: View {
                 }
             }.swipeToDismiss()
         }
+        .confirmationDialog("Sign out of Impo?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) { signOut() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your conversations and memories stay in your account. Recordings still waiting to upload on this iPhone resume when you sign back in.")
+        }
+        .confirmationDialog("Delete your Impo account?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Request deletion", role: .destructive) {
+                mail(subject: "Delete my Impo account", body: "Please delete my Impo account and all associated data.\n\nAccount: \(model.accountEmail ?? "")")
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account, conversations, memories and Echo recordings. Send the prepared email from the address on your account and we will confirm when it's done.")
+        }
         .confirmationDialog("Restart the welcome experience?", isPresented: $showReset, titleVisibility: .visible) {
             Button("Restart") { ["instant.demo.notes", "instant.demo.tasks"].forEach(UserDefaults.standard.removeObject(forKey:)); model.resetDemo(); onBack() }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private static var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "–"
+        let build = info?["CFBundleVersion"] as? String ?? "–"
+        return "\(short) (\(build))"
+    }
+
+    private var divider: some View { Rectangle().fill(InstantStyle.border).frame(height: 0.5) }
+
+    /// The avatar doubles as the hidden Debug switch: seven taps, each within two seconds of the last.
+    private var accountCard: some View {
+        LibraryCard {
+            HStack(spacing: 16) {
+                accountAvatar
+                    .onTapGesture { avatarTapped() }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("Account picture")
+                    .accessibilityIdentifier("settings.avatar")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.accountName.isEmpty ? "Welcome" : model.accountName).font(InstantStyle.serif(23)).lineLimit(1)
+                    if let email = model.accountEmail {
+                        Text(email).font(.footnote).foregroundStyle(libraryMuted).lineLimit(1).truncationMode(.middle)
+                    } else {
+                        Text(model.useLiveBackend ? "Connected to your Impo server" : "Not signed in").font(.footnote).foregroundStyle(libraryMuted)
+                    }
+                }
+                Spacer(minLength: 0)
+            }.padding(18)
+        }
+    }
+
+    private var accountAvatar: some View {
+        let initial = model.accountName.first.map { String($0).uppercased() }
+        return AsyncImage(url: model.accountImageURL) { phase in
+            if let image = phase.image { image.resizable().scaledToFill() }
+            else if let initial { Text(initial).font(InstantStyle.serif(26)).foregroundStyle(InstantStyle.forest) }
+            else { Image("JournalRobin").resizable().scaledToFit().padding(8) }
+        }
+        .frame(width: 60, height: 60)
+        .background(InstantStyle.accent.opacity(0.24), in: Circle())
+        .clipShape(Circle())
+        .overlay(Circle().stroke(InstantStyle.accent.opacity(0.55), lineWidth: 0.8))
+        .contentShape(Circle())
+    }
+
+    private func avatarTapped() {
+        let now = Date()
+        avatarTaps = now.timeIntervalSince(lastAvatarTap) < 2 ? avatarTaps + 1 : 1
+        lastAvatarTap = now
+        guard avatarTaps >= 7 else { return }
+        avatarTaps = 0
+        withAnimation(.easeInOut(duration: 0.2)) {
+            model.debugMode.toggle()
+            debugNotice = model.debugMode ? "Debug mode on" : "Debug mode off"
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func signOut() {
+        signingOut = true
+        accountError = nil
+        Task {
+            do { try await model.signOut() }
+            catch { accountError = "Couldn't sign out. Check your connection and try again." }
+            signingOut = false
+        }
+    }
+
+    private func mail(subject: String, body: String = "") {
+        var parts = URLComponents()
+        parts.scheme = "mailto"
+        parts.path = Self.supportEmail
+        parts.queryItems = [URLQueryItem(name: "subject", value: subject)] + (body.isEmpty ? [] : [URLQueryItem(name: "body", value: body)])
+        if let url = parts.url { openURL(url) }
+    }
+
+    /// Previews and developer tools. Visible only in Debug mode.
+    @ViewBuilder private var debugSections: some View {
+        @Bindable var model = model
+        sectionLabel("Debug")
+        LibraryCard {
+            VStack(alignment: .leading, spacing: 24) {
+                membershipCard
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Impo Preview (Demo)").font(InstantStyle.serif(21)).foregroundStyle(libraryInk)
+                        Text("A little space to try things out.").font(.footnote).foregroundStyle(libraryMuted)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Manage") { sheet = .plan }
+                        .font(.subheadline.weight(.medium)).foregroundStyle(InstantStyle.paperElevated)
+                        .padding(.horizontal, 17).padding(.vertical, 11).background(InstantStyle.forest, in: Capsule())
+                        .accessibilityIdentifier("settings.manage")
+                }
+                Button { withAnimation(.easeInOut(duration: 0.2)) { modeExpanded.toggle() } } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Mode (Demo)").font(InstantStyle.serif(21))
+                            Text("Choose your preferred style.").font(.footnote).foregroundStyle(libraryMuted)
+                        }
+                        Spacer()
+                        Text(model.mode).foregroundStyle(libraryMuted)
+                        Image(systemName: modeExpanded ? "chevron.down" : "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(libraryMuted)
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("settings.mode")
+                if modeExpanded {
+                    VStack(spacing: 10) {
+                        modeChoice("Balanced", description: "A thoughtful pace for everyday things.")
+                        modeChoice("Power", description: "Space for more involved questions.")
+                    }
+                    Text("Preview preference · Model selection is not connected yet.")
+                        .font(.caption).foregroundStyle(libraryMuted)
+                }
+                settingsRow("Monthly Usage (Demo)", detail: "Available when plans launch") { sheet = .usage }
+                settingsRow("Billing (Demo)") { sheet = .plan }
+            }.padding(18)
+        }
+        LibraryCard {
+            VStack(alignment: .leading, spacing: 15) {
+                settingsRow("Echo Debug", detail: "View and export device logs") { sheet = .debug }
+                    .accessibilityIdentifier("settings.listening-debug")
+                divider
+                Toggle("Use local API server", isOn: $model.useLiveBackend)
+                    .accessibilityIdentifier("settings.backend")
+                    .onChange(of: model.useLiveBackend) { _, _ in model.persistProfile() }
+                TextField("http://127.0.0.1:3001", text: $model.backendURL)
+                    .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .font(.footnote).padding(12).paperSurface(cornerRadius: 12)
+                    .accessibilityIdentifier("settings.backendURL")
+                    .onSubmit { model.persistProfile() }
+                    .onChange(of: model.backendURL) { _, _ in model.persistProfile() }
+                Text("Chat connects to your Impo API server. API keys stay on that server.")
+                    .font(.caption).foregroundStyle(libraryMuted)
+                divider
+                Button("Restart welcome experience") { showReset = true }
+                    .font(.subheadline).foregroundStyle(libraryAction).frame(minHeight: 44)
+                    .accessibilityIdentifier("settings.restart")
+                Button("Turn off Debug mode") { withAnimation { model.debugMode = false; debugNotice = nil } }
+                    .font(.subheadline).foregroundStyle(libraryMuted).frame(minHeight: 44)
+                    .accessibilityIdentifier("settings.debug-off")
+            }.padding(18)
         }
     }
 
@@ -166,15 +312,15 @@ struct SettingsView: View {
             .accessibilityAddTraits(model.mode == name ? .isSelected : [])
     }
 
-    private func settingsRow(_ title: String, detail: String? = nil, action: @escaping () -> Void) -> some View {
+    private func settingsRow(_ title: String, detail: String? = nil, symbol: String? = "chevron.right", destructive: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(InstantStyle.serif(19))
+                    Text(title).font(InstantStyle.serif(19)).foregroundStyle(destructive ? Color.red.opacity(0.8) : libraryInk)
                     if let detail { Text(detail).font(.caption).foregroundStyle(libraryMuted) }
                 }
                 Spacer()
-                Image(systemName: "chevron.right").font(.system(size: 16, weight: .medium)).foregroundStyle(libraryMuted.opacity(0.65))
+                if let symbol { Image(systemName: symbol).font(.system(size: 15, weight: .medium)).foregroundStyle(libraryMuted.opacity(0.65)) }
             }.frame(minHeight: 44).padding(.vertical, 8).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
@@ -209,7 +355,7 @@ struct MemoriesView: View {
                 }.padding(.bottom, 4)
                 Picker("Memories view", selection: $showingTimeline) {
                     Text("Echo").tag(true)
-                    Text("Notes").tag(false)
+                    Text("About you").tag(false)
                 }.pickerStyle(.segmented).accessibilityIdentifier("memories.sections")
             }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 12)
             if showingTimeline {
@@ -443,10 +589,14 @@ private struct MemoryList: View {
     let info: MemoryCategoryInfo
     let title: String?
     @State private var forgetting: Memory?
+    @State private var echoSource: ListeningSegment?
+    @State private var loadingEcho = false
+    @State private var echoError: String?
     private var items: [Memory] { memories.pages[info.id] ?? [] }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let title { Text(title).font(InstantStyle.serif(22)).padding(.top, 5) }
+            if let echoError { Text(echoError).font(.caption).foregroundStyle(InstantStyle.accent) }
             if items.isEmpty && !memories.loading.contains(info.id) {
                 Text(memories.isLive ? "Nothing here yet. \(model.assistantName) adds memories after your conversations and Echo recordings."
                      : "Memories appear here once \(model.assistantName) is connected.")
@@ -458,6 +608,13 @@ private struct MemoryList: View {
                         Text(memory.content).font(.system(size: 17)).lineSpacing(4)
                         let others = memory.categories.filter { $0 != info.id }.map { MemoryCategoryInfo.named($0).title }
                         if !others.isEmpty { Text(others.joined(separator: " · ")).font(.caption).foregroundStyle(InstantStyle.forest) }
+                        let echoes = memory.sourceIds.filter { $0.hasPrefix("echo:") }.map { String($0.dropFirst(5)) }
+                        if !echoes.isEmpty {
+                            Button { openEcho(Array(echoes.prefix(20))) } label: {
+                                Label(echoes.count == 1 ? "From Echo" : "From \(echoes.count) Echo recordings", systemImage: "waveform")
+                                    .font(.caption).frame(minHeight: 32)
+                            }.foregroundStyle(libraryAction).disabled(loadingEcho).accessibilityIdentifier("memory.echo-source")
+                        }
                         HStack {
                             Text(caption(memory)).font(.caption).foregroundStyle(libraryMuted)
                             Spacer()
@@ -470,7 +627,9 @@ private struct MemoryList: View {
             if memories.hasMore(info.id) {
                 Button("Show more") { Task { await memories.load(info.id, more: true) } }.foregroundStyle(libraryAction)
             }
-        }.confirmationDialog("Forget this memory?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }), titleVisibility: .visible) {
+        }
+        .fullScreenCover(item: $echoSource) { ListeningTranscriptDetail(segment: $0).swipeToDismiss() }
+        .confirmationDialog("Forget this memory?", isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }), titleVisibility: .visible) {
             Button("Forget", role: .destructive) { if let memory = forgetting { Task { await memories.forget(memory) } } }
         } message: { Text("\(model.assistantName) will no longer remember this.") }
     }
@@ -478,9 +637,23 @@ private struct MemoryList: View {
         var parts: [String] = []
         if let date = memoryDate(memory.updatedAt) { parts.append("Updated \(date.formatted(date: .abbreviated, time: .omitted))") }
         if let expires = memory.expiresAt.flatMap(memoryDate) { parts.append("Until \(expires.formatted(date: .abbreviated, time: .omitted))") }
-        let echo = memory.sourceIds.contains { $0.hasPrefix("echo:") }, chat = memory.sourceIds.contains { $0.hasPrefix("chat:") }
-        if echo || chat { parts.append(echo && chat ? "From chat and Echo" : echo ? "From Echo" : "From chat") }
+        if memory.sourceIds.contains(where: { $0.hasPrefix("chat:") }) { parts.append("From chat") }
         return parts.joined(separator: " · ")
+    }
+
+    /// Memories cite the Echo recordings they came from; open the newest one that still exists.
+    private func openEcho(_ ids: [String]) {
+        guard let client = model.listeningClient() else { echoError = "Sign in to open Echo recordings."; return }
+        loadingEcho = true
+        echoError = nil
+        Task {
+            defer { loadingEcho = false }
+            do {
+                let records = try await client.listeningRecords(ids: ids)
+                if let latest = records.max(by: { $0.recordedAt < $1.recordedAt }) { echoSource = latest }
+                else { echoError = "That Echo recording was deleted." }
+            } catch { echoError = "Couldn't open the Echo recording. Try again." }
+        }
     }
 }
 
@@ -509,7 +682,7 @@ private struct LibraryConnectionsView: View {
                 if model.useLiveBackend {
                     Text(model.deviceConnectionStatus).font(.caption).foregroundStyle(libraryMuted)
                 } else {
-                    Text("Live chat is needed to ask about your device data. Enable your local server in Settings → Development.")
+                    Text(model.debugMode ? "Live chat is needed to ask about your device data. Enable your local server in Settings → Debug." : "Sign in to ask about your device data.")
                         .font(.caption).foregroundStyle(libraryMuted)
                 }
             }

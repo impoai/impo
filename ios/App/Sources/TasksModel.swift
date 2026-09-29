@@ -122,7 +122,7 @@ final class TasksModel {
         // A reopened page can start a second follower; only an unanswered request gets a reply.
         if !Task.isCancelled, demoThreads[taskId]?.last?.role == "user" {
             demoThreads[taskId, default: []].append(ChatMessage(role: "assistant",
-                text: "This is an offline Demo, so this task can't run yet. Connect to your Impo server in Settings → Development to run it for real."))
+                text: "This is an offline Demo, so this task can't run yet. Sign in to run it for real."))
             setStatus(taskId, "completed", completed: Date())
         }
         return demoThreads[taskId] ?? []

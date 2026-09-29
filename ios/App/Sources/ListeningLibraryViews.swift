@@ -1,25 +1,6 @@
 import SwiftUI
 import InstantClient
 
-struct ListeningLibraryScreen: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(ListeningModel.self) private var listening
-    var body: some View {
-        NavigationStack {
-            ListeningTranscriptLibrary()
-                .background(InstantStyle.paper).navigationTitle("Echo")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .principal) { Text("Echo").font(InstantStyle.serif(25)).foregroundStyle(InstantStyle.ink) }
-                    ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
-                }
-                .safeAreaInset(edge: .top) {
-                    if listening.isListening { ListeningStatusView().padding(.horizontal, 16).padding(.bottom, 8) }
-                }
-        }.tint(InstantStyle.forest)
-    }
-}
-
 struct ListeningTranscriptLibrary: View {
     @Environment(ListeningModel.self) private var listening
     @Environment(AppModel.self) private var app

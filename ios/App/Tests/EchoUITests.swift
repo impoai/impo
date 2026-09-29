@@ -10,9 +10,9 @@ import XCTest
         let latest=(try JSONSerialization.jsonObject(with:data) as! [String:Any])["segments"] as! [[String:Any]]
         let first=latest[0]["id"] as! String, sixty=latest[35]["id"] as! String
         let app=XCUIApplication();app.launchArguments=["--reset-demo","--show-main","--live-backend","http://127.0.0.1:3009","--permission-preview","allowed"]
-        app.launch();XCTAssertTrue(app.buttons["chat.transcripts"].waitForExistence(timeout:10))
+        app.launch();XCTAssertTrue(app.buttons["tab.memories"].waitForExistence(timeout:10))
         if app.buttons["Not now"].waitForExistence(timeout:3) { app.buttons["Not now"].tap() }
-        XCTAssertEqual(app.buttons["chat.transcripts"].label,"Echo");app.buttons["chat.transcripts"].tap()
+        XCTAssertFalse(app.buttons["chat.transcripts"].exists, "Echo lives only in Memories");app.buttons["tab.memories"].tap()
         XCTAssertTrue(app.buttons["listening.recording.\(first)"].waitForExistence(timeout:10))
         let rail=app.descendants(matching:.any).matching(identifier:"echo.date-rail").firstMatch
         XCTAssertTrue(rail.waitForExistence(timeout:10));capture("Echo latest — 20000 record fixture",app)
@@ -59,9 +59,9 @@ import XCTest
         let app = XCUIApplication()
         app.launchArguments = ["--reset-demo", "--show-main", "--live-backend", "http://127.0.0.1:3010", "--permission-preview", "allowed"]
         app.launch()
-        XCTAssertTrue(app.buttons["chat.transcripts"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["tab.memories"].waitForExistence(timeout: 10))
         if app.buttons["Not now"].waitForExistence(timeout: 2) { app.buttons["Not now"].tap() }
-        app.buttons["chat.transcripts"].tap()
+        app.buttons["tab.memories"].tap()
         let rail = app.descendants(matching: .any).matching(identifier: "echo.date-rail").firstMatch
         XCTAssertTrue(rail.waitForExistence(timeout: 5))
         let top = rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03))
@@ -94,9 +94,9 @@ import XCTest
     }
     func testLocationDetailsLabelsAndSettings() async throws {
         let app=XCUIApplication();app.launchArguments=["--reset-demo","--show-main","--live-backend","http://127.0.0.1:3009","--permission-preview","allowed"]
-        app.launch();XCTAssertTrue(app.buttons["chat.transcripts"].waitForExistence(timeout:10))
+        app.launch();XCTAssertTrue(app.buttons["tab.memories"].waitForExistence(timeout:10))
         if app.buttons["Not now"].waitForExistence(timeout:2) { app.buttons["Not now"].tap() }
-        app.buttons["chat.transcripts"].tap()
+        app.buttons["tab.memories"].tap()
         let row=app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH %@", "listening.recording.")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout:10));row.tap()
         XCTAssertTrue(app.buttons["echo.location.edit"].waitForExistence(timeout:5))
