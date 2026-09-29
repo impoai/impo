@@ -29,3 +29,4 @@
 - 2026-09-30 | Completed | Echo has one home: Memories → Echo (raw recordings) beside About you (renamed from Notes; what Impo learned). The chat header Echo button is gone; the recording banner opens Memories → Echo. Memories with Echo sources link to the original recording.
 - 2026-09-30 | Verified | 113 native and UI tests passed (3 environment-dependent skips). Echo timeline UI tests that need the local fixture server were updated but not run.
 - 2026-09-30 | Prepared | iOS build 37 with the Settings reorganization and the Echo/About you change; no server changes.
+- 2026-09-30 | Deployed | TestFlight 0.1.0 (37), built from 622e2c0, is available to Team with English test notes. External testing still waits on build 22 in Apple beta review.
