@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
@@ -92,6 +92,22 @@ test('Connector control plane and server tool receipts survive independent API/W
     assert.equal((await pool.query("SELECT count(*)::int AS count FROM product_events WHERE submission_id=$1 AND chunk->'data'->>'status'='waiting_device'", [id])).rows[0].count, 0);
   }
   try {
+    await t.test('schema push upgrades an existing Gmail-only database to multiple toolkits', async () => {
+      // Reproduce the previous deployed schema, not an empty new database.
+      await pool.query("ALTER TABLE connector_connections DROP CONSTRAINT connector_connections_toolkit_slug_check");
+      await pool.query("ALTER TABLE connector_connections ADD CONSTRAINT connector_connections_toolkit_check CHECK (toolkit = 'gmail')");
+      await pool.query("ALTER TABLE connector_connections ALTER COLUMN toolkit SET DEFAULT 'gmail'");
+      const hints = JSON.stringify([{ type: 'create', kind: 'check', entity: ['public', 'connector_connections', 'connector_connections_toolkit_slug_check'] }]);
+      const args = ['../node_modules/drizzle-kit/bin.cjs', 'push', '--output', 'json', '--hints', hints];
+      const run = (extra: string[] = []) => JSON.parse(execFileSync(process.execPath, [...args, ...extra], { cwd: directory, env, encoding: 'utf8' }));
+      const plan = run(['--explain']);
+      assert.ok(plan.statements.some((statement: { type: string; check?: { name: string } }) => statement.type === 'drop_check' && statement.check?.name === 'connector_connections_toolkit_check'));
+      assert.ok(plan.statements.some((statement: { type: string; check?: { name: string } }) => statement.type === 'add_check' && statement.check?.name === 'connector_connections_toolkit_slug_check'));
+      assert.equal(run().status, 'ok');
+      assert.equal(run(['--explain']).status, 'no_changes');
+      const checks = await pool.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'connector_connections'::regclass AND conname = 'connector_connections_toolkit_slug_check'");
+      assert.match(String(checks.rows[0]?.definition), /\[a-z0-9_\]/);
+    });
     await startAPI();
     await t.test('the shelf is every enabled rebyte-dev auth config, featured first', async () => {
       const listed = await request('/connectors'); assert.equal(listed.status, 200);

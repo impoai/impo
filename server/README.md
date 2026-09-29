@@ -289,3 +289,17 @@ The fixture listens on `127.0.0.1:3000`, uses `instant-test-alice` and
 It needs no database or model key; its state disappears when the process exits.
 `npm test` and `test:e2e` own their own fixture lifecycle, so a separately started
 fixture is only needed for manual exploration. See [contracts](../contracts/README.md).
+
+### Upgrading an existing Gmail-only database
+
+The connector toolkit check has a new name because the pinned Drizzle Kit skips
+expression changes on checks with the same name. For an existing database, choose
+**create** for `connector_connections_toolkit_slug_check` when `db:push` asks;
+this replaces the old Gmail-only check. The equivalent non-interactive command is:
+
+```sh
+npm --workspace @instant/server run db:push -- --hints '[{"type":"create","kind":"check","entity":["public","connector_connections","connector_connections_toolkit_slug_check"]}]'
+```
+
+The connector database tests verify this upgrade from the previous schema before
+exercising multiple app connections. No migration history is required.
