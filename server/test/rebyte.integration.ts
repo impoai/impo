@@ -4,6 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { MemoryStore } from '../src/memory/store.js';
+import { LocalFileProvider } from '../src/memory/provider.js';
+import { DevelopmentEmbedder } from '../src/memory/embedder.js';
 import pg from 'pg';
 import { FakeRebyte, type FakeSession, type JSONRecord } from './helpers/fake-rebyte.js';
 import { createDatabase } from '../src/db/client.js';
@@ -93,7 +99,8 @@ async function assertAnswer(id: string, expected: string, user = 'alice') {
 test('Rebyte SDK integration recovers remote side effects across local process failures', { timeout: 120000 }, async t => {
   const fake = new FakeRebyte();
   const remoteURL = await fake.listen();
-  environment = { ...process.env, DATABASE_URL: databaseURL, PORT: '0', NODE_ENV: 'test', INSTANT_AUTH_MODE: 'local-dev', INSTANT_RUNTIME: 'rebyte', REBYTE_API_KEY: 'instant-fake-rebyte-key', REBYTE_BASE_URL: remoteURL, REBYTE_MODEL: 'gpt-5.6-luna', INSTANT_WORKER_POLL_MS: '25', WORKER_LEASE_MS: '2000', REBYTE_POLL_MS: '100', REBYTE_REQUEST_TIMEOUT_MS: '10000' };
+  const memoryDirectory = await mkdtemp(join(tmpdir(), 'instant-chat-memory-'));
+  environment = { ...process.env, MEMORY_LOCAL_DIR: memoryDirectory, DATABASE_URL: databaseURL, PORT: '0', NODE_ENV: 'test', INSTANT_AUTH_MODE: 'local-dev', INSTANT_RUNTIME: 'rebyte', REBYTE_API_KEY: 'instant-fake-rebyte-key', REBYTE_BASE_URL: remoteURL, REBYTE_MODEL: 'gpt-5.6-luna', INSTANT_WORKER_POLL_MS: '25', WORKER_LEASE_MS: '2000', REBYTE_POLL_MS: '100', REBYTE_REQUEST_TIMEOUT_MS: '10000' };
   try {
     await startAPI();
     let session: FakeSession;
@@ -399,10 +406,54 @@ test('Rebyte SDK integration recovers remote side effects across local process f
         assert.equal(contextOf(taskSession).previousConversationHistory, undefined, 'a new task does not inherit main history');
       } finally { await stop(worker); }
     });
+    await t.test('main memory tool survives lost acknowledgement, repeats on follow-up, and rejects task access', async () => {
+      const connection = createDatabase(databaseURL!);
+      const store = new MemoryStore(connection.db, new LocalFileProvider(memoryDirectory), new DevelopmentEmbedder());
+      const alice = '00000000-0000-4000-8000-000000000001', bob = '00000000-0000-4000-8000-000000000002';
+      await store.apply(alice, [{key:'alice-tea',event:'ADD',id:randomUUID(),content:'Alice prefers green tea',categories:['food'],sourceIds:['chat:fixture'],expiresAt:null}]);
+      await store.apply(bob, [{key:'bob-tea',event:'ADD',id:randomUUID(),content:'Bob private tea preference',categories:['food'],sourceIds:['chat:fixture'],expiresAt:null}]);
+      let worker: Process | undefined;
+      const lookup = () => [{name:'impo_search_memory',arguments:{query:'tea preferences'}}];
+      try {
+        const before = fake.toolResults.size;
+        fake.nextTools = lookup(); fake.holdNextToolResult = true;
+        const first = await submit('What tea do I like?');
+        worker = start('src/worker-main.ts');
+        await waitFor('memory receipt delivered', async () => fake.toolResults.size > before ? true : undefined);
+        await stop(worker, 'SIGKILL'); worker = undefined;
+        fake.releaseToolResultResponses(); await expireLease(first.submissionId);
+        worker = start('src/worker-main.ts');
+        await state(first.submissionId, 'completed');
+        assert.equal(fake.toolResults.size, before + 1, 'lost acknowledgement reuses the frozen receipt');
+        const result = [...fake.toolResults.values()].at(-1)!;
+        const memory = JSON.parse(result.output);
+        assert.equal(memory.source, 'impo.memory');
+        assert.deepEqual(memory.memories.map((m: JSONRecord) => m.content), ['Alice prefers green tea']);
+        assert.ok(!result.output.includes('Bob private'));
+        const main = fake.sessions.find(s => s.turns.some(turn => turn.text === first.text))!;
+        assert.ok(main.agent.instructions.includes('Start every user turn with impo_search_memory'));
+        assert.ok(main.agent.tools.some((tool: JSONRecord) => tool.name === 'impo_search_memory'));
+        fake.nextTools = lookup(); const second = await submit('And what should I order?');
+        await state(second.submissionId, 'completed');
+        assert.ok(main.turns.some(turn => turn.text === second.text), 'ordinary follow-up keeps its Session');
+        assert.equal(fake.toolResults.size, before + 2, 'the next turn can retrieve again');
+        fake.nextTools = lookup();
+        const task = await request('/tasks', {clientMessageId:randomUUID(), text:'Task must not retrieve main memory'});
+        await state(task.body.submissionId as string, 'completed');
+        const taskSession = fake.sessions.find(s => s.turns.some(turn => turn.text === 'Task must not retrieve main memory'))!;
+        assert.ok(!taskSession.agent.tools.some((tool: JSONRecord) => tool.name === 'impo_search_memory'));
+        assert.ok(!taskSession.agent.instructions.includes('impo_search_memory'));
+        const denied = [...fake.toolResults.values()].at(-1)!;
+        assert.equal(denied.success, false); assert.match(denied.error, /memory_not_available_here/);
+        const receipts = await pool.query('SELECT status,execution_location FROM tool_invocations WHERE submission_id=$1', [second.submissionId]);
+        assert.ok(receipts.rows.every(r => r.status === 'submitted' && r.execution_location === 'server'));
+      } finally { if (worker) await stop(worker); store.close(); await connection.close(); }
+    });
     assert.deepEqual(fake.errors, [], 'the real SDK must use the expected Agents API wire contract');
   } finally {
     await Promise.all([...processes].map(process => stop(process)));
     await fake.close();
     await pool.end();
+    await rm(memoryDirectory, {recursive:true,force:true});
   }
 });

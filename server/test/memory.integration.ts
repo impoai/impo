@@ -230,3 +230,18 @@ test('memories API: per-category summary and pages, owner-only reads and forgett
     await f.db.db.delete(memoryDatabases).where(eq(memoryDatabases.userId, bob)); await f.db.db.delete(users).where(eq(users.id, bob));
   }
 });
+
+test('retrieval excludes expired and forgotten memories, isolates owners, and never provisions on an empty search', async t => {
+  const f = await fixture(t), other = randomUUID();
+  assert.deepEqual(await f.store.search(other, 'tea'), []);
+  assert.equal(await f.store.exists(other), false);
+  const active = randomUUID(), expired = randomUUID();
+  await f.store.apply(f.userId, [
+    { key: 'active', event: 'ADD', id: active, content: 'Prefers green tea', categories: ['food'], sourceIds: ['chat:a'], expiresAt: null },
+    { key: 'expired', event: 'ADD', id: expired, content: 'Prefers green tea', categories: ['food'], sourceIds: ['chat:b'], expiresAt: '2020-01-01T00:00:00Z' },
+  ]);
+  assert.deepEqual((await f.store.search(f.userId, 'green tea')).map(m => m.id), [active]);
+  assert.deepEqual(await f.store.search(other, 'green tea'), []);
+  await f.store.forget(f.userId, active);
+  assert.deepEqual(await f.store.search(f.userId, 'green tea'), []);
+});

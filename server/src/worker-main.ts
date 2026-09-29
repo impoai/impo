@@ -34,7 +34,8 @@ const shutdown = () => { shuttingDown = true; controller.abort(); if (temporal?.
 process.once('SIGTERM', shutdown);
 process.once('SIGINT', shutdown);
 try {
-  const repository = createRuntimeRepository(database.db, config);
+  memoryStore = createMemoryStore(database.db, config.memory);
+  const repository = createRuntimeRepository(database.db, config, { memories: memoryStore });
   await repository.health();
   const worker = repository instanceof RebyteRepository && config.rebyte
     ? new RebyteWorker(repository, new RebyteGateway(config.rebyte), config)
@@ -50,7 +51,6 @@ try {
     let provisioner: BackgroundProvisioner | undefined;
     if (config.temporal) {
       const users = new BackgroundUserRepository(database.db);
-      memoryStore = createMemoryStore(database.db, config.memory);
       background = await createBackgroundClient(config.temporal);
       temporal = await createTemporalWorker(config.temporal, {
         ...createBackgroundActivities(users, config.rebyte ? [

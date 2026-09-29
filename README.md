@@ -26,7 +26,7 @@ platform. Work continues on the server when a client disconnects.
 | **Tasks** | Delegate work from chat or start a task directly. Each task has its own conversation and agent Session. |
 | **Brief** | Background agents generate briefings using the user's language, time zone, and configured brief times. Card editions accumulate across days and can be captured as PNG or PDF. |
 | **Echo** | Capture spoken context, upload immutable audio batches, and browse transcripts with recording-time places and optional labels. |
-| **Memory** | Consolidate chat and Echo evidence into per-user memories, with categories, expiry and forgetting. Main-agent retrieval is planned. |
+| **Memory** | Consolidate chat and Echo evidence into per-user memories, with categories, expiry and forgetting. Main Chat retrieves relevant memories before each reply. |
 | **Integrations** | Connect the agent to external services through Composio and to native capabilities through permissioned device adapters. |
 
 The integration roadmap targets **Composio's full tool catalog**, with discovery,
@@ -35,8 +35,8 @@ being expanded incrementally; the tools available to a user depend on implemente
 adapters, connected accounts, and granted permissions.
 
 The project is under active development. Some settings, subscription screens,
-and voice previews are demos. Background long-term memory is implemented;
-main-agent memory retrieval, profile extraction and diary generation remain planned. The platform
+and voice previews are demos. Background long-term memory and main-chat retrieval
+are implemented; profile extraction and diary generation remain planned. The platform
 roadmap below describes how Impo expands beyond the first iOS client.
 
 ## Roadmap
@@ -54,7 +54,7 @@ without fixed release dates.
 | **Web frontend** | Planned | Bring chat, task management, Brief, and Echo history to the browser through the same authenticated API. Add browser-supported capture where practical. |
 | **Shared client contracts** | Implemented foundation; expanding | Extend protocol fixtures and recovery tests so clients share consistent identity, history, task state, and tool results. |
 | **Composio integrations** | Initial integration implemented; expanding | Extend discovery, authorization, and execution across Composio's full catalog through a shared tool layer. |
-| **Personal context** | Background memory implemented; expanding | Add main-agent memory retrieval and richer proactive assistance. |
+| **Personal context** | Background memory and main-chat retrieval implemented | Expand proactive assistance using relevant personal context. |
 
 The next client milestone is core chat, history, tasks, and Brief on Android and
 Web. Recording and device tools follow each platform's capabilities. The current

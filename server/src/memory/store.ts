@@ -95,8 +95,8 @@ export class MemoryStore {
       const result = await client.execute({
         sql: `SELECT ${columns.split(', ').map(c => `m.${c}`).join(', ')}, vector_distance_cos(m.embedding, vector32(?)) AS distance
               FROM vector_top_k('memories_embedding_idx', vector32(?), ?) AS v JOIN memories m ON m.rowid = v.id
-              WHERE distance <= ? ORDER BY distance`,
-        args: [encoded, encoded, perText, maxDistance],
+              WHERE distance <= ? AND (m.expires_at IS NULL OR m.expires_at > ?) ORDER BY distance`,
+        args: [encoded, encoded, perText, maxDistance, Date.now()],
       });
       for (const value of result.rows) {
         const match = { ...row(value as unknown as Record<string, unknown>), distance: Number(value.distance) };
@@ -110,6 +110,8 @@ export class MemoryStore {
   async search(userId: string, query: string, limit = 8, signal?: AbortSignal): Promise<MemoryMatch[]> {
     const text = query.trim();
     if (!text || text.length > 1_000) throw new ServiceError(400, 'invalid_query', 'A memory search needs 1 to 1000 characters');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 12) throw new ServiceError(400, 'invalid_request', 'Retrieve between 1 and 12 memories');
+    if (!await this.exists(userId)) return [];
     return (await this.similar(userId, [text], limit, 2, signal)).slice(0, limit);
   }
 

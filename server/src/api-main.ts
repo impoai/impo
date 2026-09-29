@@ -15,15 +15,15 @@ import { ListeningUploadService, S3AudioObjectStore } from './listening/audio-up
 async function main(): Promise<void> {
   const config = loadConfig('api');
   const database = createDatabase(config.databaseUrl, { ssl: databaseRequiresSsl(config.databaseUrl) });
-  const repository = createRuntimeRepository(database.db, config);
+  const memories = createMemoryStore(database.db, config.memory);
+  const repository = createRuntimeRepository(database.db, config, { memories });
   try { await repository.health(); }
-  catch (error) { await database.close(); throw error; }
+  catch (error) { memories?.close(); await database.close(); throw error; }
   const gmail = config.composio ? new GmailConnectorService(database.db, config.composio) : undefined;
   const auth = config.authMode === 'clerk' ? { mode: 'clerk' as const, secretKey: config.clerk!.secretKey } : { mode: 'local-dev' as const };
   const batches = new ListeningBatchRepository(database.db);
   const batchService = config.temporal ? await createListeningBatchService(config.temporal, batches) : undefined;
   const archive = config.transcriptArchive ? new S3TranscriptArchive(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
-  const memories = createMemoryStore(database.db, config.memory);
   const uploads = config.transcriptArchive && batchService ? new ListeningUploadService(batches,
     new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
   const server = createApiServer(repository, { uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, gmail, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development' });

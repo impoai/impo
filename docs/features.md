@@ -57,7 +57,15 @@ A pure planner selects bounded windows, defers active conversations and sweeps
 expired facts. Each user has a separate Turso database. The API supports summary,
 listing and forgetting; the iOS Notes interface displays these records.
 
-The main Agent does not read consolidated memory yet. Manual Echo label edits do
+The main Chat prompt requires `impo_search_memory` first on every user turn,
+before answering or using other tools. The server retrieves only that user's
+unexpired memories. The Agent uses relevant facts and prefers the user's latest
+statements. Empty or unavailable retrieval lets the conversation continue without
+inventing recalled facts. Tasks and scheduled tasks do not get this requirement
+or the retrieval tool. Existing main Sessions adopt the new configuration on the
+next user message after any active turn finishes.
+
+Manual Echo label edits do
 not replay already-consumed evidence. Deleting source recordings does not silently
 claim to erase facts already derived from them; users can forget those separately.
 
