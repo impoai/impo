@@ -180,11 +180,20 @@ See [Gmail](../docs/features.md) for ownership and recovery contracts.
 
 ## Echo and Listening batches
 
-Clients post immutable audio arrays to `POST /api/v1/listening/batches`.
-The API and worker must use the same Temporal namespace and task queue. A fixed
-per-user workflow coordinates admission, sequence, retries, and deduplication.
-Raw batch audio is handed to Temporal; the application database records batch
-identity, source times, execution state, and result references/data.
+Clients request a signed URL at `POST /api/v1/listening/uploads`, PUT the immutable
+file directly to S3, then confirm at `/api/v1/listening/uploads/:batchId/complete`.
+See the [upload contract](../docs/client-api.md#direct-echo-uploads). The API and
+worker share a Temporal namespace and task queue. Each batch gets an independent,
+deduplicated workflow; bounded worker concurrency controls transcription load.
+PostgreSQL and new Temporal inputs contain metadata and S3 references, not audio.
+
+Set `TRANSCRIPT_BUCKET` and `AWS_REGION` for direct uploads. The service role needs
+S3 Get/Put/Delete on `users/*` plus prefix-scoped ListBucket for missing-object
+checks. Keep the bucket private, encrypted and without object versioning.
+Configure an expiration lifecycle of one day for the exact `users/_uploads/`
+prefix. Confirmed audio is copied to `users/<userId>/echo-audio/` and retained
+through failures for explicit retry; the worker deletes it after transcription.
+Do not apply staging expiration to confirmed audio or transcript prefixes.
 
 `GET /api/v1/listening/segments` merges batch and legacy recording history,
 newest first. It accepts `limit` (default 30, maximum 100) and an opaque `cursor`,

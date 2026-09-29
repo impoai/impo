@@ -18,14 +18,18 @@ export class ListeningBatchRepository {
   for(const r of rows) {if(['transcribed','deleted'].includes(r.status)) progress[r.stream]={next:r.sequence+1,lastBatchId:r.batchId,lastHash:r.hash};}
   return progress;
  }
- async begin(batch:AcceptedBatch) {
+ async reserve(batch:AcceptedBatch, workflowVersion=1) {
   const metadata=batch.items.map(({segmentId,startedAt,endedAt,locations})=>({segmentId,startedAt,endedAt,...(locations !== undefined ? {locations} : {})}));
   const ended=Math.max(...metadata.map(s=>Date.parse(s.endedAt)));
   await this.db.insert(batches).values({userId:batch.userId,clientBatchId:batch.batchId,streamId:batch.streamId,sequence:batch.sequence,sessionId:batch.sessionId,
-   contentHash:batch.contentHash,startedAt:new Date(metadata[0]!.startedAt),endedAt:new Date(ended),segments:metadata,
+   contentHash:batch.contentHash,workflowVersion,uploadInput:batch.audioSource ? batch : null,startedAt:new Date(metadata[0]!.startedAt),endedAt:new Date(ended),segments:metadata,
    audioMilliseconds:Math.round(metadata.reduce((n,s)=>n+Date.parse(s.endedAt)-Date.parse(s.startedAt),0))}).onConflictDoNothing();
   const row=await this.receipt(batch.userId,batch.batchId);
   if(!row || row.contentHash!==batch.contentHash) throw new ServiceError(409,'batch_conflict','This batch was already used for different audio.');
+  return row;
+ }
+ async begin(batch:AcceptedBatch) {
+  const row=await this.reserve(batch);
   if(['transcribed','deleted'].includes(row.status)) return {done:true as const,status:row.status};
   const token=randomUUID();
   const [claimed]=await this.db.update(batches).set({status:'transcribing',executionToken:token,attempts:sql`${batches.attempts}+1`,error:null,updatedAt:new Date()})
@@ -33,8 +37,11 @@ export class ListeningBatchRepository {
   return claimed ? {done:false as const,id:row.id,token,attempts:claimed.attempts} : {done:true as const,status:'deleted'};
  }
  async complete(id:string,token:string,result:TranscriptionResult) {
-  return (await this.db.update(batches).set({status:'transcribed',transcript:result.transcript,model:result.model,error:null,executionToken:null,transcribedAt:new Date(),updatedAt:new Date()})
+  return (await this.db.update(batches).set({status:'transcribed',transcript:result.transcript,model:result.model,error:null,executionToken:null,uploadInput:null,transcribedAt:new Date(),updatedAt:new Date()})
    .where(and(eq(batches.id,id),eq(batches.executionToken,token),eq(batches.status,'transcribing'))).returning({id:batches.id})).length>0;
+ }
+ async clearUploadInput(userId:string,batchId:string){
+  await this.db.update(batches).set({uploadInput:null}).where(and(eq(batches.userId,userId),eq(batches.clientBatchId,batchId),eq(batches.status,'deleted')));
  }
  async retry(id:string,token:string,code:string) {
   await this.db.update(batches).set({status:'pending',executionToken:null,error:{code,message:'Transcription will retry.',retryable:true},updatedAt:new Date()})

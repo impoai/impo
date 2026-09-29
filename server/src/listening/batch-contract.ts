@@ -12,10 +12,12 @@ export interface BatchItem {
 export interface ListeningBatch {
   batchId: string; streamId: string; sequence: number; sessionId: string; items: BatchItem[];
 }
-export interface AcceptedBatch extends ListeningBatch { userId: string; contentHash: string }
+export interface BatchAudioSource { key: string; sha256: string; byteLength: number }
+export interface AcceptedBatch extends ListeningBatch { userId: string; contentHash: string; audioSource?: BatchAudioSource }
 export interface BatchReceipt { batchId: string; streamId: string; sequence: number; status: 'accepted' }
 export interface BatchDecision { receipt?: BatchReceipt; error?: 'batch_busy' | 'sequence_gap' | 'batch_conflict'; expectedSequence?: number }
 export interface StreamProgress { next: number; lastBatchId?: string; lastHash?: string }
 export interface ListeningWorkflowState { userId: string; streams?: Record<string, StreamProgress> }
 export const listeningWorkflowId = (userId: string) => `impo/listening/${userId}`;
+export const batchWorkflowId = (userId: string, batchId: string) => `impo/listening-batch/${userId}/${batchId}`;
 export const batchReceipt = (batch: ListeningBatch): BatchReceipt => ({batchId: batch.batchId, streamId: batch.streamId, sequence: batch.sequence, status: 'accepted'});

@@ -53,8 +53,14 @@ struct InstantApp: App {
                 #endif
                 while !Task.isCancelled {
                     await listening.sync(force: false)
+                    try? await Task.sleep(for: .seconds(3))
+                }
+            }
+            .task(id: model.listeningScope) {
+                // Transcript updates must continue while a large local queue uploads.
+                while !Task.isCancelled {
                     await listening.pollTranscripts()
-                    try? await Task.sleep(for: .seconds(10))
+                    try? await Task.sleep(for: .seconds(5))
                 }
             }
             .foregroundStyle(InstantStyle.ink)

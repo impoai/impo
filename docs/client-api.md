@@ -30,6 +30,26 @@ of a run. Reconnect using the server's persisted history, and issue an explicit
 cancel command when cancellation is intended. Replaying a tool event only renders
 it; clients execute a device request after claiming the owned pending command.
 
+## Direct Echo uploads
+
+1. Seal one immutable JSON batch on disk. Compute its byte length and SHA-256.
+2. `POST /api/v1/listening/uploads` with `{batch, sha256, byteLength}`. Each
+   metadata item replaces `audio` with `audioBytes`; all other fields are unchanged.
+3. For `status: upload`, PUT the exact file to `url` using the returned `headers`.
+   Do not attach the app's bearer token or follow redirects. URLs expire in 15 minutes
+   and bind the checksum, content type and length. `status: uploaded` skips this PUT.
+4. `POST /api/v1/listening/uploads/:batchId/complete` with `{}`. The server verifies
+   S3, copies the object to an immutable worker destination and starts a durable job.
+5. Delete local bytes only after a matching `202` receipt containing `batchId`,
+   `streamId`, `sequence` and `status: accepted`. A prepare response with
+   `status: accepted` includes the same receipt for a previously accepted batch.
+
+Retry the same batch after an interrupted PUT or lost confirmation. Preparation
+detects an existing object and refreshes expired URLs. Conflicting identifiers or
+content return `409`; foreign batches return `404`; explicit deletion returns `410`.
+S3 rejects a checksum mismatch. Limits are 16 items, 1 MiB decoded audio and
+1,500,000 bytes per sealed file. Legacy `/listening/batches` remains available.
+
 ## Recording locations
 
 An Echo batch item may include up to 16 ordered location spans. Each includes

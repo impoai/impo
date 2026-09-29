@@ -82,7 +82,7 @@ final class ListeningStreamingTests: XCTestCase {
         XCTAssertFalse(ListeningUploadPolicy.shouldUpload(oldest: old, count: 10, now: now, network: .offline, charging: true, wifiOnly: false))
         XCTAssertFalse(ListeningUploadPolicy.shouldUpload(oldest: now, count: 1, now: now, network: .wifi, charging: false, wifiOnly: false))
         XCTAssertTrue(ListeningUploadPolicy.shouldUpload(oldest: now.addingTimeInterval(-30), count: 1, now: now, network: .wifi, charging: false, wifiOnly: false))
-        XCTAssertFalse(ListeningUploadPolicy.shouldUpload(oldest: now.addingTimeInterval(-31), count: 1, now: now, network: .cellular, charging: false, wifiOnly: false))
+        XCTAssertTrue(ListeningUploadPolicy.shouldUpload(oldest: now.addingTimeInterval(-31), count: 1, now: now, network: .cellular, charging: false, wifiOnly: false))
         XCTAssertTrue(ListeningUploadPolicy.shouldUpload(oldest: old, count: 1, now: now, network: .cellular, charging: false, wifiOnly: false))
         XCTAssertFalse(ListeningUploadPolicy.shouldUpload(oldest: old, count: 20, now: now, network: .cellular, charging: true, wifiOnly: true))
     }

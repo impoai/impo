@@ -138,7 +138,7 @@ try {
   console.log(memory ? '\nPASS: Memory consolidation over chat and Echo evidence: planner deferral, bounded windows, idempotent add/update/delete, failure skip and expiry sweep.' : today ? '\nPASS: Today scheduling, append-only editions, ownership, source invalidation and real SDK recovery against a protocol double.' : background
     ? '\nPASS: per-user hourly Temporal lifecycle, empty ticks, Continue-As-New, Worker recovery and extension isolation.'
     : batches
-    ? '\nPASS: real Temporal, two API clients/two Workers, per-user admission, order, retry, deletion and restart.'
+    ? '\nPASS: real Temporal, two API clients/two Workers, independent admission, direct upload confirmation, retry, deletion and restart.'
     : listening
     ? '\nPASS: durable Listening uploads, ownership, transcription leases/retries and deletion against isolated PostgreSQL.'
     : live

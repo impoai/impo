@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -16,14 +16,16 @@ import { parseListeningBatch } from '../src/listening/batch-input.js';
 import { createListeningBatchService } from '../src/listening/temporal/client.js';
 import { createListeningTemporalWorker } from '../src/listening/temporal/worker.js';
 import { MemoryTranscriptArchive, transcriptKey } from '../src/listening/transcript-archive.js';
-import { listeningWorkflowId } from '../src/listening/batch-contract.js';
+import { batchWorkflowId } from '../src/listening/batch-contract.js';
 import { createApiServer } from '../src/http/api-server.js';
 import { TodayRepository } from '../src/today/repository.js';
 import { MemoryRepository } from '../src/memory/repository.js';
 import { TranscriptionError } from '../src/listening/transcriber.js';
+import {ListeningUploadService,type AudioObjectStore} from '../src/listening/audio-upload.js';
+import {ServiceError} from '../src/errors.js';
 
 async function until(check:()=>Promise<boolean>,timeout=40000){const end=Date.now()+timeout;while(Date.now()<end){if(await check())return;await delay(100);}throw new Error('Timed out');}
-test('real Temporal: global admission, duplicate delivery, sequence, retry, deletion, worker restart and HTTP receipts', {timeout:120000}, async()=>{
+test('real Temporal: independent durable admission, duplicate delivery, sequence conflicts, retry, deletion and worker restart', {timeout:120000}, async()=>{
  const portServer=createServer();portServer.listen(0,'127.0.0.1');await once(portServer,'listening');const port=(portServer.address() as {port:number}).port;await new Promise<void>(r=>portServer.close(()=>r()));
  const temporal=spawn('temporal',['server','start-dev','--ip','127.0.0.1','--port',String(port),'--headless'],{stdio:'ignore'});
  const database=createDatabase(process.env.DATABASE_URL!);const repo=new ListeningBatchRepository(database.db);
@@ -40,12 +42,19 @@ test('real Temporal: global admission, duplicate delivery, sequence, retry, dele
  // Per-user S3 archive stand-in; counts writes and deletions to observe in-flight races.
  const archive=new MemoryTranscriptArchive();let archiveDeletes=0;const baseDelete=archive.delete.bind(archive);archive.delete=async(...a)=>{archiveDeletes++;return baseDelete(...a);};
  const archived=async(userId:string,batchId:string)=>{const row=await repo.receipt(userId,batchId);return row?archive.objects.get(transcriptKey(userId,batchId,row.startedAt)):undefined;};
- async function worker(){const w=await createListeningTemporalWorker(config,repo,transcriber,archive);workers.push(w);running.push(w.worker.run());return w;}
+ const objectBytes=new Map<string,Buffer>();const durableObjects=new Set<string>();
+ const objects:AudioObjectStore={
+  async prepare(source){return objectBytes.has(source.key)?null:{url:'https://upload.example.invalid/file',headers:{},expiresAt:new Date(Date.now()+900000).toISOString()};},
+  async commit(source){const data=objectBytes.get(source.key);if(!data)throw new ServiceError(409,'upload_incomplete','Upload is incomplete',true);assert.equal(createHash('sha256').update(data).digest('hex'),source.sha256);durableObjects.add(source.key);},
+  async load(source){assert.ok(durableObjects.has(source.key));return objectBytes.get(source.key)!;},
+  async delete(source){objectBytes.delete(source.key);durableObjects.delete(source.key);},
+ };
+ async function worker(){const w=await createListeningTemporalWorker(config,repo,transcriber,archive,objects);workers.push(w);running.push(w.worker.run());return w;}
  try {
   await until(async()=>{try{first=await createListeningBatchService(config,repo);return true;}catch{return false;}},20000);
   second=await createListeningBatchService(config,repo);
   const runtime=createRuntimeRepository(database.db,loadConfig('api'));const user=await runtime.findUser('alice');
-  for(const service of [first!,second!]){const api=createApiServer(runtime,{batches:repo,batchService:service,listening:new ListeningRepository(database.db,archive),listeningEnabled:true});api.listen(0,'127.0.0.1');await once(api,'listening');apis.push(api);}
+  for(const service of [first!,second!]){const api=createApiServer(runtime,{uploads:new ListeningUploadService(repo,objects,service),batches:repo,batchService:service,listening:new ListeningRepository(database.db,archive),listeningEnabled:true});api.listen(0,'127.0.0.1');await once(api,'listening');apis.push(api);}
   const post=async(batch:any,index=0)=>fetch(`http://127.0.0.1:${(apis[index]!.address() as {port:number}).port}/api/v1/listening/batches`,{method:'POST',headers:{Authorization:'Bearer instant-dev-alice','Content-Type':'application/json'},body:JSON.stringify(batch)});
   await worker();await worker();
   const streamId=randomUUID();const sessionId=randomUUID();
@@ -55,11 +64,13 @@ test('real Temporal: global admission, duplicate delivery, sequence, retry, dele
   one.items.forEach((item,i)=>Object.assign(item,{locations:locations[i]}));
   const receipts=await Promise.all([post(one),post(one,1)]);assert.deepEqual(receipts.map(r=>r.status),[202,202]);
   await until(async()=>calls===1);
-  assert.equal((await post(two,1)).status,429);
+  assert.equal((await post(two,1)).status,202);
+  await until(async()=>calls===2); // A blocked first transcription must not stop a second upload.
   assert.equal((await post({...one,items:[{...one.items[0],audio:'YWJj'}]})).status,409);
   assert.equal((await repo.receipt(user.id,one.batchId))?.status,'transcribing');
   blocked=false;await until(async()=>(await repo.receipt(user.id,one.batchId))?.status==='transcribed');
-  assert.equal((await post(one)).status,202);assert.equal(calls,1);
+  await until(async()=>(await repo.receipt(user.id,two.batchId))?.status==='transcribed');
+  assert.equal((await post(one)).status,202);assert.equal(calls,2);
   assert.equal((await post({...one,items:one.items.map(item=>({...item,locations:[]}))})).status,409,'changing recording location cannot mutate a sealed batch');
   // The raw transcript is archived per user, keyed by the recording's start time and batch ID.
   const archivedOne=await archived(user.id,one.batchId);assert.equal(archivedOne?.transcript,'batch transcript');assert.equal(archivedOne?.segments?.length,2);
@@ -92,9 +103,9 @@ test('real Temporal: global admission, duplicate delivery, sequence, retry, dele
   assert.deepEqual(evidence.find(e=>e.id===`echo:${rowOne.id}`)?.location?.spans,locations.flat());
   assert.equal((await patch(null)).status,200);
   assert.equal((await today.currentSource(user.id,{kind:'batch',recordId:rowOne.id}))?.version,originalSource?.version);
-  assert.equal((await post(input(4))).status,409);
+  assert.equal((await post(input(1))).status,409,'a different batch cannot claim an existing stream sequence');
   assert.equal((await post(two,1)).status,202);await until(async()=>(await repo.receipt(user.id,two.batchId))?.status==='transcribed');
-  assert.equal(maximum,1);assert.deepEqual(sizes,[2,2]);
+  assert.equal(maximum,2);assert.deepEqual(sizes,[2,2]);
   // Deleting a transcribed recording over HTTP deletes its archived transcript.
   const twoRow=await repo.receipt(user.id,two.batchId);assert.ok(await archived(user.id,two.batchId));
   const removed=await fetch(`http://127.0.0.1:${(apis[0]!.address() as {port:number}).port}/api/v1/listening/segments/${twoRow!.id}`,{method:'DELETE',headers:{Authorization:'Bearer instant-dev-alice'}});
@@ -110,11 +121,11 @@ test('real Temporal: global admission, duplicate delivery, sequence, retry, dele
   failing=true;const four=input(4);assert.equal((await post(four)).status,202);
   await until(async()=>(await repo.receipt(user.id,four.batchId))?.status==='failed');
   const row=await repo.receipt(user.id,four.batchId);await repo.delete(user.id,row!.id);await first!.retry(user.id,four.batchId);
-  await until(async()=>{const state=await first!.client.workflow.getHandle(listeningWorkflowId(user.id)).query<{status:string}>('listeningState');return state.status==='idle';});
+  await until(async()=>(await first!.client.workflow.getHandle(batchWorkflowId(user.id,four.batchId)).describe()).status.name==='COMPLETED');
   assert.equal((await post(four)).status,410);failing=false;
   // Stop every poller, accept work while absent, then resume on a fresh Worker.
   for(const w of workers)w.worker.shutdown();await Promise.all(running);
-  const five=input(5);const accepting=post(five);await delay(500);await worker();assert.equal((await accepting).status,202);
+  const five=input(5);assert.equal((await post(five)).status,202,'durable upload acceptance does not need a Worker');await worker();
   await until(async()=>(await repo.receipt(user.id,five.batchId))?.status==='transcribed');
   assert.equal((await repo.receipt(user.id,four.batchId))?.transcript,'');
   assert.equal(await archived(user.id,four.batchId),undefined,'a deleted failed batch is never archived');
@@ -140,8 +151,58 @@ test('real Temporal: global admission, duplicate delivery, sequence, retry, dele
    assert.equal(await repo.complete(current.id,current.token,{transcript:'current',utterances:[],model:'test'}),true);
   }
 
-  // Query the canonical ID after multiple continue-as-new runs.
-  assert.equal((await first!.client.workflow.getHandle(listeningWorkflowId(user.id)).describe()).status.name,'RUNNING');
+  // Each accepted batch has one stable, completed workflow.
+  assert.equal((await first!.client.workflow.getHandle(batchWorkflowId(user.id,one.batchId)).describe()).status.name,'COMPLETED');
+  // Metadata-only S3 flow: foreign users and premature confirmations cannot claim audio.
+  const direct=input(40);const bytes=Buffer.from(JSON.stringify(direct));
+  const manifest={batch:{...direct,items:direct.items.map(({audio,...item})=>({...item,audioBytes:Buffer.from(audio,'base64').length}))},
+   sha256:createHash('sha256').update(bytes).digest('hex'),byteLength:bytes.length};
+  const uploadRequest=(path:string,body:unknown={},owner='alice')=>fetch(`http://127.0.0.1:${(apis[0]!.address() as {port:number}).port}/api/v1/listening/${path}`,{method:'POST',headers:{Authorization:`Bearer instant-dev-${owner}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const ticket=await uploadRequest('uploads',manifest);assert.equal(ticket.status,200);assert.equal((await ticket.json()).status,'upload');
+  const complete=`uploads/${direct.batchId}/complete`;
+  assert.equal((await uploadRequest(complete,{},'bob')).status,404);
+  assert.equal((await uploadRequest(complete)).status,409);
+  assert.equal((await uploadRequest('uploads',{...manifest,sha256:'f'.repeat(64)})).status,409);
+  const staged=(await repo.receipt(user.id,direct.batchId))!;
+  assert.ok(staged.uploadInput?.audioSource);assert.ok(staged.uploadInput.items.every(item=>item.audio===''));
+  objectBytes.set(staged.uploadInput.audioSource.key,bytes);
+  assert.equal((await (await uploadRequest('uploads',manifest)).json()).status,'uploaded','a lost PUT response does not resend stored bytes');
+  const callsBefore=calls;
+  assert.equal((await uploadRequest(complete)).status,202);
+  assert.equal((await uploadRequest(complete)).status,202,'repeat confirmation is idempotent');
+  await until(async()=>(await repo.receipt(user.id,direct.batchId))?.status==='transcribed');
+  assert.equal(calls,callsBefore+1);await until(async()=>!objectBytes.has(staged.uploadInput!.audioSource!.key));
+  assert.equal((await repo.receipt(user.id,direct.batchId))?.uploadInput,null);
+  assert.equal((await (await uploadRequest('uploads',manifest)).json()).status,'accepted','a lost final receipt never requires another upload');
+  const stageDirect=async(sequence:number)=>{
+   const batch=input(sequence),data=Buffer.from(JSON.stringify(batch));
+   const body={batch:{...batch,items:batch.items.map(({audio,...item})=>({...item,audioBytes:Buffer.from(audio,'base64').length}))},sha256:createHash('sha256').update(data).digest('hex'),byteLength:data.length};
+   assert.equal((await uploadRequest('uploads',body)).status,200);
+   const row=(await repo.receipt(user.id,batch.batchId))!;objectBytes.set(row.uploadInput!.audioSource!.key,data);
+   return {batch,row,body,complete:`uploads/${batch.batchId}/complete`};
+  };
+  failing=true;const failedUpload=await stageDirect(41);
+  assert.equal((await uploadRequest(failedUpload.complete)).status,202);
+  await until(async()=>(await repo.receipt(user.id,failedUpload.batch.batchId))?.status==='failed');
+  assert.ok(objectBytes.has(failedUpload.row.uploadInput!.audioSource!.key),'model failure retains confirmed audio');
+  failing=false;await first!.retry(user.id,failedUpload.batch.batchId);
+  await until(async()=>(await repo.receipt(user.id,failedUpload.batch.batchId))?.status==='transcribed');
+  await until(async()=>!objectBytes.has(failedUpload.row.uploadInput!.audioSource!.key));
+  const deletedUpload=await stageDirect(42);
+  const deletion=await fetch(`http://127.0.0.1:${(apis[0]!.address() as {port:number}).port}/api/v1/listening/segments/${deletedUpload.row.id}`,{method:'DELETE',headers:{Authorization:'Bearer instant-dev-alice'}});
+  assert.equal(deletion.status,200);
+  assert.equal(objectBytes.has(deletedUpload.row.uploadInput!.audioSource!.key),false);
+  assert.equal((await uploadRequest(deletedUpload.complete)).status,410);
+  assert.equal((await uploadRequest('uploads',deletedUpload.body)).status,410);
+  // A legacy metadata reservation alone must never authorize local deletion.
+  const orphan=input(43),orphanBytes=Buffer.from(JSON.stringify(orphan));
+  await repo.reserve(parseListeningBatch(orphan,user.id),2);
+  const orphanManifest={batch:{...orphan,items:orphan.items.map(({audio,...item})=>({...item,audioBytes:Buffer.from(audio,'base64').length}))},sha256:createHash('sha256').update(orphanBytes).digest('hex'),byteLength:orphanBytes.length};
+  assert.equal((await uploadRequest('uploads',orphanManifest)).status,503);
+  assert.equal((await uploadRequest(`uploads/${orphan.batchId}/complete`)).status,503);
+  assert.equal((await post(orphan)).status,202);
+  assert.equal((await (await uploadRequest('uploads',orphanManifest)).json()).status,'accepted');
+  await until(async()=>(await repo.receipt(user.id,orphan.batchId))?.status==='transcribed');
   await patch('Home');
   await new ListeningRepository(database.db,archive).delete(user.id,rowOne.id);
   const [tombstone]=await database.db.select().from(listeningBatches).where(eq(listeningBatches.id,rowOne.id));

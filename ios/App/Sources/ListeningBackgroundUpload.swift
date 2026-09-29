@@ -17,7 +17,7 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
         sessionIdentifier = identifier; self.authorizeRequest = authorizeRequest
         super.init()
     }
-    private struct Description: Codable { let directory: String; let id: String; var batch: StoredListeningBatch? = nil }
+    private struct Description: Codable { let directory: String; let id: String; var batch: StoredListeningBatch? = nil; var objectUpload: Bool? = nil }
     private let lock = NSLock()
     private var waiting: [Int: CheckedContinuation<Void, Error>] = [:]
     private var finished: [Int: Result<Void, Error>] = [:]
@@ -37,6 +37,21 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
     @MainActor func reconnect(completion: (@MainActor @Sendable () -> Void)? = nil) {
         if let completion { lock.withLock { self.completion = completion } }
         _ = session
+    }
+
+    @MainActor func hasPendingBatch(_ id: String, objectUpload: Bool? = nil) async -> Bool {
+        await session.allTasks.contains { task in
+            guard task.state != .completed && task.state != .canceling,
+                  let text = task.taskDescription, let data = text.data(using: .utf8),
+                  let descriptor = try? JSONDecoder().decode(Description.self, from: data) else { return false }
+            return descriptor.batch?.batchId == id && (objectUpload == nil || (descriptor.objectUpload == true) == objectUpload)
+        }
+    }
+
+    @MainActor func uploadObject(request: URLRequest, batch: StoredListeningBatch, store: ListeningStore) async throws {
+        try await schedule(request: request,
+                           description: Description(directory: store.directory.path, id: batch.batchId, batch: batch, objectUpload: true),
+                           file: ListeningBatchStore(store: store).payloadURL(batch.batchId))
     }
 
     @MainActor func upload(request: URLRequest, item: PendingRecording, store: ListeningStore) async throws {
@@ -85,6 +100,9 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willBeginDelayedRequest request: URLRequest,
                     completionHandler: @escaping @Sendable (URLSession.DelayedRequestDisposition, URLRequest?) -> Void) {
+        // S3 authenticates the URL, never with a Clerk token. An expired URL fails
+        // without deleting audio and is renewed by the next metadata handshake.
+        if request.value(forHTTPHeaderField: "Authorization") == nil { completionHandler(.continueLoading, nil); return }
         Task { @MainActor in
             do {
                 let fresh = try await authorizeRequest(request)
@@ -126,6 +144,12 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
             let directory = URL(fileURLWithPath: descriptor.directory).standardizedFileURL
             guard directory.deletingLastPathComponent().path == root.path else { throw InstantClientError.invalidResponse }
             let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+            if descriptor.objectUpload == true {
+                guard status == 200 else { throw InstantClientError.unexpectedHTTPStatus(status) }
+                // S3 receipt alone must never delete the local recording. The API
+                // must confirm its checksum and durable transcription job first.
+                ListeningDiagnostics.shared.record("upload.object_stored", ["batchId": descriptor.id, "status": String(status)])
+            } else {
             if status == 202 {
                 if let batch = descriptor.batch {
                     let receipt = try JSONDecoder().decode(ListeningBatchReceipt.self, from: body)
@@ -140,6 +164,7 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
             if let batch = descriptor.batch { try ListeningBatchStore(store: store).removeConfirmed(batch) }
             else { try store.remove(descriptor.id) }
             ListeningDiagnostics.shared.record("upload.receipt", ["batchId":descriptor.id,"status":String(status),"requestId":(task.response as? HTTPURLResponse)?.value(forHTTPHeaderField:"X-Request-Id") ?? "unknown"])
+            }
             result = .success(())
         } catch {
             let descriptor = task.taskDescription.flatMap { $0.data(using:.utf8) }.flatMap { try? JSONDecoder().decode(Description.self,from:$0) }
@@ -156,6 +181,9 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
         }
         continuation?.resume(with: result)
     }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         let finished = lock.withLock { let value = completion; completion = nil; return value }

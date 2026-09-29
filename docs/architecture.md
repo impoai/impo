@@ -33,7 +33,7 @@ such as task creation. Direct remote MCP is not the default dispatch path.
 
 ## Background work and storage
 
-Temporal coordinates per-user Echo batches and perpetual hourly background
+Temporal coordinates independent Echo batch jobs and perpetual hourly background
 workflows. The background registry runs Brief and Memory steps, with periodic
 Continue-As-New. A scheduled trigger and the execution model are separate
 concepts; recurring user-created tasks are not implemented yet.
@@ -42,7 +42,7 @@ concepts; recurring user-created tasks are not implemented yet.
 | --- | --- |
 | PostgreSQL | Ownership, conversation metadata, execution state, device receipts, connector bindings, Brief editions and recording metadata. |
 | Rebyte | Agent Sessions, Turns, Items and live conversation text in the managed runtime. |
-| S3 | Per-user Echo transcript records when archive storage is configured. |
+| S3 | Private direct audio uploads and per-user Echo transcript records. |
 | Turso | A separate database per user for consolidated long-term memory. |
 | iOS local storage | Offline recording segments, immutable upload batches, device receipts and UI state. |
 

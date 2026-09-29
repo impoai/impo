@@ -6,7 +6,7 @@
 - Keep platform boundaries: `ios/`, `android/`, `server/`, `contracts/`, `docs/`, `scripts/`.
 - Use the root npm workspace commands for installation and verification.
 - Keep all provider secrets on the server. Local `.env`, signing files and build output stay untracked.
-- The client connects only to the Impo API. An HTTP stream is a subscription, not the lifetime of a run.
+- The client uses the Impo API for commands and server-issued S3 URLs for audio uploads. An HTTP stream is a subscription, not the lifetime of a run.
 - Enforce user ownership on every conversation, task, recording, file and device request.
 - Generated product content comes from a Rebyte Agent. Keep model calls out of API request handlers.
 - Use `@rebyteai/agent-sdk` and `client.beta.agents`; keep provider protocol separate from the client API.

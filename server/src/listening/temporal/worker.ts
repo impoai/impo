@@ -4,6 +4,7 @@ import type { ListeningBatchRepository } from '../batch-repository.js';
 import type { BatchTranscriber } from '../transcriber.js';
 import type { TemporalOptions } from './client.js';
 import type { TranscriptArchive } from '../transcript-archive.js';
-export async function createListeningTemporalWorker(config:TemporalOptions,repository:ListeningBatchRepository,transcriber:BatchTranscriber,archive?:TranscriptArchive){
- return createTemporalWorker(config,createListeningActivities(repository,transcriber,archive));
+import type { AudioObjectStore } from '../audio-upload.js';
+export async function createListeningTemporalWorker(config:TemporalOptions,repository:ListeningBatchRepository,transcriber:BatchTranscriber,archive?:TranscriptArchive,objects?:AudioObjectStore){
+ return createTemporalWorker(config,createListeningActivities(repository,transcriber,archive,objects));
 }

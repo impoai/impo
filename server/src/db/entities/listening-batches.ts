@@ -3,12 +3,15 @@ import { check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } 
 import { users } from './chat.js';
 import type { StoredError } from './runtime.js';
 import type { EchoLocationSpan } from '../../listening/location.js';
+import type { AcceptedBatch } from '../../listening/batch-contract.js';
 export interface BatchSegmentMetadata { segmentId: string; startedAt: string; endedAt: string; locations?: EchoLocationSpan[] }
-/** Metadata and results only. Raw audio is owned by Temporal, never this table. */
+/** Metadata only. New uploads keep raw audio in S3; legacy inputs remain in Temporal. */
 export const listeningBatches = pgTable('listening_batches', {
  id: uuid('id').primaryKey().defaultRandom(), userId: uuid('user_id').notNull().references(()=>users.id),
  clientBatchId: uuid('client_batch_id').notNull(), streamId: uuid('stream_id').notNull(), sequence: integer('sequence').notNull(),
  sessionId: uuid('session_id').notNull(), contentHash:text('content_hash').notNull(),
+ workflowVersion:integer('workflow_version').notNull().default(1),
+ uploadInput:jsonb('upload_input').$type<AcceptedBatch>(),
  startedAt:timestamp('started_at',{withTimezone:true}).notNull(), endedAt:timestamp('ended_at',{withTimezone:true}).notNull(),
  audioMilliseconds:integer('audio_milliseconds').notNull(), segments:jsonb('segments').$type<BatchSegmentMetadata[]>().notNull(),
  status:text('status',{enum:['pending','transcribing','transcribed','failed','deleted']}).notNull().default('pending'),

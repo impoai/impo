@@ -52,3 +52,19 @@ export async function userListeningWorkflow(state:ListeningWorkflowState):Promis
   if(!active) return continueAsNew<typeof userListeningWorkflow>({userId:state.userId,streams});
  }
 }
+
+/** Each accepted batch owns its durable audio and retries independently of other batches. */
+export async function batchListeningWorkflow(batch: AcceptedBatch): Promise<void> {
+ let status = 'pending'; let retry = false;
+ setHandler(listeningState, () => ({batchId: batch.batchId, status, sequence: batch.sequence}));
+ setHandler(retryListeningBatch, id => { if (id === batch.batchId) retry = true; });
+ while (true) {
+  status = 'transcribing'; retry = false;
+  try { await operations.transcribeBatch(batch); return; }
+  catch {
+   status = 'failed';
+   await metadata.markFailed(batch.userId, batch.batchId);
+   await condition(() => retry);
+  }
+ }
+}

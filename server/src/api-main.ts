@@ -10,6 +10,7 @@ import { RebyteGateway } from './rebyte/gateway.js';
 import { GmailConnectorService } from './composio/gmail-service.js';
 import { S3TranscriptArchive } from './listening/transcript-archive.js';
 import { createMemoryStore } from './memory/index.js';
+import { ListeningUploadService, S3AudioObjectStore } from './listening/audio-upload.js';
 
 async function main(): Promise<void> {
   const config = loadConfig('api');
@@ -23,7 +24,9 @@ async function main(): Promise<void> {
   const batchService = config.temporal ? await createListeningBatchService(config.temporal, batches) : undefined;
   const archive = config.transcriptArchive ? new S3TranscriptArchive(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
   const memories = createMemoryStore(database.db, config.memory);
-  const server = createApiServer(repository, { memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, gmail, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development' });
+  const uploads = config.transcriptArchive && batchService ? new ListeningUploadService(batches,
+    new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
+  const server = createApiServer(repository, { uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, gmail, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development' });
   let stopping = false;
   async function shutdown(): Promise<void> {
     if (stopping) return;

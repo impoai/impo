@@ -1,4 +1,5 @@
 import { ListeningBatchRepository } from '../listening/batch-repository.js';
+import type { ListeningUploadService } from '../listening/audio-upload.js';
 import type { TodayRepository } from '../today/repository.js';
 import type { MemoryStore } from '../memory/store.js';
 import { memoryCategories, type MemoryCategory } from '../memory/contract.js';
@@ -33,6 +34,7 @@ export interface ApiOptions {
   listeningEnabled?: boolean;
   batches?: ListeningBatchRepository;
   batchService?: ListeningBatchService;
+  uploads?: ListeningUploadService;
   runtime?: 'development' | 'rebyte';
   pollIntervalMs?: number;
   requestTimeoutMs?: number;
@@ -78,7 +80,8 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       if (res.destroyed) return;
       if (res.headersSent) { res.destroy(); return; }
       const safe = error instanceof ServiceError ? error : new ServiceError(500, 'internal_error', 'Impo server error', true);
-      if (area) console.log(JSON.stringify({event:`${area}.request_failed`,at:new Date().toISOString(),requestId,route:routeName,code:safe.code,status:safe.status}));
+      if (area) console.log(JSON.stringify({event:`${area}.request_failed`,at:new Date().toISOString(),requestId,route:routeName,code:safe.code,status:safe.status,
+        ...(safe.code === 'request_timeout' ? {receivedBytes:(safe as ServiceError & {receivedBytes?:number}).receivedBytes} : {})}));
       if (safe.status === 429) res.setHeader('Retry-After', '30');
       // Do not keep a socket open with a rejected, incomplete request body.
       if (!req.complete) res.setHeader('Connection', 'close');
@@ -173,6 +176,18 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 200, { status: 'deleted' }); return;
       }
       throw new ServiceError(404, 'not_found', 'Memory route not found');
+    }
+    if (path === '/api/v1/listening/uploads' && method === 'POST') {
+      if (!options.uploads) throw new ServiceError(503, 'upload_unavailable', 'Direct audio upload is not configured.', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      // A full batch can carry 256 bounded place-name spans, but no audio bytes.
+      sendJSON(res, 200, await options.uploads.prepare(user.id, await readJSON(req, requestTimeoutMs, 384 * 1024))); return;
+    }
+    const completeUpload = /^\/api\/v1\/listening\/uploads\/([^/]+)\/complete$/.exec(path);
+    if (completeUpload && method === 'POST') {
+      if (!options.uploads) throw new ServiceError(503, 'upload_unavailable', 'Direct audio upload is not configured.', true);
+      onlyFields(await readJSON(req, requestTimeoutMs), []);
+      sendJSON(res, 202, await options.uploads.complete(user.id, uuid(completeUpload[1]))); return;
     }
     if (path === '/api/v1/listening/batches' && method === 'POST') {
       if (!options.batchService || !options.listeningEnabled) throw new ServiceError(503, 'listening_unavailable', 'Batch listening is temporarily unavailable.', true);
@@ -275,6 +290,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       if (segment && method === 'DELETE') {
         if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
         const batchId = await options.listening.delete(user.id, uuid(segment[1]));
+        if (batchId) await options.uploads?.cleanupDeleted(user.id, batchId);
         if (batchId) await options.batchService?.retry(user.id, batchId);
         sendJSON(res, 200, { status: 'deleted' }); return;
       }

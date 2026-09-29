@@ -72,7 +72,7 @@ export function readBody(req: IncomingMessage, maxBytes: number, timeoutMs: numb
     const chunks: Buffer[] = [];
     let length = 0;
     let settled = false;
-    const timeout = setTimeout(() => finish(new ServiceError(408, 'request_timeout', 'Request body timed out', true)), timeoutMs);
+    const timeout = setTimeout(() => finish(Object.assign(new ServiceError(408, 'request_timeout', 'Request body timed out', true), { receivedBytes: length })), timeoutMs);
     timeout.unref();
     const finish = (error?: Error) => {
       if (settled) return;

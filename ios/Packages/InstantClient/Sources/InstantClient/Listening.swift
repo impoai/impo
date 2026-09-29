@@ -73,3 +73,11 @@ public struct ListeningBatchReceipt: Codable, Equatable, Sendable {
     public let sequence: Int
     public let status: String
 }
+
+public struct ListeningUploadTicket: Codable, Sendable {
+    public let status: String
+    public let url: URL?
+    public let headers: [String: String]?
+    public let expiresAt: String?
+    public let receipt: ListeningBatchReceipt?
+}

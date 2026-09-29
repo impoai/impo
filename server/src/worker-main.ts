@@ -13,6 +13,7 @@ import { BackgroundProvisioner } from './background/provisioner.js';
 import { ListeningRepository } from './listening/repository.js';
 import { ListeningWorker } from './listening/worker.js';
 import { S3TranscriptArchive } from './listening/transcript-archive.js';
+import { S3AudioObjectStore } from './listening/audio-upload.js';
 import { DevelopmentTranscriber, GeminiTranscriber } from './listening/transcriber.js';
 import { loadConfig, databaseRequiresSsl } from './config.js';
 import { createDatabase } from './db/client.js';
@@ -42,6 +43,7 @@ try {
   const transcriber = config.runtime === 'development' ? new DevelopmentTranscriber()
     : config.listening ? new GeminiTranscriber(config.listening) : undefined;
   const archive = config.transcriptArchive ? new S3TranscriptArchive(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
+  const audioObjects = config.transcriptArchive ? new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
   const listening = transcriber ? new ListeningWorker(new ListeningRepository(database.db, archive), transcriber) : undefined;
   if (process.argv.includes('--once')) { await worker.tick(controller.signal); await listening?.tick(controller.signal); }
   else {
@@ -55,7 +57,7 @@ try {
           todayStep(new TodayRepository(database.db, archive, new RebyteGateway(config.rebyte)), new RebyteGateway(config.rebyte), config.rebyte.model),
           ...(memoryStore ? [memoryStep(new MemoryRepository(database.db, archive, new RebyteGateway(config.rebyte)), memoryStore, new RebyteGateway(config.rebyte), { model: config.rebyte.model })] : []),
         ] : []),
-        ...(transcriber ? createListeningActivities(new ListeningBatchRepository(database.db), transcriber, archive) : {}),
+        ...(transcriber ? createListeningActivities(new ListeningBatchRepository(database.db), transcriber, archive, audioObjects) : {}),
       });
       provisioner = new BackgroundProvisioner(users, background);
     }

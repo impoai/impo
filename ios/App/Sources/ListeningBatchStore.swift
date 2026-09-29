@@ -1,5 +1,6 @@
 import Foundation
 import InstantClient
+import CryptoKit
 
 struct ListeningBatchPayload: Codable {
     struct Item: Codable {
@@ -99,7 +100,7 @@ struct ListeningBatchStore {
                     items.append(.init(segmentId: item.id, startedAt: formatter.string(from: item.startedAt), endedAt: formatter.string(from: item.endedAt), mimeType: "audio/mp4", audio: audio.base64EncodedString(), locations: item.locations))
                     position += 1
                 }
-                guard !items.isEmpty, force || boundary || seconds >= 120 || now.timeIntervalSince(first.endedAt) >= 300 else { break }
+                guard !items.isEmpty, force || boundary || seconds >= 30 || now.timeIntervalSince(first.endedAt) >= 30 else { break }
                 let payload = ListeningBatchPayload(batchId: UUID().uuidString.lowercased(), streamId: state.streamId, sequence: state.nextSequence, sessionId: session, items: items)
                 try write(payload, to: payloadURL(payload.batchId))
                 state.nextSequence += 1
@@ -120,6 +121,19 @@ struct ListeningBatchStore {
     }
     func verify(_ receipt: ListeningBatchReceipt, for batch: StoredListeningBatch) throws {
         guard receipt.batchId == batch.batchId, receipt.streamId == batch.streamId, receipt.sequence == batch.sequence, receipt.status == "accepted" else { throw InstantClientError.invalidResponse }
+    }
+
+    func uploadManifest(_ batch: StoredListeningBatch) throws -> Data {
+        let data = try Data(contentsOf: payloadURL(batch.batchId))
+        guard var value = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let original = value["items"] as? [[String: Any]] else { throw InstantClientError.invalidResponse }
+        value["items"] = try original.map { item in
+            guard let audio = item["audio"] as? String, let bytes = Data(base64Encoded: audio) else { throw InstantClientError.invalidResponse }
+            var metadata = item; metadata.removeValue(forKey: "audio"); metadata["audioBytes"] = bytes.count
+            return metadata
+        }
+        return try JSONSerialization.data(withJSONObject: ["batch": value, "byteLength": data.count,
+            "sha256": SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()], options: [.sortedKeys])
     }
 }
 enum ListeningBatchError: Error { case recordingTooLarge }

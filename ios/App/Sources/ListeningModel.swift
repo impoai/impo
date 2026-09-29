@@ -16,7 +16,14 @@ final class ListeningModel: NSObject {
     private(set) var pauseReason: String?
     private(set) var pausedAt: Date?
     var wifiOnly = false {
-        didSet { if let scope { UserDefaults.standard.set(wifiOnly, forKey: "instant.listening.wifiOnly.\(scope)") } }
+        didSet {
+            if let scope { UserDefaults.standard.set(wifiOnly, forKey: "instant.listening.wifiOnly.\(scope)") }
+            if oldValue != wifiOnly {
+                lastAutomaticAttempt = .distantPast
+                if uploading { retrySyncOnCompletion = true }
+                else { Task { [weak self] in await self?.sync(force: false) } }
+            }
+        }
     }
     var locationEnabled = true {
         didSet {
@@ -28,7 +35,12 @@ final class ListeningModel: NSObject {
     }
     var locationStatus = "Location is added while Echo records."
     var sealedBatchCount = 0
-    var uploadStatus: String { wifiOnly ? "Wi-Fi only · audio saved on this iPhone" : "Speech collected into batches · auto-sync about every 2–5 min" }
+    var uploadStatus: String {
+        if wifiOnly && network != .wifi { return "Waiting for Wi-Fi · recordings saved on this iPhone" }
+        if network == .offline { return "Offline · recordings saved on this iPhone" }
+        if uploading { return "Uploading · \(sealedBatchCount) batches remaining" }
+        return wifiOnly ? "Wi-Fi only · syncs automatically" : "Wi-Fi and cellular · syncs about every 30 seconds"
+    }
     var startedAt: Date?
     var notice: String?
     var uploadError: String?
@@ -532,20 +544,32 @@ final class ListeningModel: NSObject {
             reloadPending(); diagnosticHeartbeat()
             if wifiOnly && network != .wifi { return }
             if !force {
-                guard network != .offline, Date().timeIntervalSince(lastAutomaticAttempt) >= 30 else { return }
+                guard network != .offline, Date().timeIntervalSince(lastAutomaticAttempt) >= 3 else { return }
             }
             lastAutomaticAttempt = Date()
             for batch in try batches.batches() {
                 guard generation == token, !Task.isCancelled else { return }
+                if wifiOnly && network != .wifi { return }
                 log("upload.started", ["batchId":batch.batchId,"sequence":String(batch.sequence),"segments":String(batch.segmentIDs.count),"bytes":String(batch.audioBytes)])
                 do {
-                    if storageRoot == nil {
+                    let legacyTransfer = storageRoot == nil ? await ListeningBackgroundUpload.shared.hasPendingBatch(batch.batchId, objectUpload: false) : false
+                    if legacyTransfer {
+                        // Adopt an old app version's already-running transfer before switching protocols.
                         var request = try await client.listeningBatchUploadRequest()
                         guard generation == token else { return }
                         request.allowsCellularAccess = !wifiOnly
                         try await ListeningBackgroundUpload.shared.uploadBatch(client:client,request:request,batch:batch,store:store)
+                    } else if storageRoot == nil {
+                        try await ListeningObjectUpload.sync(client: client, batch: batch, store: store, wifiOnly: wifiOnly) { request, file in
+                            guard self.generation == token else { throw CancellationError() }
+                            let pending = await ListeningBackgroundUpload.shared.hasPendingBatch(batch.batchId, objectUpload: true)
+                            if pending || (!self.isAppActive() && !self.isRecording) {
+                                try await ListeningBackgroundUpload.shared.uploadObject(request: request, batch: batch, store: store)
+                            } else { try await ListeningObjectUpload.upload(request, file: file) }
+                        }
                     } else {
-                        let receipt = try await client.uploadListeningBatch(Data(contentsOf:batches.payloadURL(batch.batchId)))
+                        // Isolated local protocol fixtures retain their deterministic HTTP transport.
+                        let receipt = try await client.uploadListeningBatch(Data(contentsOf:batches.payloadURL(batch.batchId)), allowsCellularAccess: !wifiOnly)
                         try batches.verify(receipt,for:batch)
                         log("upload.receipt", ["batchId":batch.batchId,"sequence":String(batch.sequence),"status":"202"])
                     }

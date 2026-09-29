@@ -237,12 +237,28 @@ public struct InstantClient: Sendable {
         return request
     }
 
-    public func uploadListeningBatch(_ payload: Data) async throws -> ListeningBatchReceipt {
+    public func uploadListeningBatch(_ payload: Data, allowsCellularAccess: Bool = true) async throws -> ListeningBatchReceipt {
         var request = try await listeningBatchUploadRequest(); request.httpBody = payload
+        request.allowsCellularAccess = allowsCellularAccess
         let (data, response) = try await authorizedData(for: request)
         guard let http = response as? HTTPURLResponse else { throw InstantClientError.invalidResponse }
         guard http.statusCode == 202 else { throw decodeError(data: data, statusCode: http.statusCode) }
         return try JSONDecoder().decode(ListeningBatchReceipt.self, from: data)
+    }
+
+    /// The API receives metadata only. Audio is uploaded to the returned S3 URL separately.
+    public func prepareListeningUpload(_ manifest: Data) async throws -> ListeningUploadTicket {
+        var request = try await makeRequest("POST", ["listening", "uploads"])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = manifest
+        let (data, response) = try await authorizedData(for: request)
+        guard let http = response as? HTTPURLResponse else { throw InstantClientError.invalidResponse }
+        guard http.statusCode == 200 else { throw decodeError(data: data, statusCode: http.statusCode) }
+        return try JSONDecoder().decode(ListeningUploadTicket.self, from: data)
+    }
+
+    public func completeListeningUpload(_ batchId: String) async throws -> ListeningBatchReceipt {
+        try await send("POST", ["listening", "uploads", batchId, "complete"], body: .object([:]))
     }
 
     public func retryListeningBatch(_ id: String) async throws {

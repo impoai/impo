@@ -64,8 +64,9 @@ the Web frontend has not been started.
 ## Architecture
 
 Impo has three main layers: client frontends, a shared application backend, and a
-managed agent runtime. Every client talks only to the Impo API; provider credentials
-stay on the server. Dashed connections show planned clients.
+managed agent runtime. Clients use the Impo API for commands and temporary S3
+URLs for audio uploads; provider credentials stay on the server. Dashed connections
+show planned clients.
 
 ```mermaid
 flowchart TB
@@ -79,7 +80,7 @@ flowchart TB
         DB[("PostgreSQL / Drizzle")]
         Worker["Durable workers + tool dispatcher"]
         Temporal["Temporal workflows: Echo + hourly background work"]
-        S3[("S3: Echo transcript archive")]
+        S3[("S3: private audio + transcripts")]
         Turso[("Turso: per-user memory")]
         Worker --> S3
         Worker --> Turso
@@ -91,6 +92,7 @@ flowchart TB
         Worker <--> Temporal
     end
     App <-->|"HTTP commands + SSE"| API
+    App -->|"Signed audio PUT"| S3
     Android -.->|"Same client API"| API
     Web -.->|"Same client API"| API
     API --> Clerk["Clerk authentication"]
@@ -136,9 +138,10 @@ attempts before creating another Agent or Session.
 ### Echo and Brief
 
 **Echo:** microphone → on-device voice detection → durable local audio batches
-→ per-user Temporal workflow → Gemini transcription → transcript timeline.
-Batch IDs and sequence numbers support retries and offline recovery. Voice
-detection runs locally; transcription requires the configured backend service.
+→ signed S3 upload → API confirmation → independent Temporal job → Gemini
+transcription → transcript timeline. Checksum-bound files and stable batch IDs
+support retries and offline recovery. The API verifies the stored file and durable
+job before local audio is removed; failed jobs retain S3 audio for retry.
 
 **Brief:** a separate per-user Temporal workflow wakes hourly, checks the user's
 briefing preferences, and invokes a dedicated Rebyte Agent when a brief is due.
@@ -228,7 +231,7 @@ your own signing configuration and a reachable server address; see the
 | --- | --- |
 | Real agent conversations and tasks | Rebyte API key and `INSTANT_RUNTIME=rebyte`. |
 | External-service integrations | Composio credentials, connector configuration, and user authorization for enabled services; see the server guide. |
-| Echo transcription | Temporal address/namespace and a Gemini API key for the real runtime. |
+| Echo upload and transcription | Private S3 bucket and service-role access, Temporal address/namespace, and a Gemini API key. |
 | Brief briefings | Temporal and the Rebyte runtime. |
 | Long-term memory | Turso provider configuration; see `.env.example`. |
 | Deployed authentication | `INSTANT_AUTH_MODE=clerk` and your Clerk configuration. Local demo tokens are for local development. |

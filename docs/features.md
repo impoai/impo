@@ -18,10 +18,16 @@ The interface is named Brief; internal `today` routes and types remain compatibl
 
 The iOS app detects speech locally with Silero VAD. Audio segments and metadata
 are saved before upload. Sealed batches are immutable across offline recovery
-and retries. Temporal coordinates per-user ordering, admission and transcription
-retries; Google Gemini produces transcripts. With S3 configured, transcript text
-is archived per user and PostgreSQL keeps metadata. Processed audio is removed
-from the app/server upload path; normal provider/Temporal retention still applies.
+and retries. Speech is sealed about every 30 seconds; Wi-Fi and cellular are
+allowed by default, with an optional Wi-Fi-only setting. The app uploads files
+directly to private S3 using short-lived, checksum-bound URLs. The API verifies
+the object and durably starts a Temporal job before the app deletes local audio.
+Each batch transcribes independently; one failed batch does not block uploads.
+Google Gemini produces transcripts, which are archived per user. PostgreSQL
+keeps metadata; new Temporal jobs carry object references instead of audio.
+Processed audio is deleted from S3. Failed jobs retain audio for retry until the
+recording is deleted. Unconfirmed staging objects expire after one day when the
+documented bucket lifecycle is configured. Legacy clients remain supported.
 
 Optional recording-time location uses iOS permission and Apple's place-name
 service. It runs only while Echo capture is active, including a locked screen.
