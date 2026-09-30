@@ -37,7 +37,7 @@ test('Rebyte creation advertises device Functions with first input and recovery 
   const body = calls[0].body as { environment: unknown; agent: { model: string; instructions: string; tools: Array<{ type: string; name: string; parameters: Record<string, unknown> }> }; input: unknown; metadata: unknown };
   assert.deepEqual(body.environment, { type: 'none' });
   assert.equal(body.agent.model, 'gpt-5.6-luna'); assert.equal(body.agent.instructions, REBYTE_INSTRUCTIONS);
-  assert.deepEqual(body.agent.tools.map(tool => tool.name).sort(), ['ios_get_health_summary', 'ios_list_calendar_events']);
+  assert.deepEqual(body.agent.tools.map(tool => tool.name).sort(), ['impo_create_reminder', 'impo_get_health_summary', 'impo_list_calendar_events', 'impo_list_reminders', 'impo_search_contacts', 'ios_get_health_summary', 'ios_list_calendar_events']);
   assert.ok(body.agent.tools.every(tool => tool.type === 'function' && tool.parameters.additionalProperties === false));
   assert.deepEqual(body.input, [{ role: 'user', content: [{ type: 'input_text', text: '你好' }] }]); assert.deepEqual(body.metadata, metadata);
 });

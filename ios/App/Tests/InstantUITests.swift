@@ -43,9 +43,12 @@ final class InstantUITests: XCTestCase {
         tap("onboarding.permission.done")
         XCTAssertTrue(element("onboarding.connections.continue").isEnabled)
         tap("onboarding.connect.reminders")
-        require("onboarding.permission.allow")
-        capture("06 Reminders connection preview")
-        tap("onboarding.permission.allow")
+        require("connection.reminders")
+        capture("06 Reminders permission entry")
+        tap("onboarding.permission.done")
+        require("onboarding.connect.contacts")
+        scrollTo("onboarding.connect.gmail")
+        capture("06b Apps in onboarding")
         XCTAssertTrue(element("onboarding.connections.continue").isEnabled)
         tap("onboarding.connections.continue")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "introduce ourselves.")).firstMatch.waitForExistence(timeout: 8))
@@ -188,10 +191,25 @@ final class InstantUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["No messages found"].waitForExistence(timeout: 5))
         capture("31 Empty conversation search")
         tap("chat.search")
+
+        // Hold to talk with a fixed transcript: "…" while transcribing, then the sent message.
+        app.terminate()
+        app.launchArguments = ["--reset-demo", "--show-main", "--voice-fixture", "Help me plan my day"]
+        app.launch()
         let voice = require("chat.voice")
-        voice.press(forDuration: 0.8)
-        XCTAssertTrue((require("chat.input").value as? String)?.contains("Help me plan my day") == true)
-        capture("32 Voice preview draft")
+        let before = app.descendants(matching: .any).matching(identifier: "chat.message.user").count
+        voice.press(forDuration: 1.2)
+        XCTAssertTrue(element("chat.voice.transcribing").waitForExistence(timeout: 2), "Released speech shows a pending bubble")
+        capture("32 Voice transcribing")
+        XCTAssertTrue(app.staticTexts["Help me plan my day"].waitForExistence(timeout: 5))
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element("chat.voice.transcribing"))
+        wait(for: [gone], timeout: 5)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "chat.message.user").count, before + 1)
+        // Slide up to cancel: nothing is sent.
+        let start = voice.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.8, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -220)))
+        XCTAssertFalse(element("chat.voice.transcribing").waitForExistence(timeout: 1.5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "chat.message.user").count, before + 1)
 
         app.terminate()
         app.launchArguments = ["--reset-demo", "--show-main", "--voice-preview"]

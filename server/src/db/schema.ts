@@ -7,3 +7,4 @@ export * from './entities/listening.js';
 export * from './entities/listening-batches.js';
 export * from './entities/today.js';
 export * from './entities/memory.js';
+export * from './entities/profile.js';

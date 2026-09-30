@@ -484,7 +484,7 @@ struct AssistantView: View {
                 HStack(spacing: 6) {
                     ForEach(AssistantLook.choices, id: \.rawValue) { look in
                         let index = look.rawValue
-                        Button { model.avatarIndex = index; model.persistProfile() } label: {
+                        Button { model.avatarIndex = index; model.persistProfile(); model.syncAccountProfile() } label: {
                             AssistantAvatar(index: index, size: 42)
                                 .padding(4)
                                 .background(model.avatarIndex == index ? InstantStyle.sage.opacity(0.28) : .clear, in: RoundedRectangle(cornerRadius: 17))
@@ -514,7 +514,7 @@ struct AssistantView: View {
                 TextField("Name", text: $name).accessibilityIdentifier("assistant.name")
                 Button("Save") {
                     let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !clean.isEmpty { model.assistantName = String(clean.prefix(30)); model.persistProfile() }
+                    if !clean.isEmpty { model.assistantName = String(clean.prefix(30)); model.persistProfile(); model.syncAccountProfile() }
                 }
                 Button("Cancel", role: .cancel) {}
             }
@@ -674,11 +674,12 @@ private struct LibraryConnectionsView: View {
                     .font(.system(size: 15)).foregroundStyle(libraryMuted).lineSpacing(4)
                 DeviceAccessCard(kind: "calendar")
                 DeviceAccessCard(kind: "health")
+                DeviceAccessCard(kind: "reminders")
+                DeviceAccessCard(kind: "contacts")
                 ConnectorsSection()
                 Label("Messages", systemImage: "message.fill").font(InstantStyle.serif(21)).padding(.top, 8)
                 Text("iOS does not give Impo access to your existing SMS or iMessage history. You can paste a message into the conversation for help.")
                     .font(.footnote).foregroundStyle(libraryMuted).accessibilityIdentifier("connection.messages.unavailable")
-                Text("Reminders and Contacts will be added later.").font(.footnote).foregroundStyle(libraryMuted)
                 if model.useLiveBackend {
                     Text(model.deviceConnectionStatus).font(.caption).foregroundStyle(libraryMuted)
                 } else {

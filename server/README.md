@@ -315,3 +315,15 @@ npm --workspace @instant/server run db:push -- --hints '[{"type":"create","kind"
 
 The connector database tests verify this upgrade from the previous schema before
 exercising multiple app connections. No migration history is required.
+
+The device capability check was renamed the same way when Reminders and Contacts
+tools were added. Choose **create** for `device_capabilities_tool_v2_check` too;
+with both hints:
+
+```sh
+npm --workspace @instant/server run db:push -- --hints '[{"type":"create","kind":"check","entity":["public","connector_connections","connector_connections_toolkit_slug_check"]},{"type":"create","kind":"check","entity":["public","device_capabilities","device_capabilities_tool_v2_check"]}]'
+```
+
+`user_profiles` stores whether an account finished onboarding and its assistant
+name and look (`GET`/`PATCH /api/v1/profile`). Accounts that already chatted
+before this table existed count as onboarded.

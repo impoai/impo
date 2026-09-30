@@ -1,0 +1,4 @@
+# sdk.dir=/path/to/Android/sdk
+# Public deployment configuration only. No provider secret keys belong here.
+impo.apiUrl=https://your-api.example
+impo.clerkKey=pk_test_your_publishable_key

@@ -16,4 +16,4 @@
 - Preserve the existing paper/forest-green design, readable type, safe areas and accessible touch targets.
 - Regenerate the Xcode project from `ios/App/project.yml` when adding native files.
 - Verify changed behavior with relevant tests. Simulator checks do not replace physical microphone, location or background validation.
-- Android and Web clients are planned. Do not present them or prototype settings as implemented features.
+- Android is implemented and emulator-tested; keep physical-device and deployed-account validation limits explicit. Web remains planned. Do not present prototype settings as implemented features.

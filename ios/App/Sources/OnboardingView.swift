@@ -1,4 +1,5 @@
 import SwiftUI
+import InstantClient
 import PhotosUI
 
 struct OnboardingView: View {
@@ -6,6 +7,7 @@ struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingConsent = false
     @State private var selectedService: OnboardingService?
+    @State private var selectedApp: OnboardingApp?
     @State private var nameDraft = ""
     @State private var introduction = ""
     @State private var photoSelection: PhotosPickerItem?
@@ -13,10 +15,7 @@ struct OnboardingView: View {
     @State private var styleOffset = 0
     @State private var authError: String?
     @State private var isAuthenticating = false
-    @State private var emailDraft = ""
-    @State private var passwordDraft = ""
     @FocusState private var nameFocused: Bool
-    @FocusState private var emailFieldFocused: Bool
 
     private let introText = "Hey, there you are.\n\nWe should probably introduce ourselves."
 
@@ -100,8 +99,9 @@ struct OnboardingView: View {
                 .padding(.bottom, 34)
                 VStack(alignment: .leading, spacing: 22) {
                     Text("Meet Impo,")
-                    Text("an assistant that actually\nknows you,")
-                    Text("and acts before you ask.")
+                    // "open" carries the message: accent colour and italic.
+                    (Text("an ") + Text("open").font(InstantStyle.serif(28, weight: .semibold, italic: true)).foregroundColor(InstantStyle.accent)
+                        + Text(" assistant that captures everything around your life."))
                 }
                 .font(InstantStyle.serif(28))
                 .lineSpacing(3)
@@ -132,7 +132,6 @@ struct OnboardingView: View {
                 Spacer(minLength: 42)
                 VStack(spacing: 14) {
                     loginButton("Continue with Google", brand: .google, identifier: "onboarding.login")
-                    loginButton("Continue with Microsoft", brand: .microsoft, identifier: "onboarding.login.microsoft")
                     loginButton("Continue with Apple", brand: .apple, identifier: "onboarding.login.apple")
                 }
                 if let authError {
@@ -143,13 +142,6 @@ struct OnboardingView: View {
                         .padding(.top, 8)
                         .accessibilityIdentifier("onboarding.login.error")
                 }
-                HStack(spacing: 9) {
-                    Rectangle().fill(InstantStyle.border).frame(width: 72, height: 0.5)
-                    Text("OR").font(.system(size: 13)).foregroundStyle(InstantStyle.muted)
-                    Rectangle().fill(InstantStyle.border).frame(width: 72, height: 0.5)
-                }
-                .padding(.vertical, 17)
-                emailPasswordForm
                 Text("By proceeding to use Impo, you agree to our **terms of use** and acknowledge that you have read our **privacy policy**.")
                     .font(.system(size: 10))
                     .multilineTextAlignment(.center)
@@ -169,6 +161,8 @@ struct OnboardingView: View {
             Task {
                 do {
                     try await model.signIn(with: brand)
+                    // A returning account already agreed and set up; go straight in.
+                    if await model.restoreAccountProfile() { isAuthenticating = false; return }
                     isAuthenticating = false
                     showingConsent = true
                 } catch is CancellationError {
@@ -189,52 +183,6 @@ struct OnboardingView: View {
         .buttonStyle(.plain)
         .disabled(isAuthenticating)
         .accessibilityIdentifier(identifier)
-    }
-
-    private var emailPasswordForm: some View {
-        VStack(spacing: 10) {
-            TextField("Personal or work email", text: $emailDraft)
-                .textContentType(.username)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($emailFieldFocused)
-                .font(.system(size: 17))
-                .padding(.horizontal, 18).frame(height: 54)
-                .paperSurface(cornerRadius: 16)
-                .accessibilityIdentifier("onboarding.login.email.field")
-            SecureField("Password", text: $passwordDraft)
-                .textContentType(.password)
-                .font(.system(size: 17))
-                .padding(.horizontal, 18).frame(height: 54)
-                .paperSurface(cornerRadius: 16)
-                .accessibilityIdentifier("onboarding.login.password.field")
-            Button {
-                authError = nil
-                isAuthenticating = true
-                emailFieldFocused = false
-                Task {
-                    do {
-                        try await model.signIn(email: emailDraft, password: passwordDraft)
-                        isAuthenticating = false
-                        showingConsent = true
-                    } catch is CancellationError {
-                        isAuthenticating = false
-                    } catch {
-                        isAuthenticating = false
-                        authError = "Couldn't sign in. Check your email and password and try again."
-                    }
-                }
-            } label: {
-                Text("Continue")
-                    .font(.system(size: 17))
-                    .frame(maxWidth: .infinity).frame(height: 52)
-                    .paperSurface(cornerRadius: 16)
-            }
-            .buttonStyle(.plain)
-            .disabled(isAuthenticating || emailDraft.isEmpty || passwordDraft.isEmpty)
-            .accessibilityIdentifier("onboarding.login.email.submit")
-        }
     }
 
     private var consentOverlay: some View {
@@ -308,8 +256,11 @@ struct OnboardingView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 22)
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionTitle("On this iPhone")
                     ForEach(OnboardingService.allCases) { service in connectionCard(service) }
+                    sectionTitle("Your apps").padding(.top, 10)
+                    ForEach(OnboardingApp.all) { app in appCard(app) }
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 15)
@@ -317,6 +268,8 @@ struct OnboardingView: View {
             .scrollIndicators(.hidden)
             .contentShape(Rectangle())
             .zIndex(0)
+            .onAppear { if !model.connectors.loaded { model.connectors.reload() } }
+            .sheet(item: $selectedApp) { ConnectorDetailSheet(toolkit: $0.toolkit).swipeToDismiss() }
             VStack(spacing: 10) {
                 PillButton(title: "Continue") { advance(to: 3) }
                     .contentShape(Capsule())
@@ -339,22 +292,18 @@ struct OnboardingView: View {
     }
 
     private func connectionCard(_ service: OnboardingService) -> some View {
-        let connected = service == .calendar ? model.calendarEnabled : service == .health ? model.healthEnabled : model.connectedServices.contains(service.rawValue)
+        let connected = switch service {
+        case .calendar: model.calendarEnabled
+        case .health: model.healthEnabled
+        case .reminders: model.remindersEnabled
+        case .contacts: model.contactsEnabled
+        }
         return HStack(alignment: .top, spacing: 15) {
             ServiceMark(service: service).frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 6) {
                 Text(service.title).font(InstantStyle.serif(19))
                 Text(service.detail).font(.system(size: 13)).foregroundStyle(InstantStyle.muted).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
-                Button {
-                    if service == .calendar || service == .health {
-                        selectedService = service
-                    } else if connected {
-                        model.connectedServices.remove(service.rawValue)
-                        model.persistProfile()
-                    } else {
-                        selectedService = service
-                    }
-                } label: {
+                Button { selectedService = service } label: {
                     HStack(spacing: 5) {
                         Image(systemName: connected ? "checkmark" : "plus").font(.system(size: 15, weight: .medium))
                         Text(connected ? "Connected" : "Connect").font(.system(size: 14))
@@ -373,79 +322,52 @@ struct OnboardingView: View {
         .paperSurface(cornerRadius: 16)
     }
 
-    @ViewBuilder private func permissionOverlay(_ service: OnboardingService) -> some View {
-        if service == .calendar || service == .health {
-            ZStack {
-                InstantStyle.forest.opacity(0.28).ignoresSafeArea()
-                VStack(spacing: 18) {
-                    Text("Share only what helps you.").font(InstantStyle.serif(25))
-                    Text("When you ask in live chat, relevant data is shared with Impo and its AI service to answer your question.")
-                        .font(.system(size: 14)).foregroundStyle(InstantStyle.muted)
-                    DeviceAccessCard(kind: service.rawValue)
-                    Button("Done") { selectedService = nil }
-                        .font(.system(size: 17, weight: .medium)).frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .instantGlass(cornerRadius: 18).accessibilityIdentifier("onboarding.permission.done")
-                }.padding(24).paperSurface(cornerRadius: 24).padding(24)
-            }
-        } else {
+    private func permissionOverlay(_ service: OnboardingService) -> some View {
         ZStack {
             InstantStyle.forest.opacity(0.28).ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(alignment: .top) {
-                    ServiceMark(service: service).frame(width: 56, height: 56)
-                    Spacer()
-                    Text("DEMO PREVIEW").font(.system(size: 10, weight: .semibold)).tracking(0.7)
-                        .foregroundStyle(InstantStyle.muted).padding(.top, 4)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Try \(service.title) with Impo")
-                        .font(InstantStyle.serif(23))
-                    Text("Explore how your assistant could help with \(service.permissionNoun). This preview uses sample data only.")
-                        .font(.system(size: 15)).lineSpacing(3).foregroundStyle(InstantStyle.muted)
-                }
-                if service == .calendar {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("TUESDAY, SEP 22 · SAMPLE").font(.system(size: 10, weight: .semibold)).foregroundStyle(InstantStyle.accent)
-                        HStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 2).fill(InstantStyle.sage).frame(width: 3)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Team catch-up").font(.system(size: 13, weight: .medium))
-                                Text("10:30–11:15 AM").font(.system(size: 12)).foregroundStyle(InstantStyle.muted)
-                            }
-                        }
+            VStack(spacing: 18) {
+                Text("Share only what helps you.").font(InstantStyle.serif(25))
+                Text("When you ask, relevant data is shared with Impo and its AI service to answer your question.")
+                    .font(.system(size: 14)).foregroundStyle(InstantStyle.muted)
+                DeviceAccessCard(kind: service.rawValue)
+                Button("Done") { selectedService = nil }
+                    .font(.system(size: 17, weight: .medium)).frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .instantGlass(cornerRadius: 18).accessibilityIdentifier("onboarding.permission.done")
+            }.padding(24).paperSurface(cornerRadius: 24).padding(24)
+        }
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(InstantStyle.muted).padding(.leading, 4)
+    }
+
+    /// A popular app from the connector shelf; connecting opens the same flow as Connections.
+    private func appCard(_ app: OnboardingApp) -> some View {
+        let summary = model.connectors.connector(app.toolkit) ?? ConnectorSummary(toolkit: app.toolkit, name: app.name, status: .disconnected)
+        let connected = summary.status == .connected
+        return HStack(alignment: .top, spacing: 15) {
+            ConnectorLogo(connector: summary, size: 36)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(summary.name).font(InstantStyle.serif(19))
+                Text(app.detail).font(.system(size: 13)).foregroundStyle(InstantStyle.muted).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                Button { selectedApp = app } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: connected ? "checkmark" : "plus").font(.system(size: 15, weight: .medium))
+                        Text(connected ? "Connected" : "Connect").font(.system(size: 14))
                     }
-                    .padding(13)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 77)
-                    .paperSurface(cornerRadius: 14)
-                }
-                Text("No device permission is requested. Your real \(service.permissionNoun) stays private.")
-                    .font(.system(size: 13)).lineSpacing(2)
-                VStack(spacing: 8) {
-                    Button {
-                        model.connectedServices.insert(service.rawValue)
-                        model.persistProfile()
-                        selectedService = nil
-                    } label: {
-                        Text("Connect demo").font(.system(size: 17, weight: .medium))
-                            .frame(maxWidth: .infinity).frame(height: 45)
-                            .instantGlass(cornerRadius: 16)
-                    }
-                    .accessibilityIdentifier("onboarding.permission.allow")
-                    Button { selectedService = nil } label: {
-                        Text("Not now").font(.system(size: 17, weight: .medium))
-                            .frame(maxWidth: .infinity).frame(height: 45)
-                            .instantGlass(cornerRadius: 16)
-                    }
+                    .foregroundStyle(connected ? InstantStyle.forest : InstantStyle.ink)
+                    .padding(.horizontal, 12).frame(height: 32)
+                    .instantGlass(cornerRadius: 12, tint: InstantStyle.sage.opacity(0.12))
                 }
                 .buttonStyle(.plain)
+                .disabled(!model.connectors.isAvailable)
+                .accessibilityIdentifier("onboarding.connect.\(app.toolkit)")
             }
-            .padding(25)
-            .paperSurface(cornerRadius: 24)
-            .padding(.horizontal, 53)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .foregroundStyle(InstantStyle.ink)
-        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .paperSurface(cornerRadius: 16)
     }
 
     private var intro: some View {
@@ -541,7 +463,7 @@ struct OnboardingView: View {
 
     private func saveName() {
         let trimmed = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        model.assistantName = trimmed.isEmpty ? "Momo" : String(trimmed.prefix(40))
+        model.assistantName = trimmed.isEmpty ? "Momo" : String(trimmed.prefix(30))
         model.persistProfile()
         advance(to: 5)
     }
@@ -700,7 +622,7 @@ struct OnboardingView: View {
     }
 }
 
-enum LoginBrand { case google, microsoft, apple }
+enum LoginBrand { case google, apple }
 
 private struct BrandMark: View {
     let brand: LoginBrand
@@ -709,20 +631,35 @@ private struct BrandMark: View {
         case .google:
             Text("G").font(.system(size: 24, weight: .bold))
                 .foregroundStyle(AngularGradient(colors: [.blue, .green, .yellow, .red, .blue], center: .center))
-        case .microsoft:
-            VStack(spacing: 1) {
-                HStack(spacing: 1) { Color(red: 0.95, green: 0.31, blue: 0.14); Color(red: 0.49, green: 0.73, blue: 0.02) }
-                HStack(spacing: 1) { Color(red: 0, green: 0.64, blue: 0.94); Color(red: 1, green: 0.73, blue: 0) }
-            }
-            .frame(width: 19, height: 19)
         case .apple:
             Image(systemName: "apple.logo").font(.system(size: 23))
         }
     }
 }
 
+/// Popular apps from the connector shelf offered during onboarding. Names come from the
+/// shelf when it has loaded; these are fallbacks.
+private struct OnboardingApp: Identifiable {
+    let toolkit: String
+    let name: String
+    let detail: String
+    var id: String { toolkit }
+    static let all: [OnboardingApp] = [
+        .init(toolkit: "gmail", name: "Gmail", detail: "Find emails, draft replies and keep up with your inbox."),
+        .init(toolkit: "googlecalendar", name: "Google Calendar", detail: "Plan around the meetings you already have."),
+        .init(toolkit: "googledrive", name: "Google Drive", detail: "Find and read the documents you keep."),
+        .init(toolkit: "notion", name: "Notion", detail: "Your notes and docs, so I can build on your thinking."),
+        .init(toolkit: "outlook", name: "Outlook", detail: "Microsoft mail and calendar in one place."),
+        .init(toolkit: "github", name: "GitHub", detail: "Issues, pull requests and the repos you work on."),
+        .init(toolkit: "googlesheets", name: "Google Sheets", detail: "Read and update the spreadsheets you rely on."),
+        .init(toolkit: "microsoft_teams", name: "Microsoft Teams", detail: "Chats and meetings from work."),
+        .init(toolkit: "zoom", name: "Zoom", detail: "Meetings and schedules from Zoom."),
+        .init(toolkit: "todoist", name: "Todoist", detail: "The tasks and projects you track."),
+    ]
+}
+
 private enum OnboardingService: String, CaseIterable, Identifiable {
-    case health, calendar, reminders, contacts, google, notion
+    case health, calendar, reminders, contacts
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -730,8 +667,6 @@ private enum OnboardingService: String, CaseIterable, Identifiable {
         case .calendar: "Apple Calendar"
         case .reminders: "Apple Reminders"
         case .contacts: "Apple Contacts"
-        case .google: "Google Workspace"
-        case .notion: "Notion"
         }
     }
     var detail: String {
@@ -740,18 +675,6 @@ private enum OnboardingService: String, CaseIterable, Identifiable {
         case .calendar: "Your time tells me everything. I'll know your rhythm from day one."
         case .reminders: "The things you told yourself not to forget. I'll make sure they actually happen."
         case .contacts: "The people in your life matter. I'll help you stay close to them."
-        case .google: "Emails, meetings, files — your work, all here. I'll connect the dots."
-        case .notion: "Your thinking lives here. I'll read between the lines so I can actually help."
-        }
-    }
-    var permissionNoun: String {
-        switch self {
-        case .health: "health information"
-        case .calendar: "calendar"
-        case .reminders: "reminders"
-        case .contacts: "contacts"
-        case .google: "workspace"
-        case .notion: "notes"
         }
     }
 }
@@ -789,12 +712,6 @@ private struct ServiceMark: View {
                 case .contacts:
                     RoundedRectangle(cornerRadius: geometry.size.width * 0.22).fill(InstantStyle.sage)
                     Image(systemName: "person.crop.circle.fill").font(.system(size: geometry.size.width * 0.68)).foregroundStyle(InstantStyle.paperElevated)
-                case .google:
-                    BrandMark(brand: .google).scaleEffect(geometry.size.width / 36)
-                case .notion:
-                    Text("N").font(.system(size: geometry.size.width * 0.7, weight: .bold, design: .serif))
-                        .frame(width: geometry.size.width * 0.67, height: geometry.size.width * 0.7)
-                        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(InstantStyle.ink, lineWidth: 1.5))
                 }
             }
         }

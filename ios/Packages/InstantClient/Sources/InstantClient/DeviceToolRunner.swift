@@ -22,7 +22,8 @@ extension InstantClient: DeviceToolTransport {}
 
 /// Poll the authenticated command API, never execute tools from replayed UI events.
 /// Receipts survive a lost HTTP acknowledgement and app restart. Keep a separate
-/// file for every server/user/device scope; only read-only native tools are used.
+/// file for every server/user/device scope. Non-repeatable tools persist uncertainty
+/// before executing, so a crash cannot silently duplicate a native write.
 public actor DeviceToolRunner {
     private struct Receipt: Codable {
         let executionID: String
@@ -33,13 +34,15 @@ public actor DeviceToolRunner {
     private let transport: any DeviceToolTransport
     private let deviceID: String
     private let receiptFile: URL
+    private let nonRepeatableTools: Set<String>
     private var receipts: [String: Receipt]
     private var polling = false
 
-    public init(transport: any DeviceToolTransport, deviceID: String, receiptFile: URL) throws {
+    public init(transport: any DeviceToolTransport, deviceID: String, receiptFile: URL, nonRepeatableTools: Set<String> = []) throws {
         self.transport = transport
         self.deviceID = deviceID
         self.receiptFile = receiptFile
+        self.nonRepeatableTools = nonRepeatableTools
         if FileManager.default.fileExists(atPath: receiptFile.path) {
             // A corrupt store must not silently re-execute previously completed work.
             receipts = try JSONDecoder().decode([String: Receipt].self, from: Data(contentsOf: receiptFile))
@@ -73,6 +76,11 @@ public actor DeviceToolRunner {
                     guard saved.executionID == claim.executionId else { throw InstantClientError.invalidResponse }
                     receipt = saved
                 } else {
+                    if nonRepeatableTools.contains(invocation.toolName) {
+                        receipts[invocation.invocationId] = Receipt(executionID: claim.executionId, expiresAt: claim.expiresAt,
+                            result: DeviceToolExecutionResult(success: false, error: "device_write_outcome_unknown"))
+                        try save()
+                    }
                     let result = try await execute(invocation)
                     receipt = Receipt(executionID: claim.executionId, expiresAt: claim.expiresAt, result: result)
                     receipts[invocation.invocationId] = receipt

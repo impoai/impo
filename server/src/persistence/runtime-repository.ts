@@ -6,7 +6,7 @@ import { users, actions, conversations, messages, agentConfigVersions, sessionBi
 import { ServiceError, LeaseLostError } from '../errors.js';
 import type { ToolResult, ToolRegistry } from '../tools/registry.js';
 import { DeviceRepository } from './device-repository.js';
-import { clientContext, deviceHash, isDeviceTool, type ClientContext } from '../tools/device-tools.js';
+import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from '../tools/device-tools.js';
 import { CONNECTOR_TOOL_NAMES } from '../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
 
@@ -83,18 +83,17 @@ export class RuntimeRepository {
   }
 
   /**
-   * Narrow a runtime catalog to the tools this user can use now: device tools that one of
-   * their devices enabled, and connector tools only while at least one app is connected. The four connector tools
+   * Narrow a runtime catalog to the tools this user can use now: native tools enabled
+   * on the attached device, and connector tools while at least one app is connected.
+   * The four connector tools
    * are fixed, so connecting a second or third app does not rotate the Session.
    */
-  protected async userAgentConfig(tx: Transaction, userId: string, config: Record<string, unknown> | undefined) {
+  protected async userAgentConfig(tx: Transaction, userId: string, config: Record<string, unknown> | undefined, capabilities: readonly string[] = []) {
     if (!config || !Array.isArray(config.tools)) return config;
-    const enabled = new Set((await tx.selectDistinct({ name: deviceCapabilities.toolName }).from(deviceCapabilities).where(eq(deviceCapabilities.userId, userId))).map(row => row.name));
     const [connected] = await tx.select({ id: connectorConnections.id }).from(connectorConnections)
       .where(and(eq(connectorConnections.userId, userId), eq(connectorConnections.status, 'connected'), eq(connectorConnections.disconnectRequested, false))).limit(1);
-    const tools = (config.tools as Array<{ name?: unknown }>).filter(tool => {
+    const tools = selectDeviceTools(config.tools as Array<{ name?: unknown }>, capabilities).filter(tool => {
       if (typeof tool.name !== 'string') return true;
-      if (isDeviceTool(tool.name)) return enabled.has(tool.name);
       if ((CONNECTOR_TOOL_NAMES as readonly string[]).includes(tool.name)) return Boolean(connected);
       return true;
     });
@@ -166,8 +165,6 @@ export class RuntimeRepository {
 
   private async accept(tx: Transaction, userId: string, conversation: typeof conversations.$inferSelect,
     input: { clientMessageId: string; text: string; deviceId?: string }, { context, inputHash }: { context: ClientContext | undefined; inputHash: string }) {
-    // Tasks run under their own Agent configuration (no device tools, no nested tasks).
-    const agentConfig = await this.userAgentConfig(tx, userId, conversation.kind === 'task' ? this.runtime.taskAgentConfig : this.runtime.agentConfig);
     const [existing] = await tx.select().from(messages).where(and(eq(messages.userId, userId), eq(messages.clientMessageId, input.clientMessageId)));
     if (existing) {
       if (existing.inputHash !== inputHash || existing.conversationId !== conversation.id) throw new ServiceError(409, 'idempotency_conflict', 'Message ID already has different content');
@@ -181,6 +178,8 @@ export class RuntimeRepository {
       if (!device) throw missing();
       capabilities = (await tx.select({ name: deviceCapabilities.toolName }).from(deviceCapabilities).where(eq(deviceCapabilities.deviceId, device.id))).map(row => row.name).sort();
     }
+    // Tools are fixed per Session, so changing the attached device can rotate an idle Session.
+    const agentConfig = await this.userAgentConfig(tx, userId, conversation.kind === 'task' ? this.runtime.taskAgentConfig : this.runtime.agentConfig, capabilities);
     let binding: typeof sessionBindings.$inferSelect | undefined = (await tx.select().from(sessionBindings).where(and(eq(sessionBindings.userId, userId), eq(sessionBindings.conversationId, conversation.id), eq(sessionBindings.isCurrent, true))))[0];
     if (binding?.provider === 'rebyte' && this.runtime.provider === 'rebyte' && agentConfig) {
       const [previous] = await tx.select().from(agentConfigVersions).where(eq(agentConfigVersions.id, binding.agentConfigVersionId));

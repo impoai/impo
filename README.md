@@ -12,11 +12,12 @@ delegate a task, capture spoken thoughts with Echo, and get daily briefings in B
 
 The project covers the full stack: client frontends, the application API, background
 workers, data storage, and agent integration. **The backend and native iOS client
-are implemented; Android and Web clients are planned.** All clients will share the
+are implemented; the native Kotlin/Compose Android client has passed its build,
+unit tests and local emulator acceptance. Web remains planned.** Clients share the
 same backend and conversation model, with native capabilities adapted to each
 platform. Work continues on the server when a client disconnects.
 
-[Website](https://impo.ai) · [Discord](https://discord.gg/84ZYn3xcGV) · [Roadmap](#roadmap) · [Documentation](docs/README.md) · [iOS setup](ios/App/README.md) · [Server setup](server/README.md)
+[Website](https://impo.ai) · [Discord](https://discord.gg/84ZYn3xcGV) · [Roadmap](#roadmap) · [Documentation](docs/README.md) · [iOS setup](ios/App/README.md) · [Android setup](android/README.md) · [Server setup](server/README.md)
 
 ## What Impo does
 
@@ -50,16 +51,16 @@ without fixed release dates.
 | --- | --- | --- |
 | **Backend and agent execution** | Implemented; evolving | Continue improving durable runs, recovery, tool integrations, and developer setup. Keep one API for all clients. |
 | **iOS frontend** | Implemented; evolving | Refine chat, Tasks, Brief, Echo, native permissions, and background behavior. |
-| **Android frontend** | Planned | Build a native client for the same conversations, tasks, briefings, and Echo history; add recording and device integrations within Android's permission model. |
+| **Android frontend** | Implemented; emulator verified | Kotlin/Compose app for Chat, Tasks, Brief, Memories, Echo, connections and native permissions. Validate physical-device behavior and deployed accounts before release. |
 | **Web frontend** | Planned | Bring chat, task management, Brief, and Echo history to the browser through the same authenticated API. Add browser-supported capture where practical. |
 | **Shared client contracts** | Implemented foundation; expanding | Extend protocol fixtures and recovery tests so clients share consistent identity, history, task state, and tool results. |
 | **Composio integrations** | Rebyte connector shelf implemented | Add per-action confirmation for sensitive writes. |
 | **Personal context** | Background memory and main-chat retrieval implemented | Expand proactive assistance using relevant personal context. |
 
-The next client milestone is core chat, history, tasks, and Brief on Android and
-Web. Recording and device tools follow each platform's capabilities. The current
-repository contains the backend and iOS implementation plus an Android placeholder;
-the Web frontend has not been started.
+The repository contains the backend, iOS app, and native Android app plus its
+independent Kotlin protocol library. Android build, unit and emulator checks have
+passed; recording and device tools still require physical-device checks. The Web frontend has not
+been started.
 
 ## Architecture
 
@@ -72,7 +73,7 @@ show planned clients.
 flowchart TB
     subgraph Clients["Impo client frontends"]
         App["iOS: implemented"]
-        Android["Android: planned"]
+        Android["Android: native implementation"]
         Web["Web: planned"]
     end
     subgraph Backend["Impo backend"]
@@ -93,7 +94,8 @@ flowchart TB
     end
     App <-->|"HTTP commands + SSE"| API
     App -->|"Signed audio PUT"| S3
-    Android -.->|"Same client API"| API
+    Android <-->|"Same client API"| API
+    Android -->|"Signed audio PUT"| S3
     Web -.->|"Same client API"| API
     API --> Clerk["Clerk authentication"]
     Worker <-->|"Agents / Sessions / Turns / Items"| Rebyte["Rebyte Agents API"]
@@ -105,7 +107,7 @@ flowchart TB
 
 | Component | Owns |
 | --- | --- |
-| **Client frontends** | User interfaces, streamed replies, history recovery, capture, and platform permissions. iOS is implemented; Android and Web are planned peers. |
+| **Client frontends** | User interfaces, streamed replies, history recovery, capture, and platform permissions. iOS and Android are implemented; Android has passed local emulator acceptance; Web is planned. |
 | **Shared client contracts** | Authenticated HTTP commands, SSE message formats, recovery, and device dispatch. Each frontend implements the same protocol using its platform's networking stack. |
 | **API server** | Authentication, resource ownership, command acceptance, history queries, and stream subscriptions. |
 | **Workers** | Agent input submission, runtime reconciliation, tool dispatch, output projection, retries, and recovery after process restarts. |
@@ -153,7 +155,7 @@ Rebyte's Schedule API is not used.
 
 ```text
 ios/          iOS frontend: app, client package, native adapters, and tests
-android/      Android frontend: planned; placeholder directory
+android/      Kotlin/Compose app, independent protocol client, native adapters and tests
 web/          Web frontend: planned; directory not created yet
 server/       Shared API, workers, agent integration, tools, and database schema
 contracts/    Shared client protocol and test fixtures
@@ -225,6 +227,26 @@ development settings, enable the local API server and use
 your own signing configuration and a reachable server address; see the
 [iOS app guide](ios/App/README.md).
 
+### Open the Android app
+
+Install JDK 17, Android SDK Platform 36 and the API 35 Google APIs arm64 emulator
+image. Run the following from the repository root:
+
+```sh
+npm run test:android
+npm run build:android
+npm run android:emulator
+```
+
+Start `npm run dev:android-fixture` in another terminal, then run
+`npm run android:launch -- --fixture` to explore with synthetic local records.
+`npm run test:android:ui` owns its own fixture and emulator test lifecycle.
+For deployed sign-in, configure your API URL and Clerk publishable key in
+untracked `android/local.properties`. See the [Android guide](android/README.md)
+for account, permission and physical-device validation boundaries. Android's
+86 unit tests, protocol integration and 12 API 35 instrumentation tests passed.
+Physical-device and deployed-account validation remain release requirements.
+
 ### Optional services
 
 | Feature | Configuration |
@@ -244,6 +266,8 @@ The repository does not maintain SQL migration histories or Drizzle snapshots.
 | Command | Coverage |
 | --- | --- |
 | `npm test` | TypeScript checks/tests, Swift tests, and HTTP/SSE integration against a local fixture; no model key or database required. |
+| `npm run test:android` / `npm run build:android` | Kotlin client and non-UI app tests / debug APK compilation. |
+| `npm run test:android:ui` / `npm run lint:android` | Native emulator/Compose smoke over a local API fixture / Android lint. |
 | `npm run test:ios` | Swift protocol tests on a temporary iOS Simulator. |
 | `npm run test:db` | Durable execution and ownership against an isolated PostgreSQL database. |
 | `npm run test:rebyte` | SDK integration and recovery using a local Rebyte protocol double. |
@@ -264,8 +288,8 @@ contributions across the backend, iOS, Android, and Web.
 
 ## Documentation
 
-Start with the [documentation map](docs/README.md), [server guide](server/README.md)
-and [iOS guide](ios/App/README.md). Read [security guidance](SECURITY.md) before
+Start with the [documentation map](docs/README.md), [server guide](server/README.md),
+[iOS guide](ios/App/README.md) and [Android guide](android/README.md). Read [security guidance](SECURITY.md) before
 configuring provider credentials. Third-party material retains the licenses
 listed in [third-party notices](THIRD_PARTY_NOTICES.md).
 

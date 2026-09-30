@@ -7,6 +7,7 @@ import { loadConfig, databaseRequiresSsl } from './config.js';
 import { createApiServer } from './http/api-server.js';
 import { createRuntimeRepository } from './runtime.js';
 import { RebyteGateway } from './rebyte/gateway.js';
+import { ProfileRepository } from './profile/repository.js';
 import { ConnectorService } from './composio/connector-service.js';
 import { S3TranscriptArchive } from './listening/transcript-archive.js';
 import { createMemoryStore } from './memory/index.js';
@@ -27,7 +28,7 @@ async function main(): Promise<void> {
   const archive = config.transcriptArchive ? new S3TranscriptArchive(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
   const uploads = config.transcriptArchive && batchService ? new ListeningUploadService(batches,
     new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
-  const server = createApiServer(repository, { uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development' });
+  const server = createApiServer(repository, { profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development' });
   let stopping = false;
   async function shutdown(): Promise<void> {
     if (stopping) return;

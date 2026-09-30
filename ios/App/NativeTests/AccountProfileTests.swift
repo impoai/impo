@@ -1,0 +1,60 @@
+import Foundation
+import XCTest
+@testable import Instant
+
+@MainActor
+final class AccountProfileTests: XCTestCase {
+    func testReturningProfileRestoresAndPersistsAssistantSetup() async throws {
+        let suite = "AccountProfileTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [AccountProfileProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let model = AppModel(defaults: defaults, session: session)
+        model.useLiveBackend = true
+        model.backendURL = "https://profile.example.invalid"
+        let restored = await model.restoreAccountProfile()
+        XCTAssertTrue(restored)
+        XCTAssertTrue(model.isOnboarded)
+        XCTAssertEqual(model.assistantName, "Robin")
+        XCTAssertEqual(model.avatarIndex, 2)
+        XCTAssertEqual(model.displayName, "Alex")
+        let reopened = AppModel(defaults: defaults, session: session)
+        XCTAssertTrue(reopened.isOnboarded)
+        XCTAssertEqual(reopened.assistantName, "Robin")
+    }
+
+    func testUnavailableProfileDoesNotCompleteOnboarding() async throws {
+        let suite = "AccountProfileTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [AccountProfileProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let model = AppModel(defaults: defaults, session: session)
+        model.useLiveBackend = true
+        model.backendURL = "https://unavailable.example.invalid"
+        let restored = await model.restoreAccountProfile()
+        XCTAssertFalse(restored)
+        XCTAssertFalse(model.isOnboarded)
+    }
+}
+
+private final class AccountProfileProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let available = request.url?.host == "profile.example.invalid" && request.url?.path == "/api/v1/profile"
+        let body = available
+            ? #"{"onboarded":true,"displayName":"Alex","assistantName":"Robin","avatarIndex":2}"#
+            : #"{"error":{"code":"profile_unavailable","message":"Unavailable","retryable":true}}"#
+        let response = HTTPURLResponse(url: request.url!, statusCode: available ? 200 : 503, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}

@@ -157,7 +157,7 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
       const health = calls.find(call => call.toolName === healthTool.name)!;
       assert.deepEqual(calendar.input, calendarTool.arguments);
       assert.deepEqual(health.input, healthTool.arguments);
-      assert.deepEqual(fake.sessions[0].agent.tools.map((tool: JSONRecord) => tool.name ?? tool.type).sort(), [...agentTools].sort());
+      assert.deepEqual(fake.sessions.at(-1)!.agent.tools.map((tool: JSONRecord) => tool.name ?? tool.type).sort(), [...agentTools].sort());
       assert.equal((await claim(calendar, bobDevice, 'bob')).status, 404);
       assert.equal((await claim(calendar, otherAliceDevice)).status, 404);
       const unclaimed = await result(calendar, randomUUID(), { success: true, output: syntheticCalendar });
@@ -192,7 +192,7 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
       await expireWorker(id); worker = start('src/worker-main.ts');
       try {
         const final = await completed(id); assert.equal(final.resultCount, 2);
-        const remote = resultsFor(fake.sessions[0].turns[0].id); assert.equal(remote.length, 2);
+        const remote = resultsFor(fake.sessions.at(-1)!.turns[0].id); assert.equal(remote.length, 2);
         assert.ok(remote.some(value => value.success === true && value.output.includes('SYNTHETIC_CALENDAR_MARKER')));
         assert.ok(remote.some(value => value.success === false && value.error.includes('health_permission_denied')));
         const persisted = await pool.query('SELECT status, result FROM tool_invocations WHERE submission_id=$1', [id]);
@@ -383,6 +383,38 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
         const continued = await submit([]); await completed(continued);
         assert.equal(fake.sessions.length, sessionsBefore + 1); assert.equal(newSession.turns.length, 2);
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM session_bindings WHERE is_current')).rows[0].count, 1);
+      } finally { await stop(worker); }
+    });
+
+    await t.test('neutral Android tools advertise only the attached device and preserve exact-name ownership and receipts', async () => {
+      const neutralCalendar = { ...calendarTool, name: 'impo_list_calendar_events' };
+      const neutralHealth = { ...healthTool, name: 'impo_get_health_summary' };
+      const installation = randomUUID();
+      const android = await register(installation, [neutralCalendar.name, neutralHealth.name]);
+      const id = await submit([neutralCalendar, neutralHealth, calendarTool], android);
+      const worker = start('src/worker-main.ts');
+      try {
+        const calls = await expectPending(2, android);
+        const session = fake.sessions.at(-1)!;
+        assert.deepEqual(session.agent.tools.map((tool: JSONRecord) => tool.name ?? tool.type).sort(),
+          ['impo_get_health_summary', 'impo_list_calendar_events', 'impo_search_memory', 'instant_create_task', 'web_search']);
+        assert.equal((await pending(aliceDevice)).length, 0, 'never route neutral calls to another owned iPhone');
+        for (const call of calls) {
+          assert.equal((await claim(call, aliceDevice)).status, 404);
+          assert.equal((await claim(call, bobDevice, 'bob')).status, 404);
+          const claimed = await claim(call, android); assert.equal(claimed.status, 200);
+          const output = { source: call.toolName === neutralCalendar.name ? 'android.calendar_provider' : 'android.health_connect', test_data: true, events: [], metrics: {} };
+          assert.equal((await result(call, claimed.body.executionId, { success: true, output }, android)).status, 200);
+          assert.equal((await result(call, claimed.body.executionId, { success: true, output }, android)).body.duplicate, true);
+        }
+        await completed(id);
+        const remote = resultsFor(session.turns.at(-1)!.id);
+        assert.equal(remote.filter(value => value.success).length, 2);
+        assert.equal(remote.filter(value => !value.success).length, 1, 'an unadvertised iOS alias is rejected, not translated');
+        assert.match(remote.find(value => !value.success)!.error, /device_capability_unavailable/);
+        assert.equal(await register(installation, []), android);
+        const noDevice = await submit([], ''); await completed(noDevice);
+        assert.ok(fake.sessions.at(-1)!.agent.tools.every((tool: JSONRecord) => !/^(impo|ios)_(list_calendar_events|get_health_summary)$/.test(tool.name ?? '')));
       } finally { await stop(worker); }
     });
 

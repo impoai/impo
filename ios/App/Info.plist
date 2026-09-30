@@ -67,6 +67,12 @@
   <string>Impo uses your local network to connect to your private assistant server.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>When you ask about your schedule, Impo reads matching events. In Live chat, event details are sent to the Impo server and our AI service to answer you. Impo does not change your calendars.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>When you hold the voice button, Impo turns your speech into a message. The text is sent to the Impo server and our AI service only when you release to send.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>When you ask, Impo reads your reminders and adds the reminders you request. Relevant reminders are sent to the Impo server and our AI service to answer you.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>When you ask about someone, Impo looks them up in your contacts. Matching contact details are sent to the Impo server and our AI service to answer you. Impo does not change your contacts.</string>
   <key>NSHealthShareUsageDescription</key>
   <string>When you ask about your activity or sleep, Impo reads the Health data you choose. In Live chat, relevant summaries and sleep samples are sent to the Impo server and our AI service to answer you. Impo does not write Health data.</string>
   <key>NSHealthUpdateUsageDescription</key>

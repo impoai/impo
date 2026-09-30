@@ -18,6 +18,7 @@ import { ServiceError } from '../errors.js';
 import type { RuntimeRepository } from '../persistence/runtime-repository.js';
 import { clientContext } from '../tools/device-tools.js';
 import type { ConnectorAPI } from '../composio/connector-service.js';
+import type { ProfileRepository } from '../profile/repository.js';
 import { ListeningRepository, maxAudioBytes } from '../listening/repository.js';
 import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON, uuid } from './request.js';
 
@@ -30,6 +31,7 @@ export interface ApiOptions {
   /** Read and forget the user's long-term memories; the hourly pipeline is the only writer. */
   memories?: MemoryStore;
   connectors?: ConnectorAPI;
+  profiles?: Pick<ProfileRepository, 'get' | 'update'>;
   listening?: ListeningRepository;
   listeningEnabled?: boolean;
   batches?: ListeningBatchRepository;
@@ -129,6 +131,12 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
     }
     const user = await authenticate(req);
     const path = url.pathname;
+    if (path === '/api/v1/profile') {
+      if (!options.profiles) throw new ServiceError(503, 'profile_unavailable', 'Profile is temporarily unavailable', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Profile does not accept query parameters');
+      if (method === 'GET') { sendJSON(res, 200, await options.profiles.get(user.id)); return; }
+      if (method === 'PATCH') { sendJSON(res, 200, await options.profiles.update(user.id, await readJSON(req, requestTimeoutMs))); return; }
+    }
     if (path.startsWith('/api/v1/today/')) {
       if (!options.today) throw new ServiceError(503, 'today_unavailable', 'Today is temporarily unavailable', true);
       if (path === '/api/v1/today/settings' && method === 'GET') {

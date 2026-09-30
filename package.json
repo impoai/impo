@@ -9,6 +9,14 @@
     "server"
   ],
   "scripts": {
+    "build:android": "node scripts/android-app.mjs build",
+    "test:android": "node scripts/android-app.mjs test",
+    "test:android:client": "node scripts/android-app.mjs client-test",
+    "lint:android": "node scripts/android-app.mjs lint",
+    "android:emulator": "node scripts/android-app.mjs emulator",
+    "android:launch": "node scripts/android-app.mjs launch",
+    "dev:android-fixture": "node scripts/android-app.mjs fixture",
+    "test:android:ui": "node scripts/android-app.mjs smoke",
     "typecheck": "npm --workspace @instant/server run typecheck",
     "test:server": "npm --workspace @instant/server test",
     "dev:fixture": "npm --workspace @instant/server run dev:fixture",

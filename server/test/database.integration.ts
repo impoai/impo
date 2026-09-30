@@ -159,6 +159,23 @@ test('persistent server and independent Worker survive real process boundaries',
   try {
     await startAPI();
 
+    await t.test('the account profile remembers onboarding and the assistant, owned per user', async () => {
+      const fresh = await request('/profile', { user: 'bob' });
+      assert.equal(fresh.status, 200); assert.deepEqual(fresh.body, { onboarded: false });
+      assert.equal((await request('/profile', { user: 'bob', method: 'PATCH', body: { onboarded: false } })).status, 400);
+      assert.equal((await request('/profile', { user: 'bob', method: 'PATCH', body: { avatarIndex: 9 } })).status, 400);
+      assert.equal((await request('/profile', { user: 'bob', method: 'PATCH', body: { userId: 'someone' } })).status, 400);
+      const named = await request('/profile', { user: 'bob', method: 'PATCH', body: { assistantName: '  Robin ', avatarIndex: 2 } });
+      assert.deepEqual(named.body, { onboarded: false, assistantName: 'Robin', avatarIndex: 2 });
+      const done = await request('/profile', { user: 'bob', method: 'PATCH', body: { onboarded: true } });
+      assert.deepEqual(done.body, { onboarded: true, assistantName: 'Robin', avatarIndex: 2 });
+      const first = (await pool.query("SELECT onboarded_at FROM user_profiles up JOIN users u ON u.id = up.user_id WHERE u.auth_subject LIKE '%bob%'")).rows[0].onboarded_at;
+      await request('/profile', { user: 'bob', method: 'PATCH', body: { onboarded: true } });
+      const second = (await pool.query("SELECT onboarded_at FROM user_profiles up JOIN users u ON u.id = up.user_id WHERE u.auth_subject LIKE '%bob%'")).rows[0].onboarded_at;
+      assert.equal(second.getTime(), first.getTime(), 'The first completion time is kept');
+      assert.equal((await request('/profile', { user: 'alice' })).body.onboarded, false, 'Profiles are per account');
+    });
+
     await t.test('acceptance is atomic, idempotent and isolated between users', async () => {
       const unauthenticated = await fetch(`${baseURL}/api/v1/conversation`);
       assert.equal(unauthenticated.status, 401);
@@ -187,6 +204,7 @@ test('persistent server and independent Worker survive real process boundaries',
       const worker = start('src/worker-main.ts');
       try { await completed(accepted.submissionId); }
       finally { await stop(worker); }
+      assert.equal((await request('/profile')).body.onboarded, true, 'An account that has chatted skips onboarding');
     });
 
     await t.test('user-started tasks run in their own conversation and never replace the main one', async () => {

@@ -229,7 +229,7 @@ export class RebyteRepository extends RuntimeRepository {
           const expired = dispatch.expiresAt.getTime() <= Date.now() || (tool.expiresAt?.getTime() ?? Infinity) <= Date.now();
           const disabled = !capabilities.includes(tool.toolName);
           if (!expired && !disabled) continue;
-          const error = expired ? { code: 'device_timeout', message: 'The iPhone did not return this tool result before its deadline' } : { code: 'permission_revoked', message: 'The device disabled this capability before returning a result' };
+          const error = expired ? { code: 'device_timeout', message: 'The device did not return this tool result before its deadline' } : { code: 'permission_revoked', message: 'The device disabled this capability before returning a result' };
           await tx.update(toolInvocations).set({ status: 'result_saved', result: { ok: false, error }, updatedAt: new Date() }).where(eq(toolInvocations.id, tool.id));
           await tx.update(deviceDispatches).set({ status: expired ? 'expired' : 'revoked', completedAt: new Date() }).where(eq(deviceDispatches.id, dispatch.id));
         }

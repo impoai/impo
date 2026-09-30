@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { devices, deviceCapabilities, deviceDispatches, runtimeSubmissions, toolInvocations, users } from '../db/schema.js';
 import { ServiceError } from '../errors.js';
-import { deviceHash, isDeviceTool, jsonValue } from '../tools/device-tools.js';
+import { deviceHash, deviceToolNames, isDeviceTool, jsonValue } from '../tools/device-tools.js';
 import type { Transaction } from './runtime-repository.js';
 
 const missing = () => new ServiceError(404, 'not_found', 'Resource not found');
@@ -15,7 +15,7 @@ export class DeviceRepository {
   constructor(private readonly db: Database) {}
 
   async register(userId: string, input: { installationId: string; tools: string[] }) {
-    if (!input.installationId.trim() || input.installationId.length > 256 || input.installationId.includes('\0') || !Array.isArray(input.tools) || input.tools.length > 2 || new Set(input.tools).size !== input.tools.length || input.tools.some(name => !isDeviceTool(name))) {
+    if (!input.installationId.trim() || input.installationId.length > 256 || input.installationId.includes('\0') || !Array.isArray(input.tools) || input.tools.length > deviceToolNames.length || new Set(input.tools).size !== input.tools.length || input.tools.some(name => !isDeviceTool(name))) {
       throw new ServiceError(400, 'invalid_request', 'Invalid installation ID or device tools');
     }
     return this.db.transaction(async tx => {

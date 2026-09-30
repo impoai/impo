@@ -353,6 +353,19 @@ public struct InstantClient: Sendable {
         return body
     }
 
+    public func profile() async throws -> AccountProfile {
+        try await send("GET", ["profile"])
+    }
+
+    /// Partial update; omitted fields are unchanged. `onboarded` can only become true.
+    public func updateProfile(assistantName: String? = nil, avatarIndex: Int? = nil, onboarded: Bool? = nil) async throws -> AccountProfile {
+        var body: [String: JSONValue] = [:]
+        if let assistantName { body["assistantName"] = .string(assistantName) }
+        if let avatarIndex { body["avatarIndex"] = .number(Double(avatarIndex)) }
+        if let onboarded { body["onboarded"] = .bool(onboarded) }
+        return try await send("PATCH", ["profile"], body: .object(body))
+    }
+
     public func connectors() async throws -> [ConnectorSummary] {
         let list: ConnectorList = try await send("GET", ["connectors"])
         return list.connectors

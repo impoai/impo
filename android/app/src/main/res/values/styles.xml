@@ -1,0 +1,7 @@
+<resources><style name="Theme.Impo" parent="android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:fontFamily">sans</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:windowLightNavigationBar">true</item>
+    <item name="android:windowBackground">#F6F3EB</item>
+    <item name="android:colorAccent">#234F3D</item>
+</style></resources>

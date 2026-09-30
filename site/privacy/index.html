@@ -65,8 +65,11 @@
       <h3>Your conversations</h3>
       <p>We store the messages you send to Impo and the replies it produces, so your conversation history is available across sessions and devices. This includes anything you type or paste into a conversation. Please do not share information you do not want stored.</p>
 
+      <h3>Chat voice input</h3>
+      <p>When you hold the chat microphone button, Impo uses Apple's Speech Recognition to turn your speech into text. Recognition runs on your device when available for your language; otherwise Apple may process the audio. Impo sends the resulting text as a chat message when you release the button. Swipe up before releasing to cancel. This voice input is separate from Echo and is not saved as an Echo recording.</p>
+
       <h3>Data you choose to connect</h3>
-      <p>Health, Calendar, Gmail and other connected apps are each optional. When connected, Impo uses them only when you ask something that needs them. The results needed to answer that request are sent to our servers and our AI service, and are kept as part of that conversation's record (see <a href="#retention">How long we keep information</a>). Details for each are in the sections below.</p>
+      <p>Health, Calendar, Reminders, Contacts, Gmail and other connected apps are each optional. When connected, Impo uses them only when you ask something that needs them. The results needed to answer that request are sent to our servers and our AI service, and are kept as part of that conversation's record (see <a href="#retention">How long we keep information</a>). Details for each are in the sections below.</p>
 
       <h3 id="listening">Echo recordings, transcripts and locations</h3>
       <p>If you start Echo, Impo records microphone audio, including while your iPhone is locked. Tap Stop to end recording. On-device speech detection selects speech segments, which are saved locally and uploaded directly to Impo's private Amazon S3 storage using temporary upload URLs. Our worker retrieves the audio for Google Gemini transcription. Impo removes successfully processed audio and keeps the transcript and recording times in Echo. We do not identify people from their voices. Obtain permission from others before recording them.</p>
@@ -80,8 +83,8 @@
       <p>Brief uses recent saved messages, completed Echo transcripts and tasks to generate personal briefs in scheduled background runs. We store your device language and time zone to choose the language and local timing of these briefs.</p>
       <p>After setup, Impo asks to use location while you use the app. If allowed, it periodically refreshes a city-level snapshot in the foreground. Only city, country and update time are sent to Impo and its AI service; precise coordinates are not sent to Impo, and this Brief city refresh runs only in the foreground. Echo has its own recording-time location setting described above. Device location snapshots older than 24 hours are not used as current context. If access is denied, you can choose a city manually; that choice remains until you change or remove it or enable automatic location. It does not prove your current physical location. Notification permission is controlled separately in iPhone Settings.</p>
 
-      <h3>Information that stays on your device</h3>
-      <p>Your assistant's name and appearance, a profile photo you choose for it, and preview notes and tasks are stored on your device and are not sent to us, unless a feature clearly says otherwise.</p>
+      <h3>Your assistant profile</h3>
+      <p>We store your assistant's name, appearance selection and onboarding completion with your account, so setup can be restored after sign-in on another device. A custom assistant photo and preview notes and tasks stay on the device where you chose or created them.</p>
 
       <h3>Technical and log information</h3>
       <p>Our servers keep operational records, such as request times, IP addresses, error details and the status of each request, to run, secure and troubleshoot the Service. We do not use third-party advertising or analytics SDKs in the app.</p>
@@ -100,6 +103,12 @@
 
       <h2 id="calendar">3. Calendar data</h2>
       <p>If you enable Calendar, Impo asks for permission through your device's calendar settings. It reads events (such as titles, times, locations and notes) only when you ask about your schedule, and sends the matching events to our servers and AI service to answer you. Impo does not create, change or delete calendar events.</p>
+
+      <h3 id="reminders">Apple Reminders</h3>
+      <p>If you enable Reminders, Impo can read matching reminders, including titles, notes, lists, due dates and completion status, and create a reminder when you ask. Relevant results are sent to our servers and AI service for that conversation. You can revoke access in Impo or your device settings.</p>
+
+      <h3 id="contacts">Apple Contacts</h3>
+      <p>If you enable Contacts, Impo searches the contacts you allow when you ask about a person. Matching names, phone numbers, email addresses, organization, job title and birthday may be sent to our servers and AI service to answer you. Contact notes and photos are not included. Impo does not create, change or delete contacts. You can revoke access in Impo or your device settings.</p>
 
       <h2 id="google">4. Gmail, Google and other connected apps</h2>
       <p>If you connect Gmail or another app (such as Google Calendar, Google Drive, Notion, GitHub or Outlook), you authorize access through that service's own consent screen. Connections are managed by our integration provider, Composio, and your credentials for those services are never shared with Impo's app.</p>

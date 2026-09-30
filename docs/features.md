@@ -55,7 +55,7 @@ extracts useful lasting facts and proposes ADD/UPDATE/DELETE operations against
 existing memory. Facts have categories, source references and optional expiry.
 A pure planner selects bounded windows, defers active conversations and sweeps
 expired facts. Each user has a separate Turso database. The API supports summary,
-listing and forgetting; the iOS Notes interface displays these records.
+listing and forgetting; the clients’ About you views display these records.
 
 The main Chat prompt requires `impo_search_memory` first on every user turn,
 before answering or using other tools. The server retrieves only that user's
@@ -72,7 +72,10 @@ claim to erase facts already derived from them; users can forget those separatel
 ## Tools and permissions
 
 Device, external-service and internal business tools share a server dispatcher.
-iOS Calendar and Health reads require native permissions and owned device claims.
+iOS Calendar/HealthKit and Android Calendar Provider/Health Connect reads require
+native permissions and owned device claims. Neutral `impo_*` tools and legacy
+`ios_*` aliases are selected only from the device attached to the message; see
+the [native tool contract](../contracts/native-device-tools.md).
 Empty HealthKit data is unknown, not zero or proof of denied access. External apps
 come from Rebyte's Composio shelf (about 120 apps) and connect through Composio
 OAuth with server ownership checks; each connection is one pinned Tool Router
@@ -82,4 +85,7 @@ as in Rebyte. OAuth consent and real-account verification are separate from
 tests with protocol doubles.
 
 Subscription screens, some connection previews and voice previews remain demos.
-Android and Web clients, diary generation and broader connector support are planned.
+The Kotlin/Compose Android implementation includes the shared features above,
+with build, unit tests and local API 35 emulator acceptance verified. Web and diary generation
+remain planned. Native Android microphone/location/Health Connect behavior also
+requires physical-device validation. See the [Android guide](../android/README.md).

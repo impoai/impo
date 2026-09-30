@@ -6,8 +6,12 @@ The [project overview](../README.md#architecture) shows the platform diagram.
 ## Clients and commands
 
 The native SwiftUI app uses `ios/Packages/InstantClient` for HTTP commands and
-Vercel UI Message Stream v1 subscriptions. Android and Web are planned clients
-of the same API. The static `site/` directory is the public website, not a Web app.
+Vercel UI Message Stream v1 subscriptions. The Kotlin Android client uses
+`android/client` for the same commands, SSE framing/reduction and recovery, with
+Compose screens and Android permissions in `android/app`. Android build, unit
+tests and local API 35 emulator acceptance have passed; physical-device and
+deployed-account validation remain. Web remains a planned client of the API.
+The static `site/` directory is the public website, not a Web app.
 
 Clients own presentation, native permissions, audio capture and device tool
 execution. Provider credentials stay on the server. Streams may disconnect
@@ -48,8 +52,21 @@ concepts; recurring user-created tasks are not implemented yet.
 | Rebyte | Agent Sessions, Turns, Items and live conversation text in the managed runtime. |
 | S3 | Private direct audio uploads and per-user Echo transcript records. |
 | Turso | A separate database per user for consolidated long-term memory. |
+| Android local storage | Account-scoped preferences, immutable Echo batches, durable device receipts and retry state. WorkManager owns upload retry; microphone capture uses a separate foreground service. |
 | iOS local storage | Offline recording segments, immutable upload batches, device receipts and UI state. |
 
 Development fixtures may retain text in local PostgreSQL. Production storage
 requires provider configuration; the default local fixture does not pretend to
 provide remote durability. See [features](features.md) for each data lifecycle.
+
+## Native device capability selection
+
+Android advertises `impo_list_calendar_events` and `impo_get_health_summary`;
+installed iOS clients keep their `ios_*` aliases. The API captures the attached,
+owned device's capabilities at admission. Agent tools are selected from that
+specific device, not the union of all devices owned by the user. Dispatch also
+rechecks current capabilities and never substitutes an alias or another device.
+Changing capabilities rotates an idle Rebyte Session with history preservation;
+a busy Session returns `config_upgrade_pending` until the current turn settles.
+Tasks never receive native device tools. See the
+[native tool contract](../contracts/native-device-tools.md).

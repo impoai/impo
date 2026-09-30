@@ -14,6 +14,8 @@ struct MainView: View {
     @State private var search = ""
     @State private var voiceActive = ProcessInfo.processInfo.arguments.contains("--voice-preview")
     @State private var voiceCancelled = false
+    @State private var voiceBlocked = false
+    @State private var voiceNotice: String?
     @State private var composerFocused = false
 
     var body: some View {
@@ -112,6 +114,15 @@ struct MainView: View {
                 }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4)
                     .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
             }
+            if let voiceNotice {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(voiceNotice).font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("chat.voice.notice")
+                    Button { self.voiceNotice = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                        .accessibilityLabel("Dismiss voice notice")
+                }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4)
+                    .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
+            }
             HStack(spacing: 9) {
                 Button { showAttachment = true } label: {
                     Image(systemName: "plus").font(.system(size: 26, weight: .light)).frame(width: 32, height: 42)
@@ -132,15 +143,16 @@ struct MainView: View {
                         .overlay(Circle().strokeBorder(InstantStyle.paperElevated.opacity(0.8), lineWidth: 1))
                         .foregroundStyle(InstantStyle.forest).contentShape(Rectangle())
                         .gesture(DragGesture(minimumDistance: 0)
-                            .onChanged { value in composerFocused = false; voiceActive = true; voiceCancelled = value.translation.height < -65 }
-                            .onEnded { _ in
-                                if !voiceCancelled { composer = "Help me plan my day" }
-                                voiceActive = false; voiceCancelled = false
-                            })
-                        .accessibilityElement().accessibilityLabel("Hold to preview voice input")
+                            .onChanged { value in
+                                if !voiceActive && !voiceBlocked { startVoice() }
+                                let cancel = value.translation.height < -65
+                                if voiceActive && cancel != voiceCancelled { voiceCancelled = cancel; UISelectionFeedbackGenerator().selectionChanged() }
+                            }
+                            .onEnded { _ in endVoice() })
+                        .accessibilityElement().accessibilityLabel("Hold to talk")
+                        .accessibilityHint("Release to send. Slide up to cancel.")
                         .accessibilityIdentifier("chat.voice")
                         .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { composer = "Help me plan my day" }
                 } else {
                     Button(action: send) {
                         Image(systemName: "arrow.up").font(.system(size: 21, weight: .semibold))
@@ -204,6 +216,44 @@ struct MainView: View {
             .accessibilityAddTraits(model.selectedTab == index ? .isSelected : [])
     }
 
+    /// Hold to talk: record while held, send the transcript on release, slide up to cancel.
+    private func startVoice() {
+        composerFocused = false
+        voiceNotice = nil
+        guard model.dictation.phase == .idle else { voiceBlocked = true; return }
+        if listening.isListening {
+            voiceBlocked = true
+            voiceNotice = "Echo is using the microphone. Stop Echo to talk to \(model.assistantName)."
+            return
+        }
+        voiceActive = true
+        voiceCancelled = false
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        model.dictation.begin()
+    }
+
+    private func endVoice() {
+        if voiceBlocked { voiceBlocked = false; return }
+        guard voiceActive else { return }
+        let cancelled = voiceCancelled
+        voiceActive = false
+        voiceCancelled = false
+        if cancelled { model.dictation.cancel(); return }
+        // Show the pending "…" bubble where the message will land.
+        if model.selectedTab != 2 { model.selectedTab = 0 }
+        Task {
+            switch await model.dictation.finish() {
+            case .text(let text):
+                composer = text
+                send()
+            case .empty:
+                voiceNotice = "Didn't catch that. Hold the button while you speak, then release."
+            case .unavailable(let message):
+                voiceNotice = message
+            }
+        }
+    }
+
     private func send() {
         guard !composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if model.selectedTab == 2 {
@@ -222,21 +272,44 @@ struct MainView: View {
     }
 
     private var voiceOverlay: some View {
-        ZStack(alignment: .bottom) {
-            InstantStyle.forest.opacity(0.28).ignoresSafeArea()
-            VStack(spacing: 13) {
-                Text(voiceCancelled ? "Release to cancel" : "Release to use · Swipe up to cancel")
-                    .font(.system(size: 16, weight: .semibold))
-                HStack(alignment: .center, spacing: 4) {
-                    ForEach(0..<29) { index in
-                        Capsule().frame(width: 2, height: CGFloat([3, 4, 3, 7, 12, 20, 15, 11, 22, 17][index % 10]))
-                    }
-                }.frame(height: 26)
-                Text("Voice preview · sample text, no recording").font(.system(size: 12)).foregroundStyle(.secondary)
+        let preview = ProcessInfo.processInfo.arguments.contains("--voice-preview")
+        let levels = preview ? (0..<40).map { 0.25 + 0.6 * abs(sin(Double($0) * 0.55)) } : model.dictation.levels
+        let transcript = preview ? "Help me plan my day" : model.dictation.transcript
+        let tint = voiceCancelled ? Color.red : InstantStyle.accent
+        return ZStack(alignment: .bottom) {
+            // An opaque paper base hides the composer and tabs; the tinted glow sits on top.
+            ZStack {
+                LinearGradient(stops: [.init(color: InstantStyle.paper.opacity(0), location: 0), .init(color: InstantStyle.paper, location: 0.3), .init(color: InstantStyle.paper, location: 1)], startPoint: .top, endPoint: .bottom)
+                LinearGradient(stops: [.init(color: tint.opacity(0), location: 0.15), .init(color: tint.opacity(0.28), location: 0.55), .init(color: tint.opacity(0.62), location: 1)], startPoint: .top, endPoint: .bottom)
             }
-            .frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 60)
-            .background(LinearGradient(colors: [.clear, InstantStyle.paper, InstantStyle.peach], startPoint: .top, endPoint: .bottom))
-        }.allowsHitTesting(false).accessibilityIdentifier("voice.preview")
+            .frame(height: 360).frame(maxWidth: .infinity)
+            .ignoresSafeArea(edges: .bottom)
+            .animation(.easeOut(duration: 0.15), value: voiceCancelled)
+            VStack(spacing: 18) {
+                if !transcript.isEmpty && !voiceCancelled {
+                    Text(transcript).font(.system(size: 20, weight: .medium)).foregroundStyle(InstantStyle.ink)
+                        .multilineTextAlignment(.center).lineLimit(4).padding(.horizontal, 28)
+                        .accessibilityIdentifier("voice.transcript")
+                }
+                Text(voiceCancelled ? "Release to cancel" : "Release to send · Slide up to cancel")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(voiceCancelled ? Color.red : InstantStyle.forest)
+                HStack(alignment: .center, spacing: 3) {
+                    ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
+                        Capsule().fill(voiceCancelled ? Color.red.opacity(0.75) : InstantStyle.paperElevated)
+                            .frame(width: 3, height: 4 + 30 * level)
+                    }
+                }
+                .frame(height: 36)
+                .animation(.easeOut(duration: 0.08), value: levels)
+            }
+            .padding(.bottom, 82)
+        }
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
+        .ignoresSafeArea(.keyboard)
+        .allowsHitTesting(false)
+        .accessibilityIdentifier("voice.preview")
     }
 }
 
@@ -281,6 +354,7 @@ private struct ChatView: View {
                     ForEach(model.messages.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) }) { message in
                         bubble(message.text, user: message.role == "user").id(message.id)
                     }
+                    if model.dictation.phase == .transcribing && search.isEmpty { TranscribingBubble() }
                     if !search.isEmpty && !model.messages.contains(where: { $0.text.localizedCaseInsensitiveContains(search) }) {
                         Text("No messages found").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 50)
                     }
@@ -299,7 +373,7 @@ private struct ChatView: View {
                 }.padding(.horizontal, 19).padding(.top, 2).padding(.bottom, 10)
             }
             .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
-            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count)],
+            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.dictation.phase == .transcribing)],
                            enabled: search.isEmpty, identifier: "chat.scrollToBottom")
         }
     }
@@ -510,6 +584,33 @@ struct LiveStepList: View {
         case "completed": Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(InstantStyle.forest)
         case "failed": Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.red.opacity(0.8))
         default: ProgressView().controlSize(.mini)
+        }
+    }
+}
+
+/// The user's voice message while its transcript is being finalized.
+private struct TranscribingBubble: View {
+    @State private var phase = 0
+    var body: some View {
+        HStack {
+            Spacer(minLength: 55)
+            HStack(spacing: 5) {
+                ForEach(0..<3) { index in
+                    Circle().fill(InstantStyle.forest.opacity(phase == index ? 0.85 : 0.3)).frame(width: 7, height: 7)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .background(InstantStyle.peach, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(InstantStyle.border.opacity(0.8), lineWidth: 0.7))
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .accessibilityElement().accessibilityLabel("Transcribing your message")
+        .accessibilityIdentifier("chat.voice.transcribing")
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(320))
+                phase = (phase + 1) % 3
+            }
         }
     }
 }

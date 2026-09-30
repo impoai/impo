@@ -1,5 +1,10 @@
 # Client API
 
+The language-independent [application protocol v1](../contracts/client-protocol.md)
+defines the client/server boundary, payload shapes, stream reduction, retries
+and platform extension limits. Read it before implementing a new client; this
+page is the shorter implementation map and Echo reference.
+
 The application API is separate from the Rebyte Agents API. Clients authenticate
 with a Clerk bearer token in deployed mode. Fixed local development identities
 work only with the explicitly enabled local runtime and database.

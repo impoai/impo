@@ -1,5 +1,12 @@
 # Impo client contract — ICA v1 fixture
 
+For the complete application boundary, start with the
+[application protocol v1](client-protocol.md): commands, JSON models, SSE,
+recovery, Echo uploads and platform capability limits. The
+[Android guide](../android/README.md) describes the Kotlin client, native UI and
+verification commands. This page remains the narrower fixture specification; its test
+identities and scenarios are not production API fields.
+
 ICA retains its original Instant Client API name as a protocol identifier.
 This is the shared contract for the no-UI Swift ↔ TypeScript fixture milestone.
 It uses the real `ai` package to encode Vercel UI Message Stream v1. No model,
@@ -73,3 +80,19 @@ to the device.
 ## Listening
 
 Authenticated audio upload, paginated all-history and per-day transcript listing, and deletion are implemented by the server and `InstantClient`. Without `from`/`to`, GET accepts `limit` and an opaque `cursor` and returns `nextCursor`; existing day queries remain compatible. The HTTP headers, response fields, limits and retry semantics are defined in [Listening](../docs/client-api.md). These source transcripts are independent of chat/UI stream events.
+
+## Android UI fixture
+
+`npm run dev:android-fixture` starts a separate, loopback-only synthetic fixture
+on port 3011 using the production HTTP/SSE adapter and in-memory repositories.
+It exercises Chat, Tasks/follow-ups, Brief/settings/sources, Memories,
+Echo hydration/labels/deletion, simulated connector authorization and exact-byte
+uploads. The server rejects production mode and has no provider credentials.
+The fixed Bearer identity is `instant-dev-alice` (or `instant-dev-bob` for
+ownership tests). Fixture data is reset at restart; authorization browser pages
+and transcript output explicitly identify synthetic behavior.
+
+`npm run test:android:ui` starts its own instance and forwards emulator port
+3011. It is separate from the small Swift protocol fixture documented above.
+Kotlin protocol and app-unit checks run through `npm run test:android`; Android
+build/emulator acceptance is tracked in the platform guide.

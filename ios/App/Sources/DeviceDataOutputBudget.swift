@@ -15,10 +15,11 @@ enum DeviceDataOutputBudget {
         if try fits(fields) { return output }
 
         fields["truncated"] = .bool(true)
-        if case .array(let events) = fields["events"] {
-            fields = try largestPrefix(events, fields: fields, fits: fits) { current, values in
+        for key in ["events", "reminders", "contacts"] {
+            guard case .array(let items) = fields[key] else { continue }
+            fields = try largestPrefix(items, fields: fields, fits: fits) { current, values in
                 var candidate = current
-                candidate["events"] = .array(values)
+                candidate[key] = .array(values)
                 candidate["returned_count"] = .number(Double(values.count))
                 return candidate
             }

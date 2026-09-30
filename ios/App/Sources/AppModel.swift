@@ -13,8 +13,11 @@ struct ChatMessage: Identifiable, Codable, Equatable {
 final class AppModel {
     let deviceData: DeviceDataService
     let connectors = ConnectorsModel()
+    let dictation = VoiceDictation()
     var calendarEnabled = false
     var healthEnabled = false
+    var remindersEnabled = false
+    var contactsEnabled = false
     var deviceConnectionStatus = "Connect your iPhone to use its data."
     var deviceToolStatus: String?
     /// Intermediate steps of the reply in progress; shown while it runs, then dropped.
@@ -96,7 +99,6 @@ final class AppModel {
         try requireAuthConfiguration()
         let provider: OAuthProvider = switch brand {
         case .google: .google
-        case .microsoft: .microsoft
         case .apple: .apple
         }
         if provider == .apple {
@@ -104,16 +106,6 @@ final class AppModel {
         } else {
             try await Clerk.shared.auth.signInWithOAuth(provider: provider)
         }
-        try didSignIn()
-    }
-
-    /// Real Clerk email/password sign-in - the headless equivalent of the
-    /// "Personal or work email" button. No demo/offline fallback: this either
-    /// authenticates for real or throws.
-    func signIn(email: String, password: String) async throws {
-        try requireAuthConfiguration()
-        let result = try await Clerk.shared.auth.signInWithPassword(identifier: email, password: password)
-        guard result.status == .complete else { throw ClerkTokenError.notSignedIn }
         try didSignIn()
     }
 
@@ -183,7 +175,9 @@ final class AppModel {
             guard !Task.isCancelled else { return }
             try? await Task.sleep(for: .milliseconds(50))
         }
-        if Clerk.shared.session != nil { usesRealAuth = true }
+        if Clerk.shared.session != nil { try? didSignIn() }
+        // A saved session can outlive local state (reinstall, sign-out on another build).
+        if usesRealAuth && !isOnboarded { _ = await restoreAccountProfile() }
         if displayName.isEmpty, let first = Clerk.shared.user?.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty {
             displayName = String(first.prefix(40)); persistProfile()
         }
@@ -201,6 +195,8 @@ final class AppModel {
         deviceData = DeviceDataService()
         calendarEnabled = defaults.bool(forKey: "instant.device.calendarEnabled")
         healthEnabled = defaults.bool(forKey: "instant.device.healthEnabled")
+        remindersEnabled = defaults.bool(forKey: "instant.device.remindersEnabled")
+        contactsEnabled = defaults.bool(forKey: "instant.device.contactsEnabled")
         isOnboarded = defaults.bool(forKey: "instant.onboarded")
         assistantName = defaults.string(forKey: "instant.name") ?? "Momo"
         // "Demo" was the old placeholder default, never a name the user chose.
@@ -250,6 +246,28 @@ final class AppModel {
         if assistantName.isEmpty { assistantName = "Momo" }
         isOnboarded = true
         persistProfile()
+        syncAccountProfile(onboarded: true)
+    }
+
+    /// A returning account skips onboarding: restore what the server remembers and report
+    /// whether this account already finished it. Offline or Demo returns false.
+    func restoreAccountProfile() async -> Bool {
+        guard let scope = listeningScope, let client = liveClient(), let profile = try? await client.profile(),
+              !Task.isCancelled, listeningScope == scope else { return false }
+        if let name = profile.assistantName { assistantName = name }
+        // Index 6 is a photo kept only on the device that chose it.
+        if let index = profile.avatarIndex, index != 6 || defaults.data(forKey: "instant.avatarPhoto") != nil { avatarIndex = index }
+        if let name = profile.displayName, !name.isEmpty { displayName = name }
+        if profile.onboarded { isOnboarded = true }
+        persistProfile()
+        return profile.onboarded
+    }
+
+    /// Save the assistant's name and look to the account. Best effort; local state stays authoritative on this device.
+    func syncAccountProfile(onboarded: Bool = false) {
+        guard let client = liveClient() else { return }
+        let name = assistantName, avatar = avatarIndex
+        Task { _ = try? await client.updateProfile(assistantName: name, avatarIndex: avatar, onboarded: onboarded ? true : nil) }
     }
 
     func resetDemo() {
@@ -260,7 +278,7 @@ final class AppModel {
         assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; messages = []
         selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil
         useLiveBackend = false; mode = "Balanced"; backendURL = "http://127.0.0.1:3001"
-        calendarEnabled = false; healthEnabled = false
+        calendarEnabled = false; healthEnabled = false; remindersEnabled = false; contactsEnabled = false
     }
 
     func chooseScenario(_ title: String) {
@@ -604,6 +622,8 @@ final class AppModel {
         var tools: [String] = []
         if calendarEnabled && deviceData.canReadCalendar { tools.append("ios_list_calendar_events") }
         if healthEnabled && deviceData.healthAccessRequested { tools.append("ios_get_health_summary") }
+        if remindersEnabled && deviceData.canUseReminders { tools += ["impo_list_reminders", "impo_create_reminder"] }
+        if contactsEnabled && deviceData.canReadContacts { tools.append("impo_search_contacts") }
         return tools
     }
 
@@ -614,6 +634,12 @@ final class AppModel {
         } else if kind == "health" {
             await deviceData.requestHealthAccess()
             healthEnabled = deviceData.healthAccessRequested
+        } else if kind == "reminders" {
+            await deviceData.requestRemindersAccess()
+            remindersEnabled = deviceData.canUseReminders
+        } else if kind == "contacts" {
+            await deviceData.requestContactsAccess()
+            contactsEnabled = deviceData.canReadContacts
         }
         saveDevicePreferences()
         stopDeviceConnection()
@@ -623,6 +649,8 @@ final class AppModel {
     func disconnectDeviceData(_ kind: String) {
         if kind == "calendar" { calendarEnabled = false }
         if kind == "health" { healthEnabled = false }
+        if kind == "reminders" { remindersEnabled = false }
+        if kind == "contacts" { contactsEnabled = false }
         saveDevicePreferences()
         stopDeviceConnection()
         startDeviceConnection()
@@ -631,6 +659,8 @@ final class AppModel {
     private func saveDevicePreferences() {
         defaults.set(calendarEnabled, forKey: "instant.device.calendarEnabled")
         defaults.set(healthEnabled, forKey: "instant.device.healthEnabled")
+        defaults.set(remindersEnabled, forKey: "instant.device.remindersEnabled")
+        defaults.set(contactsEnabled, forKey: "instant.device.contactsEnabled")
     }
 
     private func stopDeviceConnection() {
@@ -655,7 +685,8 @@ final class AppModel {
                     let hash = SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
                     let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                     let runner = try DeviceToolRunner(transport: api, deviceID: registered.deviceId,
-                        receiptFile: directory.appendingPathComponent("DeviceReceipts/\(hash).json"))
+                        receiptFile: directory.appendingPathComponent("DeviceReceipts/\(hash).json"),
+                        nonRepeatableTools: ["impo_create_reminder"])
                     deviceConnectionStatus = "iPhone connected · data is read only when you ask."
                     while !Task.isCancelled && deviceOperationID == token && useLiveBackend {
                         try await runner.poll(isEnabled: { [self] invocation in
@@ -685,7 +716,13 @@ final class AppModel {
         guard availableDeviceTools.contains(invocation.toolName) else {
             return DeviceToolExecutionResult(success: false, error: "permission_required")
         }
-        deviceToolStatus = invocation.toolName == "ios_list_calendar_events" ? "Reading your calendar…" : "Reading the Health data you selected…"
+        deviceToolStatus = switch invocation.toolName {
+        case "ios_list_calendar_events": "Reading your calendar…"
+        case "impo_list_reminders": "Reading your reminders…"
+        case "impo_create_reminder": "Adding a reminder…"
+        case "impo_search_contacts": "Looking up your contacts…"
+        default: "Reading the Health data you selected…"
+        }
         let result = await deviceData.execute(toolName: invocation.toolName, input: invocation.input)
         if deviceOperationID == operation { deviceToolStatus = nil }
         if !result.success && (Task.isCancelled || result.error == "cancelled") { throw CancellationError() }

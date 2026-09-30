@@ -41,6 +41,13 @@ xcuserdata/
 *.jks
 *.ipa
 *.xcarchive/
+
+# Android local configuration and generated output
+android/local.properties
+android/.gradle/
+android/.kotlin/
+*.apk
+*.aab
 *credentials*.json
 *service-account*.json
 *.xcconfig

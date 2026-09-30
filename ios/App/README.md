@@ -60,7 +60,7 @@ The Echo slow-network UI test also needs `node scripts/echo-ui-proxy.mjs`, a
 loopback-only fault proxy on port 3010. It exercises placeholders, direct date
 seeks, retries and scrolling past the text cache against the 20,000-record fixture.
 
-The app uses Calendar, Health, microphone and optional location authorization.
+The app uses Calendar, Health, Reminders, Contacts, microphone and optional location authorization.
 Device tool execution comes from owned pending/claim requests. Echo preserves
 immutable audio/location batches across offline retries. Background recording,
 real GPS, lock-screen behavior and battery use need physical-device testing.
@@ -75,7 +75,7 @@ archive and exported IPA before distributing your own build.
 
 Implemented features and demo boundaries are documented in
 [feature behavior](../../docs/features.md). The static website, backend, Android
-placeholder and future Web client have separate repository-root boundaries.
+client and future Web client have separate repository-root boundaries.
 
 ## Response rendering and selection
 

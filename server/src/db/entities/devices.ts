@@ -22,5 +22,6 @@ export const deviceCapabilities = pgTable('device_capabilities', {
 }, table => [
   unique('device_capabilities_device_tool_unique').on(table.deviceId, table.toolName),
   foreignKey({ name: 'device_capabilities_owned_device_fk', columns: [table.userId, table.deviceId], foreignColumns: [devices.userId, devices.id] }),
-  check('device_capabilities_tool_check', sql`${table.toolName} IN ('ios_list_calendar_events', 'ios_get_health_summary')`),
+  // A new name lets Drizzle push replace the previous list; same-name checks keep old expressions.
+  check('device_capabilities_tool_v2_check', sql`${table.toolName} IN ('impo_list_calendar_events', 'impo_get_health_summary', 'ios_list_calendar_events', 'ios_get_health_summary', 'impo_list_reminders', 'impo_create_reminder', 'impo_search_contacts')`),
 ]);

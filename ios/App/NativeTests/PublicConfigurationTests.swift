@@ -11,7 +11,7 @@ final class PublicConfigurationTests: XCTestCase {
         await model.syncRealAuthFromClerkSession()
         XCTAssertFalse(model.usesRealAuth)
         do {
-            try await model.signIn(email: "developer@example.invalid", password: "unused")
+            try await model.signIn(with: .google)
             XCTFail("Live sign-in must require local configuration.")
         } catch {
             XCTAssertEqual((error as NSError).domain, "ImpoConfiguration")

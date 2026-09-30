@@ -1,0 +1,4 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/impo_paper" />
+    <foreground android:drawable="@drawable/impo_icon_foreground" />
+</adaptive-icon>

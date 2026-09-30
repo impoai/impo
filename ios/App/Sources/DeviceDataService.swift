@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import EventKit
 import HealthKit
+import Contacts
 import InstantClient
 
 /// Read-only device tools. Permission requests run only from an explicit UI action.
@@ -12,6 +13,10 @@ final class DeviceDataService {
     private(set) var healthAccessRequested = false
     private(set) var isRequestingCalendarAccess = false
     private(set) var isRequestingHealthAccess = false
+    private(set) var remindersStatus = "Not connected"
+    private(set) var contactsStatus = "Not connected"
+    private(set) var isRequestingRemindersAccess = false
+    private(set) var isRequestingContactsAccess = false
 
     @ObservationIgnored private let eventStore = EKEventStore()
     @ObservationIgnored private var healthStore: HKHealthStore?
@@ -20,6 +25,8 @@ final class DeviceDataService {
     private static let sleepSampleLimit = 200
 
     var canReadCalendar: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
+    var canUseReminders: Bool { DeviceRemindersContacts.canUseReminders }
+    var canReadContacts: Bool { DeviceRemindersContacts.canReadContacts }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -37,6 +44,22 @@ final class DeviceDataService {
         case .notDetermined: calendarStatus = "Not connected"
         @unknown default: calendarStatus = "Calendar permission unknown"
         }
+        switch EKEventStore.authorizationStatus(for: .reminder) {
+        case .fullAccess: remindersStatus = "Connected · reads, and adds only when you ask"
+        case .denied: remindersStatus = "Access denied · review in Settings"
+        case .restricted: remindersStatus = "Access restricted by iOS"
+        case .writeOnly: remindersStatus = "Full access required to read reminders"
+        case .notDetermined: remindersStatus = "Not connected"
+        @unknown default: remindersStatus = "Reminders permission unknown"
+        }
+        switch CNContactStore.authorizationStatus(for: .contacts) {
+        case .authorized: contactsStatus = "Connected · read-only in Impo"
+        case .limited: contactsStatus = "Connected to the contacts you selected · read-only"
+        case .denied: contactsStatus = "Access denied · review in Settings"
+        case .restricted: contactsStatus = "Access restricted by iOS"
+        case .notDetermined: contactsStatus = "Not connected"
+        @unknown default: contactsStatus = "Contacts permission unknown"
+        }
         healthAccessRequested = defaults.bool(forKey: Self.healthReviewKey)
         if !HKHealthStore.isHealthDataAvailable() { healthStatus = "Health data unavailable on this device" }
         else if healthAccessRequested { healthStatus = "Permission reviewed · data availability unknown" }
@@ -51,6 +74,26 @@ final class DeviceDataService {
             _ = try await eventStore.requestFullAccessToEvents()
             refreshAuthorizationStatus()
         } catch { calendarStatus = "Couldn't request Calendar access · try again" }
+    }
+
+    func requestRemindersAccess() async {
+        guard !isRequestingRemindersAccess else { return }
+        isRequestingRemindersAccess = true
+        defer { isRequestingRemindersAccess = false }
+        do {
+            _ = try await eventStore.requestFullAccessToReminders()
+            refreshAuthorizationStatus()
+        } catch { remindersStatus = "Couldn't request Reminders access · try again" }
+    }
+
+    func requestContactsAccess() async {
+        guard !isRequestingContactsAccess else { return }
+        isRequestingContactsAccess = true
+        defer { isRequestingContactsAccess = false }
+        do {
+            _ = try await CNContactStore().requestAccess(for: .contacts)
+            refreshAuthorizationStatus()
+        } catch { refreshAuthorizationStatus() }
     }
 
     func requestHealthAccess() async {
@@ -87,9 +130,18 @@ final class DeviceDataService {
                 guard healthAccessRequested else { return failure("permission_required") }
                 let output = try await healthSummary(arguments)
                 return DeviceToolExecutionResult(success: true, output: try DeviceDataOutputBudget.bound(output))
+            case "impo_list_reminders":
+                return DeviceToolExecutionResult(success: true, output: try DeviceDataOutputBudget.bound(await DeviceRemindersContacts(eventStore: eventStore).listReminders(input)))
+            case "impo_create_reminder":
+                return DeviceToolExecutionResult(success: true, output: try DeviceRemindersContacts(eventStore: eventStore).createReminder(input))
+            case "impo_search_contacts":
+                return DeviceToolExecutionResult(success: true, output: try DeviceDataOutputBudget.bound(await DeviceRemindersContacts(eventStore: eventStore).searchContacts(input)))
             default: return failure("unsupported_tool")
             }
         } catch let invalid as DeviceDataInput.Invalid { return failure(invalid.code) }
+        catch DeviceRemindersContacts.Failure.invalid(let code) { return failure(code) }
+        catch DeviceRemindersContacts.Failure.permissionRequired { return failure("permission_required") }
+        catch DeviceRemindersContacts.Failure.listNotFound { return failure("reminder_list_not_found") }
         catch DeviceDataOutputBudget.Failure.tooLarge { return failure("result_too_large") }
         catch NativeReadError.permissionRevoked { return failure("permission_required") }
         catch is CancellationError { return failure("cancelled") }
