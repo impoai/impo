@@ -14,7 +14,7 @@ final class AccountProfileTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let model = AppModel(defaults: defaults, session: session)
         model.useLiveBackend = true
-        model.backendURL = "https://profile.example.invalid"
+        model.backendURL = "http://127.0.0.1:39201"
         let restored = await model.restoreAccountProfile()
         XCTAssertTrue(restored)
         XCTAssertTrue(model.isOnboarded)
@@ -36,7 +36,7 @@ final class AccountProfileTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         let model = AppModel(defaults: defaults, session: session)
         model.useLiveBackend = true
-        model.backendURL = "https://unavailable.example.invalid"
+        model.backendURL = "http://127.0.0.1:39202"
         let restored = await model.restoreAccountProfile()
         XCTAssertFalse(restored)
         XCTAssertFalse(model.isOnboarded)
@@ -47,7 +47,7 @@ private final class AccountProfileProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let available = request.url?.host == "profile.example.invalid" && request.url?.path == "/api/v1/profile"
+        let available = request.url?.port == 39201 && request.url?.path == "/api/v1/profile"
         let body = available
             ? #"{"onboarded":true,"displayName":"Alex","assistantName":"Robin","avatarIndex":2}"#
             : #"{"error":{"code":"profile_unavailable","message":"Unavailable","retryable":true}}"#
