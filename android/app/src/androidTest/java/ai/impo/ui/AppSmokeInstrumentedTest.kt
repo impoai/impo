@@ -12,6 +12,9 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import ai.impo.MainActivity
+import ai.impo.ImpoApplication
+import ai.impo.data.ProfileCache
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
@@ -64,7 +67,7 @@ class AppSmokeInstrumentedTest {
         compose.onNodeWithTag("chat.send").performClick()
         hideKeyboard()
         waitApi { val rows = get("/conversation").getJSONArray("messages"); rows.length() >= 4 && rows.getJSONObject(rows.length() - 2).getString("text") == message && finished() }
-        waitTag("chat.send")
+        waitTag("chat.input")
         compose.onNodeWithTag("conversation.messages").performScrollToIndex(get("/conversation").getJSONArray("messages").length() - 1)
         assertTrue(device.wait(Until.hasObject(By.textContains("Hello Android")), 10_000))
         scenario.recreate()
@@ -170,8 +173,16 @@ class AppSmokeInstrumentedTest {
         compose.onNodeWithText("Your assistant").performClick()
         compose.onNodeWithTag("onboarding.name").performTextReplacement("Android Explorer")
         compose.onNodeWithTag("onboarding.assistant").performTextReplacement("Robin Android")
+        compose.onNodeWithTag("onboarding.avatar.1").performScrollTo().performClick()
         hideKeyboard()
         compose.onNodeWithTag("onboarding.continue").performScrollTo().performClick()
+        waitTag("settings.connections")
+        waitApi { get("/profile").optString("assistantName") == "Robin Android" && get("/profile").optString("displayName") == "Android Explorer" }
+        assertEquals(1, get("/profile").getInt("avatarIndex"))
+        val afterProfile = get("/today/settings").getJSONObject("settings")
+        assertEquals("en-GB", afterProfile.getString("locale"))
+        assertEquals("Asia/Tokyo", afterProfile.getString("timeZone"))
+        assertEquals("Tokyo", afterProfile.getJSONObject("location").getString("city"))
         compose.onNodeWithContentDescription("Back").performClick()
         waitTag("nav.chat")
         scenario.recreate()
@@ -179,6 +190,20 @@ class AppSmokeInstrumentedTest {
         compose.onNodeWithText("Robin Android").assertExists()
         compose.onNodeWithTag("settings.open").performClick()
         compose.onNodeWithText("Android Explorer").assertExists()
+        compose.onNodeWithContentDescription("Back").performClick()
+        // Simulate a fresh local profile cache, retaining the authenticated fixture account.
+        // A new ViewModel must restore the same name/look from the real HTTP profile routes.
+        scenario.close()
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as ImpoApplication
+        runBlocking { app.settings.update(checkNotNull(app.auth.state.value.account).id) { ProfileCache() } }
+        scenario = ActivityScenario.launch(Intent(app, MainActivity::class.java).putExtra("impo.test.api", endpoint))
+        waitTag("chat.input")
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Robin Android").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings.open").performClick()
+        compose.onNodeWithText("Android Explorer").assertExists()
+        compose.onNodeWithText("Your assistant").performClick()
+        compose.onNodeWithTag("onboarding.avatar.1").assertIsSelected()
+        compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithTag("nav.memories").performClick()
         compose.onNodeWithTag("memories.echo").performClick()
@@ -200,6 +225,7 @@ class AppSmokeInstrumentedTest {
         compose.onNodeWithTag("settings.connections").performClick()
         compose.onNodeWithTag("connections.search").performScrollTo().performTextInput("Gmail")
         hideKeyboard()
+        compose.onNodeWithTag("connections.list").performScrollToNode(hasTestTag("connector.gmail"))
         waitTag("connector.gmail")
         fun disconnect() {
             compose.onNode(hasText("Disconnect") and hasAnyAncestor(hasTestTag("connector.gmail"))).performScrollTo().performClick()

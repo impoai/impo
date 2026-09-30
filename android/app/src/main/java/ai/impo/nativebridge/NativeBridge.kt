@@ -12,7 +12,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
-data class NativeAccount(val accountId: String, val api: ImpoClient)
+/** A process-local authorization lifetime; persisted recordings remain keyed only by accountId. */
+internal class EchoCaptureSession(val accountId: String) {
+    val token: String = java.util.UUID.randomUUID().toString()
+    fun accepts(commandToken: String?, current: EchoCaptureSession?): Boolean = this === current && commandToken == token
+    fun isCurrent(current: EchoCaptureSession?): Boolean = this === current
+}
+data class NativeAccount(val accountId: String, val api: ImpoClient) {
+    internal val captureSession = EchoCaptureSession(accountId)
+}
 data class EchoRecordingState(
     val status: String = "stopped", val level: Float = 0f, val speech: Boolean = false,
     val message: String? = null, val pendingBatches: Int = 0,
@@ -20,20 +28,22 @@ data class EchoRecordingState(
 
 /** Recovery may finish after recording starts, or after the same account signs in again. */
 internal class EchoRecoveryState(private val state: MutableStateFlow<EchoRecordingState>) {
-    internal data class Ticket(val accountId: String, val generation: Long)
+    internal data class Ticket(val accountId: String, val generation: Long, val sessionToken: String)
     private var accountId: String? = null
+    private var sessionToken: String? = null
     private var generation = 0L
 
-    @Synchronized fun begin(nextAccountId: String?): Ticket? {
-        if (nextAccountId == accountId) return null
+    @Synchronized fun begin(nextAccountId: String?, nextSessionToken: String? = nextAccountId): Ticket? {
+        if (nextAccountId == accountId && nextSessionToken == sessionToken) return null
         accountId = nextAccountId
+        sessionToken = nextSessionToken
         generation += 1
         state.value = EchoRecordingState()
-        return nextAccountId?.let { Ticket(it, generation) }
+        return nextAccountId?.let { Ticket(it, generation, requireNotNull(nextSessionToken)) }
     }
 
-    @Synchronized fun complete(ticket: Ticket, currentAccountId: String?, pendingBatches: Int, message: String?): Boolean {
-        if (ticket.generation != generation || ticket.accountId != accountId || ticket.accountId != currentAccountId) return false
+    @Synchronized fun complete(ticket: Ticket, currentAccountId: String?, pendingBatches: Int, message: String?, currentSessionToken: String? = currentAccountId): Boolean {
+        if (ticket.generation != generation || ticket.accountId != accountId || ticket.accountId != currentAccountId || ticket.sessionToken != sessionToken || ticket.sessionToken != currentSessionToken) return false
         state.update { current -> current.copy(pendingBatches = pendingBatches, message = current.message ?: message) }
         return true
     }
@@ -59,11 +69,12 @@ object NativeBridge {
     fun accountChanged(context: Context) {
         val current = account()
         EchoRecordingService.accountChanged()
-        val ticket = recovery.begin(current?.accountId) ?: return
+        val ticket = recovery.begin(current?.accountId, current?.captureSession?.token) ?: return
         scope.launch {
             val store = store(context, ticket.accountId)
             val errors = store.recover()
-            if (recovery.complete(ticket, account()?.accountId, store.pendingCount(), errors.firstOrNull())) {
+            val now = account()
+            if (recovery.complete(ticket, now?.accountId, store.pendingCount(), errors.firstOrNull(), now?.captureSession?.token)) {
                 EchoUploadWorker.enqueue(context, ticket.accountId)
             }
         }
@@ -83,11 +94,17 @@ object NativeBridge {
             mutableRecording.value = recording.value.copy(status = "stopped", level = 0f, speech = false)
     }
     private fun sendStart(context: Context, action: String, location: Boolean?) {
+        val capturedAccount = account() ?: return
+        if (VoiceMicrophone.inUse.value) {
+            mutableRecording.update { it.copy(message = "Finish voice input before starting Echo.") }
+            return
+        }
         runCatching {
             val intent = Intent(context, EchoRecordingService::class.java).setAction(action)
+                .putExtra(EchoRecordingService.EXTRA_SESSION, capturedAccount.captureSession.token)
             location?.let { intent.putExtra("includeLocation", it) }
             ContextCompat.startForegroundService(context, intent)
-        }.onFailure { mutableRecording.value = recording.value.copy(status = "paused", message = "Couldn't start the microphone. Open Impo and try again.") }
+        }.onFailure { if (account() === capturedAccount) mutableRecording.value = recording.value.copy(status = "paused", message = "Couldn't start the microphone. Open Impo and try again.") }
     }
     fun wifiOnly(context: Context): Boolean = context.getSharedPreferences("native_preferences", Context.MODE_PRIVATE)
         .getBoolean("wifi_${account()?.accountId?.let { sha256(it.toByteArray()) }}", false)

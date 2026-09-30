@@ -96,6 +96,29 @@ not automatically retry every write: OAuth connect has no client idempotency
 key, for example; reconcile its status. `409` conflicts need reconciliation;
 `410` means work is no longer usable. A lost response does not prove failure.
 
+## Account profile
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /profile` | None | 200 `AccountProfile` |
+| `PATCH /profile` | Optional `assistantName`, `avatarIndex`, `onboarded` | 200 `AccountProfile` |
+
+`AccountProfile` contains `onboarded: boolean` and optional `displayName`,
+`assistantName`, and `avatarIndex`. The assistant name is trimmed and must have
+1–30 characters without NUL. Avatar indices are stable: fox 0, robin 1, cat 2,
+Impo 3, owl 4, otter 5, and iOS device-local photo 6. The API does not transfer
+photo bytes. `onboarded` may only be set to `true`; old accounts with a user
+message also count as onboarded. Unknown patch fields are rejected.
+
+`displayName` is read from Brief settings. To change it, fetch current
+`GET /today/settings` and preserve the other editable fields in
+`PUT /today/settings`. Do not send it to `PATCH /profile`. OS permissions,
+native connection opt-ins and upload preferences remain local to each account
+on each device. A failed first profile lookup is unknown, not a new account;
+show recovery/retry instead of overwriting the remote profile with defaults.
+Pending profile edits persist before network writes. Scope asynchronous results
+to the originating login session, including when the same user signs in again.
+
 ## Chat, tasks and runs
 
 | Method and path | Request | Success |

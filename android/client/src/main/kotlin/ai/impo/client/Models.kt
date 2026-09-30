@@ -11,6 +11,25 @@ private val timestampFormatter = DateTimeFormatterBuilder().appendInstant(3).toF
 /** The shared API accepts ISO instants at millisecond precision. */
 fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
 
+@Serializable data class AccountProfile(
+    val onboarded: Boolean,
+    val displayName: String? = null,
+    val assistantName: String? = null,
+    val avatarIndex: Int? = null,
+)
+/** Account fields only. Display name comes from Brief settings; device permissions stay local. */
+@Serializable data class ProfileUpdate(
+    val assistantName: String? = null,
+    val avatarIndex: Int? = null,
+    val onboarded: Boolean? = null,
+) {
+    init {
+        require(assistantName == null || (assistantName.trim().isNotEmpty() && assistantName.trim().length <= 30 && '\u0000' !in assistantName))
+        require(avatarIndex == null || avatarIndex in 0..6)
+        require(onboarded == null || onboarded)
+    }
+}
+
 /** Freeze this command before the first send and retain it until acceptance is known. */
 @Serializable data class MessageCommand(
     val clientMessageId: String,

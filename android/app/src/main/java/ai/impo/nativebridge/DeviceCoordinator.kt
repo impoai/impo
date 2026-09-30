@@ -42,20 +42,20 @@ internal class NativeReceiptStore(root: File, private val accountId: String) {
 }
 
 /** Polls owned pending work only while the UI is active; SSE replay never authorizes a native read. */
-class DeviceCoordinator(context: Context) {
+class DeviceCoordinator internal constructor(context: Context, private val lock: Mutex) {
+    constructor(context: Context) : this(context, Mutex())
     private val app = context.applicationContext
     private val adapter = DeviceDataAdapter(app)
     private val preferences = app.getSharedPreferences("native_devices", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val lock = Mutex()
     private var loop: Job? = null
-    private var registeredAccount: String? = null
+    private var registeredAccount: NativeAccount? = null
     private var registeredTools: List<String>? = null
-    @Volatile private var identity: Pair<String, String>? = null
+    @Volatile private var identity: Pair<NativeAccount, String>? = null
     private val mutableDeviceId = MutableStateFlow<String?>(null)
     val deviceId: StateFlow<String?> = mutableDeviceId
     fun deviceIdFor(accountId: String): String? = identity?.takeIf {
-        it.first == accountId && NativeBridge.account()?.accountId == accountId
+        it.first.accountId == accountId && NativeBridge.account() === it.first
     }?.second
     private val mutableError = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = mutableError
@@ -63,11 +63,21 @@ class DeviceCoordinator(context: Context) {
         check(preferences.edit().putString("installationId", it).commit())
     }
 
-    suspend fun configure(calendarEnabled: Boolean, healthEnabled: Boolean) = lock.withLock {
-        val account = NativeBridge.account() ?: run { clearIdentity(); return@withLock }
+    suspend fun configure(calendarEnabled: Boolean, healthEnabled: Boolean, contactsEnabled: Boolean = false) {
+        currentCoroutineContext().ensureActive()
+        val account = NativeBridge.account() ?: run {
+            lock.withLock { if (NativeBridge.account() == null) clearIdentity() }
+            return
+        }
         val key = sha256(account.accountId.toByteArray())
-        check(preferences.edit().putBoolean("calendar_$key", calendarEnabled).putBoolean("health_$key", healthEnabled).commit())
-        synchronizeRegistration(account, force = true)
+        // A pending invocation holds lock across network and provider reads. Publish
+        // revocation before waiting for it so its pre-submit recheck sees the new opt-in.
+        check(preferences.edit().putBoolean("calendar_$key", calendarEnabled).putBoolean("health_$key", healthEnabled)
+            .putBoolean("contacts_$key", contactsEnabled).commit())
+        lock.withLock {
+            requireCurrent(account)
+            synchronizeRegistration(account, force = true)
+        }
     }
 
     fun start() {
@@ -93,14 +103,14 @@ class DeviceCoordinator(context: Context) {
         val pending = account.api.pendingDeviceInvocations(id)
         for (invocation in pending) {
             currentCoroutineContext().ensureActive()
-            requireCurrent(account.accountId)
+            requireCurrent(account)
             if (invocation.deviceId != id || Instant.parse(invocation.expiresAt) <= Instant.now()) continue
-            val tools = currentTools(account.accountId)
+            val tools = currentTools(account)
             if (invocation.toolName !in tools) continue
             val claim = account.api.claimDeviceInvocation(invocation.invocationId, id)
-            requireCurrent(account.accountId)
+            requireCurrent(account)
             if (Instant.parse(claim.expiresAt) <= Instant.now()) continue
-            if (invocation.toolName !in currentTools(account.accountId)) continue
+            if (invocation.toolName !in currentTools(account)) continue
             var result = receipts.load(invocation, claim)
             if (result == null) {
                 result = try {
@@ -111,31 +121,35 @@ class DeviceCoordinator(context: Context) {
                     val code = failure.message?.takeIf { it.matches(Regex("[a-z_]{1,80}")) } ?: "native_read_failed"
                     DeviceResult(id, claim.executionId, false, error = code)
                 }
-                requireCurrent(account.accountId)
+                requireCurrent(account)
                 receipts.save(invocation, claim, result)
             }
             // Saved receipts never grant access after the user revokes the capability.
-            requireCurrent(account.accountId)
-            if (invocation.toolName !in currentTools(account.accountId)) continue
+            requireCurrent(account)
+            if (invocation.toolName !in currentTools(account)) continue
             check(account.api.submitDeviceResult(invocation.invocationId, result).accepted)
         }
         mutableError.value = null
     }
 
     private suspend fun synchronizeRegistration(account: NativeAccount, force: Boolean = false) {
-        if (registeredAccount != account.accountId) clearIdentity()
-        val tools = currentTools(account.accountId)
-        if (!force && registeredAccount == account.accountId && registeredTools == tools && mutableDeviceId.value != null) return
+        if (registeredAccount !== account) clearIdentity()
+        val tools = currentTools(account)
+        if (!force && registeredAccount === account && registeredTools == tools && mutableDeviceId.value != null) return
         val registered = account.api.registerDevice(installationId, tools)
-        requireCurrent(account.accountId)
-        registeredAccount = account.accountId; registeredTools = tools; mutableDeviceId.value = registered.deviceId
-        identity = account.accountId to registered.deviceId
+        requireCurrent(account)
+        registeredAccount = account; registeredTools = tools; mutableDeviceId.value = registered.deviceId
+        identity = account to registered.deviceId
         mutableError.value = null
     }
-    private suspend fun currentTools(accountId: String): List<String> {
-        val key = sha256(accountId.toByteArray())
-        return adapter.enabledTools(preferences.getBoolean("calendar_$key", false), preferences.getBoolean("health_$key", false))
+    private suspend fun currentTools(account: NativeAccount): List<String> {
+        requireCurrent(account)
+        val key = sha256(account.accountId.toByteArray())
+        val tools = adapter.enabledTools(preferences.getBoolean("calendar_$key", false), preferences.getBoolean("health_$key", false),
+            preferences.getBoolean("contacts_$key", false))
+        requireCurrent(account)
+        return tools
     }
-    private fun requireCurrent(accountId: String) { check(NativeBridge.account()?.accountId == accountId) { "account_changed" } }
+    private fun requireCurrent(account: NativeAccount) { if (NativeBridge.account() !== account) throw AccountChangedException() }
     private fun clearIdentity() { identity = null; registeredAccount = null; registeredTools = null; mutableDeviceId.value = null }
 }

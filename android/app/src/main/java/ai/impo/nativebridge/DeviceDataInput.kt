@@ -45,18 +45,17 @@ data class DeviceDataInput(val start: Instant, val end: Instant, val timeZone: S
     }
 }
 
-/** Keep tool envelopes below 64 KiB, even with multibyte calendar titles. */
+/** Keep tool envelopes below 64 KiB, even with multibyte native text. */
 object DeviceOutputBudget {
     fun bound(output: JsonObject, maximumBytes: Int = 48 * 1024): JsonObject {
         fun fits(value: JsonObject) = value.toString().toByteArray(Charsets.UTF_8).size <= maximumBytes
         if (fits(output)) return output
         var result = JsonObject(output + ("truncated" to JsonPrimitive(true)))
-        val events = result["events"] as? JsonArray
-        if (events != null) {
-            var kept = events.toList()
+        for (key in listOf("events", "contacts")) {
+            var kept = (result[key] as? JsonArray)?.toList() ?: continue
             while (kept.isNotEmpty() && !fits(result)) {
                 kept = kept.dropLast(1)
-                result = JsonObject(result + mapOf("events" to JsonArray(kept), "returned_count" to JsonPrimitive(kept.size)))
+                result = JsonObject(result + mapOf(key to JsonArray(kept), "returned_count" to JsonPrimitive(kept.size)))
             }
         }
         for ((metric, key) in listOf("sleep" to "samples", "steps" to "sources", "active_energy" to "sources", "heart_rate" to "sources")) {

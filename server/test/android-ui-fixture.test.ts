@@ -23,6 +23,17 @@ test('Android smoke fixture exercises real HTTP/SSE, resource isolation and muta
     return { status: response.status, body: await response.json() };
   };
   assert.equal((await fetch(`${base}/api/v1/conversation`)).status, 401);
+  const bobProfile = (await request('/profile', 'GET', undefined, 'bob')).body;
+  const profile = await request('/profile', 'PATCH', { assistantName: '  Robin Android  ', avatarIndex: 1, onboarded: true });
+  assert.equal(profile.status, 200);
+  assert.equal(profile.body.assistantName, 'Robin Android');
+  assert.equal(profile.body.avatarIndex, 1);
+  assert.equal(profile.body.onboarded, true);
+  assert.equal((await request('/profile')).body.assistantName, 'Robin Android');
+  assert.deepEqual((await request('/profile', 'GET', undefined, 'bob')).body, bobProfile);
+  assert.equal((await request('/profile', 'PATCH', { onboarded: false })).status, 400);
+  assert.equal((await request('/profile', 'PATCH', { avatarIndex: 7 })).status, 400);
+  assert.equal((await request('/profile', 'PATCH', { displayName: 'Wrong endpoint' })).status, 400);
   const initial = await request('/conversation');
   assert.ok(initial.body.messages[1].text.includes('你好'));
   const input = { clientMessageId: randomUUID(), text: 'Hello Android' };
@@ -85,6 +96,7 @@ test('Android smoke fixture exercises real HTTP/SSE, resource isolation and muta
     (await request('/today/settings', 'PUT', { timeZone: 'invalid', locale: 'en-US' })).status,
     400,
   );
+  assert.equal((await request('/profile')).body.displayName, 'Android Tester');
   const brief = (await request('/today/briefs')).body.briefs[0];
   assert.equal((await request(`/today/briefs/${brief.id}`, 'GET', undefined, 'bob')).status, 404);
   assert.ok(

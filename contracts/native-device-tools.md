@@ -3,7 +3,7 @@
 The API accepts `impo_list_calendar_events` and `impo_get_health_summary` for
 platform-neutral device reads. Installed iOS clients may continue to advertise
 `ios_list_calendar_events` and `ios_get_health_summary`; their output remains
-compatible with the existing iOS adapter. Registration accepts up to four unique
+compatible with the existing iOS adapter. Registration accepts up to seven unique
 names, replaces capabilities for the owned installation, and accepts `[]` to
 revoke all capabilities. A client should advertise only names it implements and
 whose capability the user enabled.
@@ -133,3 +133,21 @@ no legacy aliases. Registration accepts every implemented name once.
 
 iOS sources are `ios.eventkit.reminders` and `ios.contacts`. Limited Contacts
 access searches only the contacts the user selected.
+
+Android Contacts results use `source: "android.contacts_provider"` with the same
+contact fields. The capability is registered only while the current account has
+enabled Contacts and Android grants `READ_CONTACTS`. The permission prompt is an
+explicit Connections/onboarding action; receiving a tool invocation never opens
+it. The native adapter searches Contacts Provider rows on an IO dispatcher,
+checks permission before and after reading, and does not read notes, photos,
+postal addresses or non-birthday events. Results contain at most 25 contacts,
+five phone numbers and five email addresses per contact, and remain below the
+native transport budget. `truncated` also covers omitted contact fields or text;
+`text_fields_truncated` reports bounded fields. Phone matching requires at least
+four query digits. IDs are local provider IDs, not cross-device identifiers.
+
+Android does not register the Reminders tools: Android has no shared native
+Reminders provider equivalent to EventKit. Impo Tasks remain Impo's own task
+workflow. An external task service may be connected through its separately
+discovered server connector; it must not be presented as access to Apple
+Reminders or as an Android system permission.

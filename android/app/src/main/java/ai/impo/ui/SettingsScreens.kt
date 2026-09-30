@@ -176,11 +176,12 @@ import java.util.UUID
         dismissButton = { TextButton(onClick = { debug = false }) { Text("Cancel") } })
 }
 
-@Composable fun ConnectionsScreen(vm: AppViewModel, state: AppState, back: () -> Unit) {
+@Composable fun ConnectionsScreen(vm: AppViewModel, state: AppState, back: () -> Unit, onContinue: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var search by rememberSaveable { mutableStateOf("") }
     var calendarGranted by remember { mutableStateOf(vm.deviceAdapter.calendarGranted) }
+    var contactsGranted by remember { mutableStateOf(vm.deviceAdapter.contactsGranted) }
     var healthGrants by remember { mutableStateOf(emptySet<String>()) }
     var healthAvailable by remember { mutableStateOf(vm.deviceAdapter.healthAvailable) }
     var consent by remember { mutableStateOf<String?>(null) }
@@ -188,13 +189,19 @@ import java.util.UUID
     var error by remember { mutableStateOf<String?>(null) }
     val deviceError by vm.devices.error.collectAsStateWithLifecycle()
     fun refreshNative() {
-        calendarGranted = vm.deviceAdapter.calendarGranted; healthAvailable = vm.deviceAdapter.healthAvailable
+        calendarGranted = vm.deviceAdapter.calendarGranted; contactsGranted = vm.deviceAdapter.contactsGranted
+        healthAvailable = vm.deviceAdapter.healthAvailable
         scope.launch { runCatching { vm.deviceAdapter.grantedHealthPermissions() }.onSuccess { healthGrants = it }.onFailure { error = "Health permissions couldn't refresh." } }
     }
     val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         calendarGranted = granted
         if (granted) vm.saveProfile(vm.state.value.profile.copy(calendarEnabled = true))
         else error = "Calendar access wasn't allowed. You can review it in Android settings."
+    }
+    val contactsPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        contactsGranted = granted
+        if (granted) vm.saveProfile(vm.state.value.profile.copy(contactsEnabled = true))
+        else error = "Contacts access wasn't allowed. Your other connections still work."
     }
     val healthPermission = rememberLauncherForActivityResult(vm.deviceAdapter.healthPermissionContract()) { granted ->
         healthGrants = granted
@@ -204,12 +211,14 @@ import java.util.UUID
     LaunchedEffect(Unit) { refreshNative(); vm.refreshConnectors() }
     OnResume { refreshNative(); vm.refreshConnectors() }
     val filtered = state.connectors.filter { search.isBlank() || it.name.contains(search, true) || it.toolkit.contains(search, true) || it.description?.contains(search, true) == true }
-    Column(Modifier.fillMaxSize()) {
-        PageHeader("Connections", "Choose the context your agent can use.", back) {
+    Column(Modifier.fillMaxSize().then(if (onContinue != null) Modifier.safeDrawingPadding() else Modifier)) {
+        PageHeader("Connections", if (onContinue != null) "Give Impo a little context. Every connection is optional." else "Choose the context your agent can use.", back) {
             IconButton(onClick = { refreshNative(); vm.refreshConnectors() }) { Icon(Icons.Outlined.Refresh, "Refresh connections") }
         }
         BusyLine("connectors" in state.busy)
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        ErrorNotice(error)
+        if (onContinue != null) ErrorNotice(state.errors["profile"], if ("profile" !in state.busy) vm::retryProfile else null)
+        LazyColumn(Modifier.weight(1f).testTag("connections.list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item {
                 SectionLabel("On this Android device")
                 PaperCard {
@@ -235,6 +244,16 @@ import java.util.UUID
                     Text("Read steps, active calories, heart rate and sleep. Missing samples stay unknown; Impo never treats missing health data as zero activity.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     if (healthAvailable) TextButton(onClick = { consent = "health" }) { Text("Review Health permissions") }
                     else TextButton(onClick = { openWeb(context, "https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata") }) { Text("Get Health Connect") }
+                    HorizontalDivider(color = Border)
+                    SettingsToggle("Contacts", when {
+                        !state.profile.contactsEnabled -> "Not connected"
+                        contactsGranted -> "Connected · read-only"
+                        else -> "Permission needed in Android settings"
+                    }, state.profile.contactsEnabled, "connections.contacts") { enabled ->
+                        if (enabled) consent = "contacts" else vm.saveProfile(state.profile.copy(contactsEnabled = false))
+                    }
+                    Text("When you ask, your agent can search names, companies, email addresses, phone numbers and birthdays. Impo cannot edit contacts.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    if (state.profile.contactsEnabled && !contactsGranted) TextButton(onClick = { contactsPermission.launch(Manifest.permission.READ_CONTACTS) }) { Text("Review Contacts permission") }
                     TextButton(onClick = { runCatching { context.startActivity(appSettings(context)) }.onFailure { error = "Couldn't open Android settings." } }) { Text("Open Android permissions") }
                     ErrorNotice(deviceError)
                 }
@@ -244,7 +263,7 @@ import java.util.UUID
                 OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().testTag("connections.search"), singleLine = true,
                     label = { Text("Find an app") }, leadingIcon = { Icon(Icons.Outlined.Search, null) })
                 Text("${state.connectors.size} apps available from the connected service directory.", color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-                ErrorNotice(error ?: state.errors["connectors"], vm::refreshConnectors)
+                ErrorNotice(state.errors["connectors"], vm::refreshConnectors)
             }
             if (filtered.isEmpty() && "connectors" !in state.busy && state.errors["connectors"] == null) item {
                 EmptyState(if (search.isBlank()) "No apps available yet" else "No matching apps", if (search.isBlank()) "The service directory is empty. Refresh to check again." else "Try another app name.")
@@ -270,16 +289,29 @@ import java.util.UUID
                 }
             }
         }
+        if (onContinue != null) Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Button(onClick = onContinue, enabled = "profile" !in state.busy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onboarding.finish")) {
+                Text(if ("profile" in state.busy) "Saving…" else "Continue to Impo")
+            }
+            Text("You can change these connections later in Settings.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
     }
     consent?.let { kind ->
-        val calendar = kind == "calendar"
-        AlertDialog(onDismissRequest = { consent = null }, title = { Text(if (calendar) "Connect Calendar?" else "Connect Health?") },
-            text = { Text(if (calendar) "When your agent requests calendar context, Impo can read events on this device and send the requested event details to your Impo account. It cannot create, change or delete events."
-                else "Choose which Health Connect data Impo may read. When your agent asks for it, Impo sends a summary of the requested steps, active calories, heart rate or sleep to your Impo account. Impo never writes Health data.") },
+        val title = when (kind) { "calendar" -> "Connect Calendar?"; "contacts" -> "Connect Contacts?"; else -> "Connect Health?" }
+        val detail = when (kind) {
+            "calendar" -> "When your agent requests calendar context, Impo can read events on this device and send the requested event details to your Impo account. It cannot create, change or delete events."
+            "contacts" -> "When you ask about someone, Impo can search contacts on this device and send matching names, companies, email addresses, phone numbers and birthdays to your Impo account. It does not upload your whole address book or change contacts."
+            else -> "Choose which Health Connect data Impo may read. When your agent asks for it, Impo sends a summary of the requested steps, active calories, heart rate or sleep to your Impo account. Impo never writes Health data."
+        }
+        AlertDialog(onDismissRequest = { consent = null }, title = { Text(title) }, text = { Text(detail) },
             confirmButton = { TextButton(onClick = {
                 consent = null
-                if (calendar) calendarPermission.launch(Manifest.permission.READ_CALENDAR)
-                else if (healthAvailable) healthPermission.launch(vm.deviceAdapter.healthPermissions)
+                when (kind) {
+                    "calendar" -> calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+                    "contacts" -> contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+                    else -> if (healthAvailable) healthPermission.launch(vm.deviceAdapter.healthPermissions)
+                }
             }) { Text("Choose read permissions") } }, dismissButton = { TextButton(onClick = { consent = null }) { Text("Not now") } })
     }
     disconnect?.let { connector -> AlertDialog(onDismissRequest = { disconnect = null }, title = { Text("Disconnect ${connector.name}?") },

@@ -4,6 +4,10 @@ import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.ContextWrapper
+import android.content.ContentResolver
+import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
 import androidx.compose.ui.test.*
@@ -15,7 +19,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import ai.impo.MainActivity
-import kotlinx.coroutines.runBlocking
+import ai.impo.ImpoApplication
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.json.*
 import org.junit.After
 import org.junit.Assert.*
@@ -121,5 +128,92 @@ class NativeControlsInstrumentedTest {
         assertTrue(output["returned_count"]!!.jsonPrimitive.int in 0..5)
         toggle.performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(checked(false)).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test fun contactsRequireConsentAndGrantedReadAccessAndDisconnectFiltersTheTool() {
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.READ_CONTACTS)
+        val adapter = DeviceDataAdapter(context)
+        assertTrue(adapter.contactsGranted)
+        assertFalse(runBlocking { adapter.enabledTools(false, false, false) }.contains(DeviceDataAdapter.CONTACTS_TOOL))
+        compose.onNodeWithTag("settings.open").performClick()
+        compose.onNodeWithTag("settings.connections").performScrollTo().performClick()
+        waitTag("connections.contacts")
+        val toggle = compose.onNodeWithTag("connections.contacts")
+        fun checked(value: Boolean) = hasTestTag("connections.contacts") and SemanticsMatcher.expectValue(
+            SemanticsProperties.ToggleableState, if (value) ToggleableState.On else ToggleableState.Off)
+        if (toggle.fetchSemanticsNode().config[SemanticsProperties.ToggleableState] == ToggleableState.On) {
+            toggle.performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodes(checked(false)).fetchSemanticsNodes().isNotEmpty() }
+        }
+        toggle.performScrollTo().performClick()
+        compose.onNodeWithText("Connect Contacts?").assertExists()
+        // Dismissing the explanation cannot enable access just because the OS grant exists.
+        compose.onNodeWithText("Not now").performClick()
+        compose.onNode(checked(false)).assertExists()
+        toggle.performClick()
+        compose.onNodeWithText("Choose read permissions").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(checked(true)).fetchSemanticsNodes().isNotEmpty() }
+
+        val application = context.applicationContext as ImpoApplication
+        val accountId = checkNotNull(application.auth.state.value.account).id
+        fun enabledTools() = runBlocking {
+            val settings = application.settings.observe(accountId).first()
+            adapter.enabledTools(settings.calendarEnabled, settings.healthEnabled, settings.contactsEnabled)
+        }
+        assertTrue(enabledTools().contains(DeviceDataAdapter.CONTACTS_TOOL))
+        val output = runBlocking { adapter.execute(DeviceDataAdapter.CONTACTS_TOOL, buildJsonObject {
+            put("query", "Impo native contact test"); put("limit", 5)
+        }) }
+        assertEquals("android.contacts_provider", output["source"]!!.jsonPrimitive.content)
+        assertFalse(output["notes_included"]!!.jsonPrimitive.boolean)
+        assertEquals(output["contacts"]!!.jsonArray.size, output["returned_count"]!!.jsonPrimitive.int)
+        assertTrue(output["returned_count"]!!.jsonPrimitive.int in 0..5)
+        assertTrue(output.toString().toByteArray(Charsets.UTF_8).size <= 48 * 1024)
+        toggle.performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(checked(false)).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(adapter.contactsGranted) // Impo's opt-in does not change Android's permission grant.
+        assertFalse(enabledTools().contains(DeviceDataAdapter.CONTACTS_TOOL))
+
+        // Model a revoked grant without killing the instrumentation process. A denied
+        // permission must prevent both capability advertisement and every provider read.
+        val denied = DeviceDataAdapter(object : ContextWrapper(context) {
+            override fun checkPermission(permission: String, pid: Int, uid: Int): Int =
+                if (permission == Manifest.permission.READ_CONTACTS) PackageManager.PERMISSION_DENIED else super.checkPermission(permission, pid, uid)
+            override fun getContentResolver(): ContentResolver = error("A denied Contacts grant must not query the provider")
+        })
+        assertFalse(runBlocking { denied.enabledTools(false, false, true) }.contains(DeviceDataAdapter.CONTACTS_TOOL))
+        val failure = assertThrows(IllegalStateException::class.java) { runBlocking {
+            denied.execute(DeviceDataAdapter.CONTACTS_TOOL, buildJsonObject { put("query", "Someone"); put("limit", 5) })
+        } }
+        assertEquals("permission_required", failure.message)
+    }
+
+    @Test fun revokingNativeAccessDoesNotWaitForAnInFlightInvocation() {
+        val account = checkNotNull(NativeBridge.account())
+        val preferenceName = "native_revocation_test_${java.util.UUID.randomUUID()}"
+        val preferences = context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
+        val isolatedContext = object : ContextWrapper(context) {
+            override fun getApplicationContext(): Context = this
+            override fun getSharedPreferences(name: String, mode: Int) = preferences
+        }
+        val key = "contacts_${sha256(account.accountId.toByteArray())}"
+        assertTrue(preferences.edit().putBoolean(key, true).commit())
+        val heldByInvocation = Mutex(locked = true)
+        val coordinator = DeviceCoordinator(isolatedContext, heldByInvocation)
+        try {
+            runBlocking {
+                val update = launch(Dispatchers.Default) { coordinator.configure(false, false, false) }
+                try {
+                    withTimeout(5_000) { while (preferences.getBoolean(key, true)) delay(10) }
+                    // Registration is still waiting behind the invocation; its permission
+                    // recheck must already observe the user's revocation at this point.
+                    assertTrue(update.isActive)
+                    assertFalse(preferences.getBoolean(key, true))
+                } finally { update.cancelAndJoin() }
+            }
+        } finally {
+            heldByInvocation.unlock()
+            preferences.edit().clear().commit()
+        }
     }
 }

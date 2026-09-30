@@ -29,6 +29,8 @@ import ai.impo.data.AppViewModel
 
 @Composable fun ChatScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit) {
     val conversation = state.chat?.state?.collectAsStateWithLifecycle()?.value ?: ConversationState()
+    val owner = state.account?.requestScope
+    val session = state.chat
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
@@ -43,16 +45,20 @@ import ai.impo.data.AppViewModel
         if (searchOpen) OutlinedTextField(search, { search = it }, label = { Text("Search this conversation") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         ConversationBody(conversation, search, Modifier.weight(1f), state.profile.assistantName, { vm.retryChat() })
         ErrorNotice(state.errors["chat"], { vm.retryChat() })
-        MessageComposer(conversation.busy || conversation.activeSubmissionIds.isNotEmpty(), { vm.send(it) }, { vm.cancelChat() }, "chat", !conversation.hasPendingMessage)
+        MessageComposer(conversation.busy || conversation.activeSubmissionIds.isNotEmpty(), { vm.send(it) }, { vm.cancelChat() }, "chat", !conversation.hasPendingMessage && session != null,
+            owner to session, { vm.state.value.account?.requestScope == owner && vm.state.value.chat === session })
     }
 }
 @Composable fun TaskConversationScreen(vm: AppViewModel, state: AppState, back: () -> Unit) {
     val conversation = state.taskSession?.state?.collectAsStateWithLifecycle()?.value ?: ConversationState(loading = true)
+    val owner = state.account?.requestScope
+    val session = state.taskSession
     Column(Modifier.fillMaxSize()) {
         PageHeader("Task", conversation.title, back)
         ConversationBody(conversation, "", Modifier.weight(1f), state.profile.assistantName, { vm.retryChat(true) })
         ErrorNotice(state.errors["task"], { vm.retryChat(true) })
-        MessageComposer(conversation.busy || conversation.activeSubmissionIds.isNotEmpty(), { vm.send(it, true) }, { vm.cancelChat(true) }, "task", !conversation.hasPendingMessage)
+        MessageComposer(conversation.busy || conversation.activeSubmissionIds.isNotEmpty(), { vm.send(it, true) }, { vm.cancelChat(true) }, "task", !conversation.hasPendingMessage && session != null,
+            owner to session, { vm.state.value.account?.requestScope == owner && vm.state.value.taskSession === session })
     }
 }
 @Composable private fun ConversationBody(conversation: ConversationState, search: String, modifier: Modifier, assistant: String, retry: () -> Unit) {
@@ -106,16 +112,9 @@ import ai.impo.data.AppViewModel
         if (conversation.hasPendingMessage && !conversation.busy) TextButton(onClick = retry, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("chat.retry")) { Text("Retry saved message") }
     }
 }
-@Composable private fun MessageComposer(busy: Boolean, send: (String) -> Unit, cancel: () -> Unit, prefix: String, allowSend: Boolean) {
-    var text by rememberSaveable { mutableStateOf("") }
-    fun submit() { if (text.isNotBlank() && !busy && allowSend) { send(text.trim()); text = "" } }
-    Row(Modifier.fillMaxWidth().imePadding().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(text, { text = it.take(32768) }, placeholder = { Text("Tell me what's on your mind…") }, modifier = Modifier.weight(1f).testTag("$prefix.input"), maxLines = 6,
-            shape = RoundedCornerShape(26.dp), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { submit() }))
-        FilledIconButton(onClick = { if (busy) cancel() else submit() }, enabled = busy || (text.isNotBlank() && allowSend), modifier = Modifier.size(52.dp).testTag(if (busy) "$prefix.cancel" else "$prefix.send")) {
-            Icon(if (busy) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send, if (busy) "Cancel reply" else "Send message")
-        }
-    }
+@Composable private fun MessageComposer(busy: Boolean, send: (String) -> Unit, cancel: () -> Unit, prefix: String, allowSend: Boolean, sessionKey: Any?, isCurrent: () -> Boolean) {
+    var text by rememberSaveable(sessionKey) { mutableStateOf("") }
+    VoiceComposer(text, { text = it }, busy, allowSend, send, cancel, prefix, sessionKey, isCurrent)
 }
 @Composable fun TasksScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit) {
     var create by remember { mutableStateOf(false) }

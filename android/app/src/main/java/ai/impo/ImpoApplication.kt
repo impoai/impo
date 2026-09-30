@@ -26,7 +26,7 @@ class ImpoApplication : Application() {
         auth = AuthController(settings, scope, configured)
         NativeBridge.install(this) { nativeAccount }
         scope.launch {
-            auth.state.distinctUntilChangedBy { it.account?.id }.collect { state ->
+            auth.state.distinctUntilChangedBy { it.account?.requestScope }.collect { state ->
                 nativeAccount?.api?.cancelInFlight()
                 nativeAccount = state.account?.let { NativeAccount(it.id, ImpoClient(it.baseUrl, auth.tokenProvider(it), allowInsecureLocalhost = it.development && BuildConfig.DEBUG)) }
                 NativeBridge.accountChanged(this@ImpoApplication)

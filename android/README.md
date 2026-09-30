@@ -3,7 +3,8 @@
 Impo's Android client uses Kotlin and Jetpack Compose with the shared
 [application protocol](../contracts/client-protocol.md). The source includes
 Chat, Tasks, Brief, Memories, Echo recording/history, connections, native
-Calendar Provider and Health Connect adapters, and account/settings screens.
+Calendar Provider, Health Connect and Contacts adapters, hold-to-talk input,
+and server-backed account/profile settings.
 The debug and signed release builds, unit tests and API 35 emulator acceptance
 have passed. Download the signed testing build from
 [impo.ai/android.apk](https://impo.ai/android.apk). Production Google/Apple login
@@ -147,7 +148,7 @@ Restore missing files from backup; do not replace an established release key.
 Build a signed, optimized APK, increasing the version code for each publication:
 
 ```sh
-IMPO_ANDROID_VERSION_CODE=1 IMPO_ANDROID_VERSION_NAME=0.1.0 npm run build:android:release
+IMPO_ANDROID_VERSION_CODE=2 IMPO_ANDROID_VERSION_NAME=0.1.1 npm run build:android:release
 ```
 
 The APK is `android/app/build/outputs/apk/release/app-release.apk`, with package
@@ -197,7 +198,7 @@ this is not a distributed lock.
 For the next release, increment the version code and keep the same signing key:
 
 ```sh
-IMPO_ANDROID_VERSION_CODE=2 IMPO_ANDROID_VERSION_NAME=0.1.1 npm run build:android:release
+IMPO_ANDROID_VERSION_CODE=3 IMPO_ANDROID_VERSION_NAME=0.1.2 npm run build:android:release
 npm run publish:android
 ```
 
@@ -223,7 +224,7 @@ included. APK-only releases do not need a website deployment.
 ```text
 app/ui/          Compose navigation/screens, native rich text and Brief export
 app/data/        Account-scoped settings, authentication and screen coordination
-app/nativebridge/ Microphone/VAD, durable Echo, location, calendar/health, receipts
+app/nativebridge/ Speech input, microphone/VAD, durable Echo, location, device tools
 client/          Android-independent Kotlin protocol/recovery library and tests
 ```
 
@@ -243,18 +244,18 @@ and native dispatch; another account never uploads a previous account's audio.
 
 | Area | Android implementation |
 | --- | --- |
-| Chat and Tasks | Streamed replies, progress, Unicode/Markdown, history recovery, saved retries, explicit cancellation, isolated task conversations and follow-ups. |
+| Chat and Tasks | Streamed replies, progress, Unicode/Markdown, history recovery, saved retries, explicit cancellation, isolated task conversations and follow-ups; native hold-to-talk with release to send and slide up to cancel. |
 | Rich responses | Markdown/headings/lists/code/GFM tables, offline LaTeX, horizontal overflow, copy and native text selection frozen during streaming. |
 | Brief | Editions, dates, sources, deletion, time/locale/city settings; complete paginated PDF and PNG sharing through FileProvider. |
 | Memories | Echo timeline/ID hydration/date jumps/details/place labels; About you categories and forgetting. |
 | Echo capture | User-started microphone foreground service, ongoing pause/stop notification, bundled Silero VAD, WAV segments and durable upload batches. |
 | Echo transfer | SHA-256-bound exact-file PUT, owned upload manifests, matching acceptance receipts before cleanup, WorkManager retry and Wi-Fi-only preference. |
-| Device context | Optional recording-time coarse place resolution; no coordinates in uploaded context. Read-only Calendar Provider and Health Connect tools with explicit permission checks. |
-| Connections | Discover/search the server shelf, browser authorization, status refresh and disconnect. |
-| Account and settings | Clerk access, local assistant/profile customization, permission explanations, privacy/terms/support, sign-out and notification settings. |
+| Device context | Optional recording-time coarse place resolution; no coordinates in uploaded context. Read-only Calendar Provider, Health Connect and Contacts tools with explicit permission checks. |
+| Connections | Optional onboarding connections; discover/search the server shelf, browser authorization, status refresh and disconnect. |
+| Account and settings | Clerk access; server-restored onboarding, assistant name/look and display name; durable pending profile changes; permission explanations, privacy/terms/support, sign-out and notification settings. |
 
-Native calendar/health tools use `impo_list_calendar_events` and
-`impo_get_health_summary`; installed iOS aliases remain valid. See the
+Native device tools use `impo_list_calendar_events`, `impo_get_health_summary`
+and `impo_search_contacts`; installed iOS aliases remain valid. See the
 [native tool contract](../contracts/native-device-tools.md) for units,
 provenance, unknown/permission states and overlapping sleep intervals. The server
 advertises only capabilities from the device attached to the message. Missing
@@ -265,6 +266,27 @@ Android may stop it because of permissions, audio interruptions or process
 termination. The app does not promise to restart microphone capture on boot or
 from an unrestricted background job. Upload retry is a separate, durable task.
 Optional location and Health Connect use their own permission boundaries.
+
+### iOS parity update — 2026-09-30
+
+Reviewed today's iOS additions through `caf5358` and shared backend changes in
+`e344097`, following the initial Android implementation in `8311c9b`.
+
+| iOS addition | Android behavior |
+| --- | --- |
+| Whole-composer hold-to-talk | Hold an empty composer for 350 ms, release to send once, or slide up 65 dp to cancel. A tap edits normally; nonempty drafts retain native selection. Partial text, audio levels and finalizing state are visible. |
+| Voice lifecycle fixes | Android `SpeechRecognizer`, with on-device recognition preferred when available. Permission approval requires a fresh hold; stale results, navigation, backgrounding and account changes cancel capture. Echo and voice input share microphone exclusion. |
+| Returning account recovery | `GET/PATCH /profile` restores onboarding, assistant name and shared avatar indices. Display names use existing Brief settings. Pending writes survive process death; responses from old login sessions cannot update the new session. |
+| Optional native Contacts | Explicit read-only permission and account-specific opt-in; requested searches return bounded matching contact details, never a bulk address-book upload. Revocation stops capability advertisement and execution. |
+| Onboarding connections and slogan | “Meet Impo, an open assistant that captures everything around your life.” Echo and open source are prominent; native and external connections are optional before entering Chat. |
+| Citation links and Chat city context | Shared server behavior already applies to Android. Native Markdown renders source links; the server uses fresh Brief location, never a city inferred from a time zone. |
+| Apple Reminders | No universal Android provider. Android does not advertise the iOS reminder tools; external task services are available only when returned by the server's connector directory. |
+| iOS custom avatar photo | Photo bytes are device-local on iOS. Android preserves its available avatar for remote index 6; built-in avatars share identical wire indices and existing Android choices migrate once. |
+
+The Android speech service may process audio online when on-device recognition
+is unavailable; the recording UI says so. Recognition availability and languages
+depend on the installed Android speech service. Voice input sends recognized
+text through the ordinary Chat/Task command, separate from Echo audio uploads.
 
 ## Validation
 
@@ -290,15 +312,17 @@ qualified test class, optionally followed by `#methodName`, before running
 Verified on 2026-09-30 with JDK 17 and `Impo_API_35` (Android 15, arm64):
 
 - Debug APK build and Android lint passed.
-- 86 non-UI unit tests passed: 50 protocol/client and 36 app/native cases.
+- 127 non-UI unit tests passed: 53 protocol/client and 74 app/native cases.
 - The opt-in production-router contract integration passed separately.
-- All 12 instrumentation tests passed with no skips. They cover onboarding,
+- All 20 instrumentation tests passed with no skips. They cover onboarding,
   streamed chat/cancel, tasks/follow-ups, Brief evidence and complete PDF/PNG
   export, memory forgetting, Echo history/date jumps/labels/deletion, saved
   preferences, browser authorization return/disconnect, native text selection,
-  Markdown/math, microphone notification controls, Calendar permission/provider
-  reads, and actual Silero inference on English/Mandarin audio and silence.
-- The existing root server/Swift regression suite passed.
+  Markdown/math, hold-to-talk gestures/cancellation/session teardown, server profile
+  recovery after clearing the local cache, microphone notification controls,
+  Calendar/Contacts permission and provider reads, immediate native opt-out, and
+  actual Silero inference on English/Mandarin audio and silence.
+- All 69 server unit tests, server typecheck and 9 download-handler tests passed.
 
 The emulator uses the local synthetic fixture described above. It validates
 client transport and native UI behavior, not production OAuth, model responses
@@ -307,9 +331,11 @@ or real transcription. Test reports are generated under each module's
 
 Before claiming hardware parity, check a physical microphone, lock-screen
 capture, interruptions, long offline queues, geocoding/location, Calendar
-Provider data, Health Connect availability/grants and account switching.
+Provider data, Contacts matches, installed speech-service recognition/languages,
+Health Connect availability/grants and account switching. Voice UI tests inject a
+recognizer while exercising real Compose gestures and Android lifecycle; they do
+not prove physical speech recognition.
 
-The Android app does not yet include voice-chat/hold-to-speak, attachments/camera
-uploads, billing/subscriptions, recurring user-created tasks, diary generation,
-immediate account deletion or remote push registration. iOS and the server
-already support voice chat. Web remains planned.
+The Android app does not yet include attachments/camera uploads,
+billing/subscriptions, recurring user-created tasks, diary generation,
+immediate account deletion or remote push registration. Web remains planned.

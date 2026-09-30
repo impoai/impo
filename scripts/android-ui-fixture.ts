@@ -40,6 +40,7 @@ export function createAndroidFixture(
   const keys = new Map<string, Json>();
   const devices = new Map<string, Json>();
   const settings = new Map<string, Json>();
+  const profiles = new Map<string, Json>();
   const briefs = new Map<string, Json>();
   const memories = new Map<string, Json>();
   const records = new Map<string, Json>();
@@ -503,6 +504,24 @@ export function createAndroidFixture(
     pollIntervalMs: 30,
     streamKeepAliveMs: 500,
     connectors,
+    profiles: {
+      get: async (userId: string): Promise<Json> => ({
+        onboarded: main(userId).messages.some((message: Json) => message.role === 'user'),
+        ...profiles.get(userId),
+        ...(settings.get(userId)?.displayName ? { displayName: settings.get(userId)!.displayName } : {}),
+      }),
+      update: async (userId: string, input: Json): Promise<Json> => {
+        const invalid = () => new ServiceError(400, 'invalid_request', 'Invalid profile update');
+        if (Object.keys(input).some(key => !['assistantName', 'avatarIndex', 'onboarded'].includes(key))) throw invalid();
+        if (input.assistantName !== undefined && (typeof input.assistantName !== 'string' || !input.assistantName.trim() || input.assistantName.trim().length > 30 || input.assistantName.includes('\0'))) throw invalid();
+        if (input.avatarIndex !== undefined && (!Number.isInteger(input.avatarIndex) || input.avatarIndex < 0 || input.avatarIndex > 6)) throw invalid();
+        if (input.onboarded !== undefined && input.onboarded !== true) throw invalid();
+        profiles.set(userId, { ...profiles.get(userId), ...input,
+          ...(input.assistantName !== undefined ? { assistantName: input.assistantName.trim() } : {}),
+        });
+        return apiOptions.profiles.get(userId);
+      },
+    },
     today: {
       settings: async (userId: string) => settings.get(userId),
       configure: async (userId: string, value: Json) => {

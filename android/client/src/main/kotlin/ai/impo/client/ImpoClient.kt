@@ -74,6 +74,10 @@ class ImpoClient(
     suspend fun currentAccountId(): String = checkedSession().accountId
     fun cancelInFlight() { http.dispatcher.cancelAll(); uploadHttp.dispatcher.cancelAll() }
 
+    suspend fun profile(): AccountProfile = get(listOf("profile"))
+    suspend fun updateProfile(value: ProfileUpdate): AccountProfile =
+        send("PATCH", listOf("profile"), ProtocolJson.encodeToJsonElement(value))
+
     suspend fun conversation(afterSequence: Int = 0, limit: Int = 100): ConversationPage =
         get(listOf("conversation"), historyQuery(afterSequence, limit))
     suspend fun sendMessage(command: MessageCommand, deviceId: String? = null): MessageReceipt {

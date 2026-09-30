@@ -40,9 +40,12 @@ val Apricot = Color(0xFFE0914D)
             bodyLarge = Typography().bodyLarge.copy(lineHeight = 25.sp),
         ), shapes = Shapes(medium = RoundedCornerShape(20.dp), large = RoundedCornerShape(28.dp)), content = content)
 }
-val avatarResources = listOf(R.drawable.instantmark, R.drawable.avatarfox, R.drawable.avatarrobin, R.drawable.avatarcat, R.drawable.avatarowl, R.drawable.avatarotter)
+// Stable API indices match iOS; picker order remains mark first.
+val avatarResources = listOf(R.drawable.avatarfox, R.drawable.avatarrobin, R.drawable.avatarcat, R.drawable.instantmark, R.drawable.avatarowl, R.drawable.avatarotter)
+val avatarChoices = listOf(3, 0, 1, 2, 4, 5)
+val avatarNames = listOf("Fox", "Robin", "Cat", "Impo", "Owl", "Otter")
 @Composable fun AssistantAvatar(index: Int, size: Int = 42) {
-    Image(painterResource(avatarResources[index.coerceIn(0, avatarResources.lastIndex)]), "Assistant avatar",
+    Image(painterResource(avatarResources.getOrElse(index) { avatarResources[3] }), "Assistant avatar",
         Modifier.size(size.dp).clip(CircleShape).background(RaisedPaper).padding(3.dp))
 }
 @Composable fun PageHeader(title: String, subtitle: String? = null, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
@@ -64,7 +67,7 @@ val avatarResources = listOf(R.drawable.instantmark, R.drawable.avatarfox, R.dra
 @Composable fun SectionLabel(text: String) { Text(text.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Muted, letterSpacing = 1.5.sp, modifier = Modifier.padding(vertical = 6.dp)) }
 @Composable fun EmptyState(title: String, detail: String, action: String? = null, onAction: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        AssistantAvatar(0, 62)
+        AssistantAvatar(3, 62)
         Text(title, style = MaterialTheme.typography.titleLarge)
         Text(detail, color = Muted, style = MaterialTheme.typography.bodyMedium)
         if (action != null) OutlinedButton(onClick = onAction) { Text(action) }

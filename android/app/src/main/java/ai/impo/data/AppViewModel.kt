@@ -47,54 +47,82 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val devices = DeviceCoordinator(app)
     val deviceAdapter = DeviceDataAdapter(app)
     private var taskCreator: DurableTaskCreator? = null
+    private var profileSession: AccountProfileSession? = null
     init {
         viewModelScope.launch {
-            auth.state.distinctUntilChangedBy { it.account?.id }.collect { accountState ->
+            auth.state.distinctUntilChangedBy { it.account?.requestScope }.collect { accountState ->
                 accountGeneration++
                 busyOperations.clear(); latestOperations.clear(); refreshJobs.clear()
                 mutable.value.chat?.close(); mutable.value.taskSession?.close(); api?.cancelInFlight()
                 accountJob.cancel(); accountJob = SupervisorJob(viewModelScope.coroutineContext[Job])
                 accountScope = CoroutineScope(viewModelScope.coroutineContext + accountJob)
-                bodyCache.clear(); hydrating.clear(); taskCreator = null; memoryRequest++
+                bodyCache.clear(); hydrating.clear(); taskCreator = null; profileSession = null; memoryRequest++
                 val account = accountState.account
                 api = account?.let { ImpoClient(it.baseUrl, auth.tokenProvider(it), allowInsecureLocalhost = it.development) }
                 val chat = account?.let { ConversationSession(api!!, it.id, store = outbox, scope = accountScope, deviceId = { devices.deviceIdFor(it.id) }) }
                 mutable.value = AppState(account = account, chat = chat)
                 if (account != null) {
+                    val generation = accountGeneration
+                    val profile = AccountProfileSession(account.id, app.settings, HttpProfileApi(api!!),
+                        isCurrent = { generation == accountGeneration && auth.state.value.account?.requestScope == account.requestScope },
+                        fallbackName = account.name, development = account.development)
+                    profileSession = profile
                     val creator = DurableTaskCreator(api!!, account.id, outbox)
                     taskCreator = creator
                     launch("createTask") {
                         val pending = creator.pendingCommand()?.text
+                        ensureCurrentAccount()
                         mutable.update { it.copy(pendingTask = pending) }
                     }
-                    accountScope.launch { app.settings.observe(account.id).collect { settings ->
-                        mutable.update { it.copy(profile = settings, profileLoaded = true) }
-                        try { devices.configure(settings.calendarEnabled, settings.healthEnabled) }
+                    accountScope.launch { profile.state.collect { saved ->
+                        currentCoroutineContext().ensureActive()
+                        if (generation != accountGeneration || auth.state.value.account?.requestScope != account.requestScope) return@collect
+                        mutable.update { it.copy(profile = saved.settings, profileLoaded = saved.loaded,
+                            busy = if (saved.busy) it.busy + "profile" else it.busy - "profile",
+                            errors = if (saved.error == null) it.errors - "profile" else it.errors + ("profile" to saved.error)) }
+                    } }
+                    accountScope.launch { profile.state.filter { it.localLoaded }.map { it.settings.wifiOnly to it.settings.recordingLocation }.distinctUntilChanged().collect { policy ->
+                        if (generation == accountGeneration && auth.state.value.account?.requestScope == account.requestScope && app.nativeAccount?.accountId == account.id) {
+                            NativeBridge.setWifiOnly(app, policy.first)
+                            NativeBridge.setRecordingLocation(app, policy.second)
+                        }
+                    } }
+                    accountScope.launch { profile.state.filter { it.localLoaded }.map { Triple(it.settings.calendarEnabled, it.settings.healthEnabled, it.settings.contactsEnabled) }.distinctUntilChanged().collectLatest { settings ->
+                        if (generation != accountGeneration || auth.state.value.account?.requestScope != account.requestScope) return@collectLatest
+                        try { devices.configure(settings.first, settings.second, settings.third) }
                         catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) { /* Capability registration is retried on resume. */ }
                     } }
+                    retryProfile()
                     refreshAll()
                 }
             }
         }
     }
-    private fun launch(area: String, replacePrevious: Boolean = false, work: suspend (ImpoClient) -> Unit): Job? {
+    private inner class AccountOperation(private val generation: Int, private val requestScope: String) {
+        suspend fun ensureCurrentAccount() {
+            currentCoroutineContext().ensureActive()
+            if (generation != accountGeneration || auth.state.value.account?.requestScope != requestScope) throw AccountChangedException()
+        }
+    }
+    private fun launch(area: String, replacePrevious: Boolean = false, work: suspend AccountOperation.(ImpoClient) -> Unit): Job? {
         val client = api ?: return null
+        val requestScope = state.value.account?.requestScope ?: return null
         val generation = accountGeneration
         val operation = ++operationSequence
         if (replacePrevious) refreshJobs.remove(area)?.cancel()
         val job = accountScope.launch operation@ {
-            if (generation != accountGeneration) return@operation
+            if (generation != accountGeneration || auth.state.value.account?.requestScope != requestScope) return@operation
             busyOperations.getOrPut(area) { mutableSetOf() }.add(operation)
             latestOperations[area] = operation
             mutable.update { it.copy(busy = it.busy + area, errors = it.errors - area) }
-            try { work(client) }
+            try { AccountOperation(generation, requestScope).work(client) }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                if (generation == accountGeneration && latestOperations[area] == operation)
+                if (generation == accountGeneration && auth.state.value.account?.requestScope == requestScope && latestOperations[area] == operation)
                     mutable.update { it.copy(errors = it.errors + (area to (e.message ?: "Couldn't load this. Please try again."))) }
             } finally {
-                if (generation == accountGeneration) {
+                if (generation == accountGeneration && auth.state.value.account?.requestScope == requestScope) {
                     val remaining = busyOperations[area]
                     remaining?.remove(operation)
                     if (remaining.isNullOrEmpty()) {
@@ -114,9 +142,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshAll() {
         launch("chat") { mutable.value.chat?.refresh() }
         refreshTasks(); refreshBriefs(); refreshMemories(); refreshEcho(); refreshConnectors()
-        launch("briefSettings") { client -> val settings = client.briefSettings(); mutable.update { it.copy(briefSettings = settings) } }
+        launch("briefSettings") { client -> val settings = client.briefSettings(); ensureCurrentAccount(); mutable.update { it.copy(briefSettings = settings) } }
     }
-    fun resumed() { devices.start(); launch("chat") { mutable.value.chat?.refresh() }; refreshTasks(); refreshConnectors() }
+    fun resumed() { devices.start(); launch("chat") { mutable.value.chat?.refresh() }; retryProfile(); refreshTasks(); refreshConnectors() }
     fun paused() { devices.stop() }
     fun send(text: String, task: Boolean = false) {
         val session = (if (task) mutable.value.taskSession else mutable.value.chat) ?: return
@@ -130,12 +158,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val session = (if (task) mutable.value.taskSession else mutable.value.chat) ?: return
         launch(if (task) "task" else "chat") { session.cancel() }
     }
-    fun refreshTasks() { launch("tasks", replacePrevious = true) { client -> val rows = client.tasks(); mutable.update { it.copy(tasks = rows) } } }
+    fun refreshTasks() { launch("tasks", replacePrevious = true) { client -> val rows = client.tasks(); ensureCurrentAccount(); mutable.update { it.copy(tasks = rows) } } }
     fun createTask(text: String, opened: (String) -> Unit) {
         val creator = taskCreator ?: return
         launch("createTask") {
             try {
                 val receipt = creator.create(text)
+                ensureCurrentAccount()
                 refreshTasks(); opened(receipt.taskId); creator.acknowledge(receipt.taskId)
             } finally { updatePendingTaskIfCurrent(creator) }
         }
@@ -143,7 +172,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun recoverTask(opened: (String) -> Unit) {
         val creator = taskCreator ?: return
         launch("createTask") {
-            try { creator.retry()?.let { receipt -> refreshTasks(); opened(receipt.taskId); creator.acknowledge(receipt.taskId) } }
+            try { creator.retry()?.let { receipt -> ensureCurrentAccount(); refreshTasks(); opened(receipt.taskId); creator.acknowledge(receipt.taskId) } }
             finally { updatePendingTaskIfCurrent(creator) }
         }
     }
@@ -168,15 +197,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val cursor = if (more) mutable.value.briefCursor else null
         launch("briefs", replacePrevious = true) { client ->
             val page = client.briefs(cursor = cursor, date = date)
+            ensureCurrentAccount()
             mutable.update { it.copy(briefs = (if (more) it.briefs + page.briefs else page.briefs).distinctBy(Brief::id), briefCursor = page.nextCursor) }
         }
     }
-    fun deleteBrief(id: String) { launch("briefs") { it.deleteBrief(id); refreshBriefs() } }
+    fun deleteBrief(id: String) { launch("briefs") { it.deleteBrief(id); ensureCurrentAccount(); refreshBriefs() } }
     fun loadSource(briefId: String, recordId: String) {
         mutable.update { it.copy(source = null) }
-        launch("source", replacePrevious = true) { client -> val source = client.briefSource(briefId, recordId); mutable.update { it.copy(source = source) } }
+        launch("source", replacePrevious = true) { client -> val source = client.briefSource(briefId, recordId); ensureCurrentAccount(); mutable.update { it.copy(source = source) } }
     }
-    fun saveBriefSettings(value: BriefSettings, done: () -> Unit) { launch("briefSettings") { client -> val saved = client.updateBriefSettings(value); mutable.update { it.copy(briefSettings = saved) }; done() } }
+    fun saveBriefSettings(value: BriefSettings, done: () -> Unit) { launch("briefSettings") { client -> val saved = client.updateBriefSettings(value); ensureCurrentAccount(); mutable.update { it.copy(briefSettings = saved) }; done() } }
     fun defaultBriefSettings() = BriefSettings(ZoneId.systemDefault().id, Locale.getDefault().toLanguageTag(), mutable.value.profile.displayName,
         slots = listOf(BriefSlot("morning", "Morning Brief", 8, true), BriefSlot("midday", "Midday Brief", 13, true), BriefSlot("evening", "Evening Brief", 20, true)))
     fun refreshMemories(category: String? = mutable.value.memoryCategory, more: Boolean = false) {
@@ -186,13 +216,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         launch("memories", replacePrevious = true) { client ->
             val page = client.memories(category, cursor)
             val summary = client.memorySummary()
+            ensureCurrentAccount()
             if (request == memoryRequest) mutable.update { it.copy(memories = (if (more) it.memories + page.memories else page.memories).distinctBy(Memory::id), memoryCursor = page.nextCursor, memorySummary = summary) }
         }
     }
-    fun forgetMemory(id: String) { launch("memories") { it.deleteMemory(id); refreshMemories() } }
+    fun forgetMemory(id: String) { launch("memories") { it.deleteMemory(id); ensureCurrentAccount(); refreshMemories() } }
     fun refreshEcho() {
         launch("echo", replacePrevious = true) { client ->
             val timeline = client.echoTimeline(ZoneId.systemDefault().id)
+            ensureCurrentAccount()
             val ids = timeline.days.flatMap { it.ids }.toSet()
             bodyCache.keys.retainAll(ids)
             mutable.update { it.copy(timeline = timeline, records = bodyCache.toMap(), recordErrors = emptySet()) }
@@ -224,12 +256,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         mutable.update { it.copy(selectedRecord = bodyCache[id]) }
         launch("record", replacePrevious = true) { client ->
             val row = client.echoRecords(listOf(id)).firstOrNull() ?: throw IllegalStateException("This recording is no longer available.")
+            ensureCurrentAccount()
             mutable.update { it.copy(selectedRecord = row) }
         }
     }
-    fun labelRecord(id: String, label: String?) { launch("record") { client -> val row = client.updateEchoLabel(id, label); bodyCache[id] = row; mutable.update { it.copy(selectedRecord = if (it.selectedRecord?.id == id) row else it.selectedRecord, records = bodyCache.toMap()) } } }
-    fun deleteRecord(id: String, done: () -> Unit) { launch("record") { it.deleteEchoRecord(id); bodyCache.remove(id); mutable.update { it.copy(selectedRecord = it.selectedRecord?.takeUnless { record -> record.id == id }) }; refreshEcho(); refreshBriefs(); done() } }
-    fun retryTranscription(id: String) { launch("record") { it.retryBatch(id); mutable.value.selectedRecord?.let { openRecord(it.id) } } }
+    fun labelRecord(id: String, label: String?) { launch("record") { client -> val row = client.updateEchoLabel(id, label); ensureCurrentAccount(); bodyCache[id] = row; mutable.update { it.copy(selectedRecord = if (it.selectedRecord?.id == id) row else it.selectedRecord, records = bodyCache.toMap()) } } }
+    fun deleteRecord(id: String, done: () -> Unit) { launch("record") { it.deleteEchoRecord(id); ensureCurrentAccount(); bodyCache.remove(id); mutable.update { it.copy(selectedRecord = it.selectedRecord?.takeUnless { record -> record.id == id }) }; refreshEcho(); refreshBriefs(); done() } }
+    fun retryTranscription(id: String) { launch("record") { it.retryBatch(id); ensureCurrentAccount(); mutable.value.selectedRecord?.let { openRecord(it.id) } } }
     fun refreshConnectors() { launch("connectors", replacePrevious = true) { client ->
         val rows = client.connectors()
         rows.filter { it.status == "pending" }.forEach {
@@ -238,16 +271,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             catch (_: Exception) { /* Preserve the explicit pending state and retry on resume. */ }
         }
         val current = if (rows.any { it.status == "pending" }) client.connectors() else rows
+        ensureCurrentAccount()
         mutable.update { it.copy(connectors = current) }
     } }
-    fun connect(toolkit: String, browse: (String) -> Unit) { launch("connectors") { client -> val result = client.connectConnector(toolkit); browse(result.redirectURL); refreshConnectors() } }
-    fun disconnect(toolkit: String) { launch("connectors") { it.disconnectConnector(toolkit); refreshConnectors() } }
+    fun connect(toolkit: String, browse: (String) -> Unit) { launch("connectors") { client -> val result = client.connectConnector(toolkit); ensureCurrentAccount(); browse(result.redirectURL); refreshConnectors() } }
+    fun disconnect(toolkit: String) { launch("connectors") { it.disconnectConnector(toolkit); ensureCurrentAccount(); refreshConnectors() } }
     fun saveProfile(value: UserSettings) {
-        val id = state.value.account?.id ?: return
-        launch("profile") {
-            app.settings.save(id, value)
-            if (state.value.account?.id == id) NativeBridge.setWifiOnly(app, value.wifiOnly)
+        saveProfile(value) {}
+    }
+    fun saveProfile(value: UserSettings, onSaved: () -> Unit) {
+        val profile = profileSession ?: return
+        val requestScope = state.value.account?.requestScope ?: return
+        val baseline = state.value.profile
+        accountScope.launch {
+            val saved = profile.save(value, baseline)
+            currentCoroutineContext().ensureActive()
+            if (profile !== profileSession || auth.state.value.account?.requestScope != requestScope) return@launch
+            if (saved) onSaved()
         }
+    }
+    fun retryProfile() {
+        val profile = profileSession ?: return
+        refreshJobs.remove("profile")?.cancel()
+        val job = accountScope.launch { profile.restore() }
+        refreshJobs["profile"] = job
+        job.invokeOnCompletion { if (refreshJobs["profile"] === job) refreshJobs.remove("profile") }
     }
     fun signOut() { launch("account") { NativeBridge.stopEcho(app); auth.signOut() } }
     override fun onCleared() { devices.stop(); mutable.value.chat?.close(); mutable.value.taskSession?.close(); accountJob.cancel(); api?.cancelInFlight(); super.onCleared() }

@@ -24,6 +24,8 @@ import kotlinx.serialization.json.*
 
 /** Read-only adapters. Permission dialogs are launched only by explicit screen actions. */
 class DeviceDataAdapter(private val context: Context) {
+    private val contacts = ContactsAdapter(context)
+    val contactsGranted get() = contacts.granted
     val calendarGranted get() = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
     val healthStatus get() = HealthConnectClient.getSdkStatus(context)
     val healthAvailable get() = healthStatus == HealthConnectClient.SDK_AVAILABLE
@@ -32,13 +34,18 @@ class DeviceDataAdapter(private val context: Context) {
     suspend fun grantedHealthPermissions(): Set<String> = if (healthAvailable)
         HealthConnectClient.getOrCreate(context).permissionController.getGrantedPermissions() else emptySet()
 
-    suspend fun enabledTools(calendarEnabled: Boolean, healthEnabled: Boolean): List<String> = buildList {
+    suspend fun enabledTools(calendarEnabled: Boolean, healthEnabled: Boolean, contactsEnabled: Boolean = false): List<String> = buildList {
         if (calendarEnabled && calendarGranted) add(CALENDAR_TOOL)
         if (healthEnabled && healthAvailable && grantedHealthPermissions().any { it in healthPermissions }) add(HEALTH_TOOL)
+        if (contactsEnabled && contactsGranted) add(CONTACTS_TOOL)
     }
 
     suspend fun execute(toolName: String, input: JsonElement): JsonObject = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
+        if (toolName == CONTACTS_TOOL) {
+            return@withContext try { contacts.search(input) }
+            catch (_: SecurityException) { error("permission_revoked") }
+        }
         val health = toolName == HEALTH_TOOL
         require(health || toolName == CALENDAR_TOOL) { "unsupported_tool" }
         val arguments = DeviceDataInput.parse(input, health)
@@ -188,6 +195,7 @@ class DeviceDataAdapter(private val context: Context) {
     companion object {
         const val CALENDAR_TOOL = "impo_list_calendar_events"
         const val HEALTH_TOOL = "impo_get_health_summary"
+        const val CONTACTS_TOOL = "impo_search_contacts"
         private val metricPermissions = mapOf(
             "steps" to HealthPermission.getReadPermission(StepsRecord::class),
             "active_energy" to HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),

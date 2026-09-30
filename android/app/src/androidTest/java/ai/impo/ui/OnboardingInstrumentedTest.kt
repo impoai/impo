@@ -17,7 +17,17 @@ class OnboardingInstrumentedTest {
         compose.setContent { ImpoTheme { PersonalizeScreen(UserSettings()) { saved = it } } }
         compose.onNodeWithTag("onboarding.name").performTextInput("  Android Tester  ")
         compose.onNodeWithTag("onboarding.assistant").performTextReplacement("  Robin  ")
+        compose.onNodeWithTag("onboarding.avatar.1").performScrollTo().performClick()
         compose.onNodeWithTag("onboarding.continue").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals("Android Tester", saved?.displayName); assertEquals("Robin", saved?.assistantName) }
+        compose.runOnIdle { assertEquals("Android Tester", saved?.displayName); assertEquals("Robin", saved?.assistantName); assertEquals(1, saved?.avatar) }
+    }
+    @Test fun profileSaveInProgressPreventsDuplicateSubmissionsAndShowsFailureWithoutLosingFields() {
+        var submissions = 0
+        compose.setContent { ImpoTheme { PersonalizeScreen(UserSettings(displayName = "Alex", assistantName = "Robin"), saving = true,
+            error = "Your changes are saved on this device and will retry.") { submissions++ } } }
+        compose.onNodeWithTag("onboarding.continue").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("onboarding.name").performScrollTo().assertTextContains("Alex")
+        compose.onNodeWithTag("onboarding.assistant").assertTextContains("Robin")
+        compose.runOnIdle { assertEquals(0, submissions) }
     }
 }

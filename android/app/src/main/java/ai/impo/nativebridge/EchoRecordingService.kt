@@ -23,7 +23,7 @@ class EchoRecordingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val transition = Mutex()
     private var capture: Job? = null
-    private var owner: String? = null
+    private var owner: NativeAccount? = null
     private var streamId = UUID.randomUUID().toString()
     private var sessionId = UUID.randomUUID().toString()
     @Volatile private var includeLocation = false
@@ -41,16 +41,31 @@ class EchoRecordingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        val commandAccount = NativeBridge.account()
+        if (action in setOf(ACTION_START, ACTION_RESUME, ACTION_PAUSE, ACTION_STOP)) {
+            val current = commandAccount
+            if (current == null || !current.captureSession.accepts(intent?.getStringExtra(EXTRA_SESSION), current.captureSession)) {
+                checkAccount()
+                if (owner == null) stopSelf()
+                return START_NOT_STICKY
+            }
+            if (owner != null && owner !== current) { checkAccount(); return START_NOT_STICKY }
+        }
         when (action) {
             ACTION_START, ACTION_RESUME -> {
+                if (VoiceMicrophone.inUse.value) {
+                    NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(message = "Finish voice input before starting Echo.")
+                    if (owner == null) stopSelf()
+                    return START_NOT_STICKY
+                }
                 // The foreground deadline also applies while loading the on-device model.
                 val account = NativeBridge.account()
                 if (account == null || !hasMicrophonePermission()) {
                     NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "stopped", message = "Sign in and allow microphone access to record.")
                     stopSelf(); return START_NOT_STICKY
                 }
-                if (owner != null && owner != account.accountId) { stopCapture(); stopSelf(); return START_NOT_STICKY }
-                owner = account.accountId
+                if (owner != null && owner !== account) { checkAccount(); return START_NOT_STICKY }
+                owner = account
                 val settings = getSharedPreferences("native_preferences", MODE_PRIVATE)
                 val locationKey = "location_${sha256(account.accountId.toByteArray())}"
                 if (action == ACTION_START) {
@@ -69,26 +84,34 @@ class EchoRecordingService : Service() {
                     stopSelf(); return START_NOT_STICKY
                 }
                 scope.launch { transition.withLock {
+                    if (NativeBridge.account() !== account || owner !== account) { checkAccount(); return@withLock }
+                    if (VoiceMicrophone.inUse.value) {
+                        NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(message = "Finish voice input before starting Echo.")
+                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(true))
+                        return@withLock
+                    }
                     if (capture?.isActive == true) return@withLock
                     NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "recording", message = null)
-                    capture = scope.launch(Dispatchers.IO) { record(account.accountId) }
+                    capture = scope.launch(Dispatchers.IO) { record(account) }
                 } }
             }
             ACTION_PAUSE -> scope.launch { transition.withLock {
+                if (NativeBridge.account() !== commandAccount || owner !== commandAccount) { checkAccount(); return@withLock }
                 val previous = capture; stopCapture(); previous?.join(); capture = null
+                if (NativeBridge.account() !== commandAccount) { checkAccount(); return@withLock }
                 NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "paused", level = 0f, speech = false)
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(true))
             } }
             ACTION_STOP -> scope.launch { transition.withLock {
+                if (NativeBridge.account() !== commandAccount || owner !== commandAccount) { checkAccount(); return@withLock }
                 val previous = capture; stopCapture(); previous?.join(); capture = null
+                if (NativeBridge.account() !== commandAccount) { checkAccount(); return@withLock }
                 NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "stopped", level = 0f, speech = false)
                 stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
             } }
             ACTION_ACCOUNT_CHANGED -> {
-                if (owner != null && owner != NativeBridge.account()?.accountId) {
-                    stopCapture(); NativeBridge.mutableRecording.value = EchoRecordingState()
-                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
-                } else if (owner == null) stopSelf()
+                checkAccount()
+                if (owner == null) stopSelf()
             }
             else -> stopSelf()
         }
@@ -96,7 +119,8 @@ class EchoRecordingService : Service() {
     }
 
     @Suppress("MissingPermission")
-    private suspend fun record(accountId: String) {
+    private suspend fun record(account: NativeAccount) {
+        val accountId = account.accountId
         var audio: AudioRecord? = null
         var journal: SpeechJournalWriter? = null
         var vad: SileroVad? = null
@@ -108,6 +132,8 @@ class EchoRecordingService : Service() {
         val location = if (includeLocation && RecordingLocation.hasPermission(this)) RecordingLocation(this, places) else null
         activeLocation = location
         try {
+            check(NativeBridge.account() === account) { "Recording account changed" }
+            currentCoroutineContext().ensureActive()
             check(hasMicrophonePermission()) { "Microphone permission was removed" }
             val minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             check(minimum > 0) { "This microphone does not support 16 kHz audio" }
@@ -121,32 +147,41 @@ class EchoRecordingService : Service() {
             val store = NativeBridge.store(this, accountId)
             // Any old journal belongs to a dead service, never this new capture.
             store.recover()
-            audio.startRecording()
+            // Identity replacement and microphone acquisition run on the same main dispatcher.
+            // Model loading/recovery may have suspended long enough for this account to disappear.
+            val initializedRecorder = audio
+            withContext(Dispatchers.Main.immediate) {
+                currentCoroutineContext().ensureActive()
+                check(NativeBridge.account() === account && owner === account) { "Recording account changed" }
+                check(!VoiceMicrophone.inUse.value) { "Finish voice input before starting Echo." }
+                initializedRecorder.startRecording()
+            }
             check(audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone is unavailable" }
             val startedAt = Instant.now()
             journal = SpeechJournalWriter(store, streamId, sessionId, startedAt, places) {
                 NativeBridge.refreshPending(this, accountId); EchoUploadWorker.enqueue(this, accountId)
             }
             withContext(Dispatchers.Main) {
-                if (includeLocation && activeLocation === location && NativeBridge.account()?.accountId == accountId) location?.start()
+                if (includeLocation && activeLocation === location && NativeBridge.account() === account) location?.start()
                 else location?.stop()
             }
             val frame = ShortArray(512)
             var count = 0
             var levelFrame = 0
-            while (currentCoroutineContext().isActive && NativeBridge.account()?.accountId == accountId) {
+            while (currentCoroutineContext().isActive && NativeBridge.account() === account) {
                 if (android.os.SystemClock.elapsedRealtime() - renewedAt >= 5 * 60_000L || !wakeLock.isHeld) {
                     wakeLock.acquire(10 * 60_000L); renewedAt = android.os.SystemClock.elapsedRealtime()
                 }
                 check(hasMicrophonePermission()) { "Microphone permission was removed" }
                 val read = audio.read(frame, count, frame.size - count, AudioRecord.READ_BLOCKING)
+                if (NativeBridge.account() !== account || !currentCoroutineContext().isActive) break
                 check(read > 0) { "Microphone was interrupted. Tap Resume to continue." }
                 count += read
                 if (count < frame.size) continue
                 count = 0
                 val probability = vad.probability(frame)
                 segmenter.consume(frame.copyOf(), probability).forEach(journal::accept)
-                if (++levelFrame % 4 == 0 && NativeBridge.account()?.accountId == accountId) {
+                if (++levelFrame % 4 == 0 && NativeBridge.account() === account) {
                     if (Build.VERSION.SDK_INT >= 29 && audio.activeRecordingConfiguration?.isClientSilenced == true) {
                         error("Microphone access was interrupted. Tap Resume when it is available.")
                     }
@@ -156,7 +191,7 @@ class EchoRecordingService : Service() {
             }
         } catch (cancelled: CancellationException) { throw cancelled }
           catch (failure: Exception) {
-            if (currentCoroutineContext().isActive && NativeBridge.account()?.accountId == accountId) {
+            if (currentCoroutineContext().isActive && NativeBridge.account() === account) {
                 NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "paused", level = 0f, speech = false,
                     message = failure.message?.take(150) ?: "Microphone was interrupted. Tap Resume to continue.")
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(true))
@@ -167,7 +202,7 @@ class EchoRecordingService : Service() {
             if (activeLocation === location) activeLocation = null
             runCatching { segmenter.finish().forEach { journal?.accept(it) } }
             runCatching { journal?.close() }
-                .onFailure { if (NativeBridge.account()?.accountId == accountId) NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(message = "Audio remains saved for recovery on this device.") }
+                .onFailure { if (NativeBridge.account() === account) NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(message = "Audio remains saved for recovery on this device.") }
             runCatching { vad?.close() }
             runCatching { if (wakeLock.isHeld) wakeLock.release() }
             NativeBridge.refreshPending(this, accountId)
@@ -181,7 +216,9 @@ class EchoRecordingService : Service() {
         val open = packageManager.getLaunchIntentForPackage(packageName)
         val content = open?.let { PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) }
         fun control(action: String, request: Int) = PendingIntent.getService(this, request,
-            Intent(this, EchoRecordingService::class.java).setAction(action), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            Intent(this, EchoRecordingService::class.java).setAction(action)
+                .setData(android.net.Uri.parse("impo-echo://${owner?.captureSession?.token}/$action"))
+                .putExtra(EXTRA_SESSION, owner?.captureSession?.token), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL).setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle(if (paused) "Echo paused" else "Echo is listening")
             .setContentText(if (paused) "Tap Resume when you're ready." else "Speech is saved on your device, then uploaded securely.")
@@ -191,14 +228,14 @@ class EchoRecordingService : Service() {
             .addAction(0, "Stop", control(ACTION_STOP, 2)).build()
     }
     private fun checkAccount() {
-        if (owner != null && owner != NativeBridge.account()?.accountId) {
+        if (owner != null && owner !== NativeBridge.account()) {
             stopCapture(); NativeBridge.mutableRecording.value = EchoRecordingState()
             stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
         }
     }
     override fun onDestroy() {
         if (activeService?.get() === this) activeService = null
-        if (owner == NativeBridge.account()?.accountId && NativeBridge.recording.value.isRecording) {
+        if (owner != null && owner === NativeBridge.account() && NativeBridge.recording.value.isRecording) {
             NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "paused", level = 0f, speech = false,
                 message = "Recording stopped. Tap Resume when you're ready.")
         }
@@ -211,13 +248,15 @@ class EchoRecordingService : Service() {
         const val ACTION_RESUME = "ai.impo.echo.RESUME"
         const val ACTION_STOP = "ai.impo.echo.STOP"
         const val ACTION_ACCOUNT_CHANGED = "ai.impo.echo.ACCOUNT_CHANGED"
+        const val EXTRA_SESSION = "recordingSession"
         private const val CHANNEL = "echo_recording"
         private const val NOTIFICATION_ID = 2401
         @Volatile private var activeService: java.lang.ref.WeakReference<EchoRecordingService>? = null
         internal fun accountChanged() { activeService?.get()?.let { service -> service.scope.launch { service.checkAccount() } } }
         internal fun control(action: String): Boolean {
             val service = activeService?.get() ?: return false
-            service.scope.launch { service.onStartCommand(Intent(service, EchoRecordingService::class.java).setAction(action), 0, 0) }
+            val token = NativeBridge.account()?.captureSession?.token
+            service.scope.launch { service.onStartCommand(Intent(service, EchoRecordingService::class.java).setAction(action).putExtra(EXTRA_SESSION, token), 0, 0) }
             return true
         }
         internal fun disableLocation() {

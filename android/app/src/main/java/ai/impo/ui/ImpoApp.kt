@@ -21,6 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,9 +46,15 @@ fun openWeb(context: Context, raw: String) {
         when {
             auth.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             auth.account == null -> WelcomeScreen(vm)
-            !state.profileLoaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            !state.profile.onboarded && state.account?.development != true -> PersonalizeScreen(state.profile) { vm.saveProfile(it.copy(onboarded = true)) }
-            else -> key(state.account?.id) { SignedInApp(vm, state) }
+            state.account?.requestScope != auth.account?.requestScope -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            !state.profileLoaded -> Column(Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                if (state.errors["profile"] == null || "profile" in state.busy) CircularProgressIndicator()
+                Text("Restoring your account", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(vertical = 20.dp))
+                ErrorNotice(state.errors["profile"], if ("profile" !in state.busy) vm::retryProfile else null)
+                if (state.errors["profile"] != null) TextButton(onClick = vm::signOut) { Text("Sign out") }
+            }
+            !state.profile.onboarded && state.account?.development != true -> key(state.account?.requestScope) { OnboardingScreen(vm, state) }
+            else -> key(state.account?.requestScope) { SignedInApp(vm, state) }
         }
     }
 }
@@ -69,12 +78,13 @@ fun openWeb(context: Context, raw: String) {
     }
     Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Spacer(Modifier.height(32.dp))
-        AssistantAvatar(0, 80)
-        Text("A little more space\nfor being you.", style = MaterialTheme.typography.headlineLarge)
-        Text("Meet Impo. Your personal agent for the things on your mind — and the moments in between.", color = Muted, style = MaterialTheme.typography.bodyLarge)
+        AssistantAvatar(3, 80)
+        Text("Meet Impo,", style = MaterialTheme.typography.headlineLarge)
+        Text("an open assistant that captures everything around your life.", color = Muted, style = MaterialTheme.typography.bodyLarge)
         PaperCard {
-            Text("Talk it through.", style = MaterialTheme.typography.titleLarge)
-            Text("Chat, delegate a task, collect spoken thoughts with Echo, and find your daily perspective in Brief.", color = Muted)
+            Text("Capture everything with Echo.", style = MaterialTheme.typography.titleLarge)
+            Text("Keep the spoken moments you choose to record. Talk things through, delegate tasks and find your daily perspective in Brief.", color = Muted)
+            Text("Fully open source.", color = Forest, style = MaterialTheme.typography.labelLarge)
         }
         ErrorNotice(error ?: auth.error)
         Button(onClick = { signIn(SignInProvider.Google) }, enabled = connecting == null,
@@ -100,7 +110,18 @@ fun openWeb(context: Context, raw: String) {
         }
     }
 }
-@Composable fun PersonalizeScreen(profile: UserSettings, save: (UserSettings) -> Unit) {
+@Composable private fun OnboardingScreen(vm: AppViewModel, state: AppState) {
+    var connections by rememberSaveable { mutableStateOf(false) }
+    if (connections) {
+        ConnectionsScreen(vm, state, back = { connections = false }, onContinue = {
+            vm.saveProfile(vm.state.value.profile.copy(onboarded = true))
+        })
+    } else PersonalizeScreen(state.profile, saving = "profile" in state.busy, error = state.errors["profile"]) {
+        vm.saveProfile(it, onSaved = { connections = true })
+    }
+}
+@Composable fun PersonalizeScreen(profile: UserSettings, saving: Boolean = false, error: String? = null,
+    buttonLabel: String = "Continue", save: (UserSettings) -> Unit) {
     var name by rememberSaveable { mutableStateOf(profile.displayName) }
     var assistant by rememberSaveable { mutableStateOf(profile.assistantName) }
     var avatar by rememberSaveable { mutableIntStateOf(profile.avatar) }
@@ -108,13 +129,16 @@ fun openWeb(context: Context, raw: String) {
         Spacer(Modifier.height(16.dp))
         AssistantAvatar(avatar, 96)
         Text("Make yourself at home.", style = MaterialTheme.typography.headlineLarge)
-        OutlinedTextField(name, { name = it.take(40) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding.name"))
+        OutlinedTextField(name, { name = it.take(100) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding.name"))
         OutlinedTextField(assistant, { assistant = it.take(30) }, label = { Text("Your assistant's name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding.assistant"))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { avatarResources.indices.forEach { index ->
-            Surface(Modifier.clickable { avatar = index }, shape = MaterialTheme.shapes.medium, color = if (avatar == index) Sage else Paper) { AssistantAvatar(index, 48) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { avatarChoices.forEach { index ->
+            Surface(Modifier.testTag("onboarding.avatar.$index").semantics { contentDescription = "${avatarNames[index]} avatar"; selected = avatar == index }
+                .clickable { avatar = index }, shape = MaterialTheme.shapes.medium, color = if (avatar == index) Sage else Paper) { AssistantAvatar(index, 48) }
         } }
-        Text("You can connect Calendar, Health and other apps whenever you're ready.", color = Muted)
-        Button(onClick = { save(profile.copy(displayName = name.trim(), assistantName = assistant.trim().ifEmpty { "Momo" }, avatar = avatar)) }, modifier = Modifier.fillMaxWidth().testTag("onboarding.continue")) { Text("Continue") }
+        Text("You can connect Calendar, Health, Contacts and other apps whenever you're ready.", color = Muted)
+        ErrorNotice(error)
+        Button(onClick = { save(profile.copy(displayName = name.trim(), assistantName = assistant.trim().ifEmpty { "Momo" }, avatar = avatar)) }, enabled = !saving,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("onboarding.continue")) { Text(if (saving) "Saving…" else buttonLabel) }
     }
 }
 private data class MainTab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
@@ -132,6 +156,7 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
                 icon = { Icon(tab.icon, null) }, label = { Text(tab.label) }, modifier = Modifier.testTag("nav.${tab.route}"), colors = NavigationBarItemDefaults.colors(indicatorColor = Sage, selectedTextColor = Forest, selectedIconColor = Forest, unselectedTextColor = Muted, unselectedIconColor = Muted)) }
         } }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            ErrorNotice(state.errors["profile"], if ("profile" !in state.busy) vm::retryProfile else null)
             if (recording.isRecording || recording.isPaused) Surface(color = Sage, modifier = Modifier.fillMaxWidth().clickable { go("memories") }) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.GraphicEq, null)
@@ -146,7 +171,7 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
                 composable("tasks") { TasksScreen(vm, state, go) }
                 composable("memories") { MemoriesScreen(vm, state, go) }
                 composable("settings") { SettingsScreen(vm, state, go, back) }
-                composable("assistant") { Column { PageHeader("Your assistant", back = back); PersonalizeScreen(state.profile) { vm.saveProfile(it); back() } } }
+                composable("assistant") { Column { PageHeader("Your assistant", back = back); PersonalizeScreen(state.profile, saving = "profile" in state.busy, buttonLabel = "Save changes") { vm.saveProfile(it, onSaved = back) } } }
                 composable("connections") { ConnectionsScreen(vm, state, back) }
                 composable("brief-settings") { BriefSettingsScreen(vm, state, back) }
                 composable("task/{id}") { entry -> val id = entry.arguments?.getString("id")!!; LaunchedEffect(id) { vm.openTask(id) }; TaskConversationScreen(vm, state, back) }
