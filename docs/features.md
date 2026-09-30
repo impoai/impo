@@ -6,6 +6,16 @@ Each user has one main conversation and current main Agent Session. One-shot
 tasks use isolated conversations and Sessions. Work survives a client disconnect;
 task rows show relative last-modified time. User-defined recurring tasks are planned.
 
+iOS chat supports hold-to-talk voice input: release to send, or swipe up to
+cancel. Apple Speech provides partial text and the final transcript, using
+on-device recognition when available. Otherwise Apple may process the audio.
+This is separate from Echo. Physical microphone and language behavior still
+require device acceptance.
+
+Account profiles preserve the assistant's name, avatar selection and onboarding
+completion across sign-ins. Custom avatar photos stay on the device that chose
+them. Existing accounts with chat history also skip onboarding.
+
 ## Brief
 
 An hourly Temporal workflow evaluates configured local briefing hours. A Rebyte
@@ -76,6 +86,9 @@ iOS Calendar/HealthKit and Android Calendar Provider/Health Connect reads requir
 native permissions and owned device claims. Neutral `impo_*` tools and legacy
 `ios_*` aliases are selected only from the device attached to the message; see
 the [native tool contract](../contracts/native-device-tools.md).
+iOS also supports reading and creating Apple Reminders and searching Apple
+Contacts, only when requested and permitted. Reminder writes persist an uncertain
+outcome before execution so a crash cannot silently cause a duplicate on retry.
 Empty HealthKit data is unknown, not zero or proof of denied access. External apps
 come from Rebyte's Composio shelf (about 120 apps) and connect through Composio
 OAuth with server ownership checks; each connection is one pinned Tool Router
@@ -84,7 +97,7 @@ execute) instead of per-app tools. Every tool of a connected app's Composio tool
 as in Rebyte. OAuth consent and real-account verification are separate from
 tests with protocol doubles.
 
-Subscription screens, some connection previews and voice previews remain demos.
+Subscription screens and some connection previews remain demos.
 The Kotlin/Compose Android implementation includes the shared features above,
 with build, unit tests and local API 35 emulator acceptance verified. Web and diary generation
 remain planned. Native Android microphone/location/Health Connect behavior also

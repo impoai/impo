@@ -35,8 +35,9 @@ discovery, authorization, and execution behind four fixed connector tools rather
 than per-app tools. The tools available to a user depend on connected accounts and
 granted permissions.
 
-The project is under active development. Some settings, subscription screens,
-and voice previews are demos. Background long-term memory and main-chat retrieval
+The project is under active development. Some settings and subscription screens
+are demos. iOS chat supports hold-to-talk voice input through Apple Speech.
+Background long-term memory and main-chat retrieval
 are implemented; profile extraction and diary generation remain planned. The platform
 roadmap below describes how Impo expands beyond the first iOS client.
 
