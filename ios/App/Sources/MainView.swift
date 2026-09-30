@@ -250,9 +250,23 @@ struct MainView: View {
             let outcome = await model.dictation.finish()
             guard !Task.isCancelled else { return }
             switch outcome {
-            case .text(let text):
-                composer = text
-                send()
+            case .clip(let clip):
+                // Chat sends the clip itself; the server transcribes and replies in one step.
+                if model.selectedTab != 2, model.sendVoice(clip) { return }
+                // A task starts from text, and a busy chat keeps the words as a draft.
+                voiceNotice = "Transcribing…"
+                do {
+                    let text = try await model.transcribe(clip)
+                    guard !Task.isCancelled else { return }
+                    voiceNotice = nil
+                    composer = composer.isEmpty ? text : composer + " " + text
+                    if model.selectedTab == 2 { send() }
+                } catch is CancellationError {
+                } catch let error as InstantAPIError where error.code == "empty_transcript" {
+                    voiceNotice = "Didn't catch that. Hold the input field while you speak, then release."
+                } catch {
+                    voiceNotice = (error as? VoiceTranscriptionError)?.errorDescription ?? "Couldn't transcribe that. Check your connection and try again."
+                }
             case .empty:
                 voiceNotice = "Didn't catch that. Hold the input field while you speak, then release."
             case .unavailable(let message):
@@ -291,7 +305,6 @@ struct MainView: View {
     private var voiceOverlay: some View {
         let preview = ProcessInfo.processInfo.arguments.contains("--voice-preview")
         let levels = preview ? (0..<40).map { 0.25 + 0.6 * abs(sin(Double($0) * 0.55)) } : model.dictation.levels
-        let transcript = preview ? "Help me plan my day" : model.dictation.transcript
         let tint = voiceCancelled ? Color.red : InstantStyle.accent
         return ZStack(alignment: .bottom) {
             // An opaque paper base hides the composer and tabs; the tinted glow sits on top.
@@ -303,11 +316,6 @@ struct MainView: View {
             .ignoresSafeArea(edges: .bottom)
             .animation(.easeOut(duration: 0.15), value: voiceCancelled)
             VStack(spacing: 18) {
-                if !transcript.isEmpty && !voiceCancelled {
-                    Text(transcript).font(.system(size: 20, weight: .medium)).foregroundStyle(InstantStyle.ink)
-                        .multilineTextAlignment(.center).lineLimit(4).padding(.horizontal, 28)
-                        .accessibilityIdentifier("voice.transcript")
-                }
                 Text(voiceCancelled ? "Release to cancel" : "Release to send · Slide up to cancel")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(voiceCancelled ? Color.red : InstantStyle.forest)
@@ -369,13 +377,14 @@ private struct ChatView: View {
                         } else { scenarioCard }
                     }
                     ForEach(model.messages.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) }) { message in
-                        bubble(message.text, user: message.role == "user").id(message.id)
+                        // A voice message shows "…" until the server returns its transcript.
+                        if message.role == "user" && message.text.isEmpty { TranscribingBubble().id(message.id) }
+                        else { bubble(message.text, user: message.role == "user").id(message.id) }
                     }
-                    if model.dictation.phase == .transcribing && search.isEmpty { TranscribingBubble() }
                     if !search.isEmpty && !model.messages.contains(where: { $0.text.localizedCaseInsensitiveContains(search) }) {
                         Text("No messages found").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 50)
                     }
-                    if model.isThinking {
+                    if model.isThinking && !model.awaitingTranscript {
                         LiveStepList(steps: model.liveSteps)
                         HStack(spacing: 8) { ProgressView().controlSize(.mini); Text(model.deviceToolStatus ?? "Thinking...").font(.system(size: 14)) }
                             .foregroundStyle(InstantStyle.muted).padding(8).accessibilityIdentifier("chat.thinking")
@@ -390,7 +399,7 @@ private struct ChatView: View {
                 }.padding(.horizontal, 19).padding(.top, 2).padding(.bottom, 10)
             }
             .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
-            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.dictation.phase == .transcribing)],
+            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.awaitingTranscript)],
                            enabled: search.isEmpty, identifier: "chat.scrollToBottom")
         }
     }

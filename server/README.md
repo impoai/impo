@@ -69,7 +69,8 @@ can be claimed again after its lease expires.
 | `REBYTE_API_KEY` | Required for the Rebyte runtime; server-only. |
 | `REBYTE_BASE_URL` / `REBYTE_MODEL` | Rebyte endpoint and model ID; see `.env.example`. |
 | `COMPOSIO_API_KEY` / `COMPOSIO_AUTH_CONFIG_PREFIX` | Optional app connectors; the shelf is every enabled managed auth config named `<prefix><toolkit>` (default `rebyte-dev-`). |
-| `GEMINI_API_KEY` | Real Echo transcription; development uses a deterministic transcriber. |
+| `GEMINI_API_KEY` | Real Echo and hold-to-talk transcription; without it, development uses deterministic transcribers. |
+| `VOICE_TRANSCRIPTION_MODEL` | Hold-to-talk model; default `gemini-3.5-transcribe`. |
 | `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` | Set both to enable batch coordination and background workflows. |
 | `TEMPORAL_API_KEY` | Authentication for the configured Temporal Cloud service. |
 | `LISTENING_TASK_QUEUE` | Shared worker queue; defaults to `impo-listening-v1`. |

@@ -128,6 +128,12 @@ export class RuntimeRepository {
     return this.db.transaction(async tx => this.accept(tx, userId, await this.conversation(tx, userId), input, prepared));
   }
 
+  /** An already accepted user input, so a retried voice message is not transcribed twice. */
+  async findUserMessage(userId: string, clientMessageId: string): Promise<{ text: string } | undefined> {
+    const [row] = await this.db.select({ text: messages.text }).from(messages).where(and(eq(messages.userId, userId), eq(messages.clientMessageId, clientMessageId)));
+    return row;
+  }
+
   /** A user-started task: its own Action and conversation, then the same durable acceptance as chat. */
   async createUserTask(userId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
     // A task never gets device Function tools (it may run with no foreground device), so no deviceId.

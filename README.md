@@ -36,8 +36,8 @@ than per-app tools. The tools available to a user depend on connected accounts a
 granted permissions.
 
 The project is under active development. Some settings and subscription screens
-are demos. iOS and Android support native hold-to-talk voice input through
-Apple Speech and Android SpeechRecognizer, respectively.
+are demos. iOS and Android support hold-to-talk voice input: iOS uploads the
+clip for server-side Gemini transcription, and Android uses SpeechRecognizer.
 Background long-term memory and main-chat retrieval
 are implemented; profile extraction and diary generation remain planned. The platform
 roadmap below describes how Impo expands beyond the first iOS client.

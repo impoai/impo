@@ -52,6 +52,12 @@ public struct MessageReceipt: Decodable, Equatable, Sendable {
     public let messageId: String
     public let submissionId: String
 }
+/// A voice message accepted after server transcription: the receipt plus the text it became.
+public struct VoiceMessageReceipt: Decodable, Equatable, Sendable {
+    public let messageId: String
+    public let submissionId: String
+    public let text: String
+}
 public struct Submission: Decodable, Sendable {
     public let submissionId: String
     public let messageId: String
@@ -163,6 +169,24 @@ public struct InstantClient: Sendable {
             body["clientContext"] = .object(["timeZone": .string(clientContext.timeZone), "currentDate": .string(clientContext.currentDate)])
         }
         return try await send("POST", ["conversation", "messages"], body: .object(body))
+    }
+
+    /// Upload a hold-to-talk clip; the server transcribes it, accepts the text as this message and
+    /// starts the reply. Retrying the same `clientMessageId` returns the original text.
+    public func sendVoiceMessage(clientMessageId: String, audio: Data, mimeType: String, deviceId: String? = nil, clientContext: MessageClientContext? = nil) async throws -> VoiceMessageReceipt {
+        var body: [String: JSONValue] = ["clientMessageId": .string(clientMessageId), "audio": .string(audio.base64EncodedString()), "mimeType": .string(mimeType)]
+        if let deviceId { body["deviceId"] = .string(deviceId) }
+        if let clientContext {
+            body["clientContext"] = .object(["timeZone": .string(clientContext.timeZone), "currentDate": .string(clientContext.currentDate)])
+        }
+        return try await send("POST", ["conversation", "voice-messages"], body: .object(body))
+    }
+
+    /// Transcribe a clip without sending it anywhere.
+    public func transcribeVoice(audio: Data, mimeType: String) async throws -> String {
+        struct Transcription: Decodable { let text: String }
+        let result: Transcription = try await send("POST", ["voice", "transcriptions"], body: .object(["audio": .string(audio.base64EncodedString()), "mimeType": .string(mimeType)]))
+        return result.text
     }
 
     public func submission(_ id: String) async throws -> Submission {

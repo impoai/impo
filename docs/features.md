@@ -7,11 +7,14 @@ tasks use isolated conversations and Sessions. Work survives a client disconnect
 task rows show relative last-modified time. User-defined recurring tasks are planned.
 
 iOS chat supports hold-to-talk across the empty input field: tap to type,
-hold to record, release to send, or swipe up to
-cancel. Apple Speech provides partial text and the final transcript, using
-on-device recognition when available. Otherwise Apple may process the audio.
-This is separate from Echo. Physical microphone and language behavior still
-require device acceptance.
+hold to record, release to send, or swipe up to cancel. The app records a short
+AAC clip (up to two minutes) and uploads it on release. A "…" bubble holds its
+place while the server transcribes it with Gemini (about one to two seconds);
+the transcript then replaces the bubble and the reply starts from that same text
+without another client round trip. The audio is not stored. On the Tasks tab, or
+while a reply is still running, the transcript becomes composer text instead.
+This is separate from Echo. Android still uses the platform SpeechRecognizer.
+Physical microphone and language behavior still require device acceptance.
 
 Account profiles preserve the assistant's name, avatar selection and onboarding
 completion across sign-ins. Custom avatar photos stay on the device that chose

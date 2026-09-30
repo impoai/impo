@@ -21,10 +21,11 @@ import type { ConnectorAPI } from '../composio/connector-service.js';
 import type { ProfileRepository } from '../profile/repository.js';
 import { ListeningRepository, maxAudioBytes } from '../listening/repository.js';
 import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON, uuid } from './request.js';
+import { dictationAudio, maxDictationBytes, transcribeRequest, type Dictation } from '../voice/dictation.js';
 
 export type ApiRepository = Pick<RuntimeRepository,
   'health' | 'findUser' | 'findOrCreateUser' | 'acceptMessage' | 'getConversation' | 'getSubmission' | 'cancelSubmission' | 'readEvents'>
-  & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage'>>;
+  & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
 
 export interface ApiOptions {
   today?: TodayRepository;
@@ -37,6 +38,8 @@ export interface ApiOptions {
   batches?: ListeningBatchRepository;
   batchService?: ListeningBatchService;
   uploads?: ListeningUploadService;
+  /** Hold-to-talk speech to text for the composer. */
+  dictation?: Dictation;
   runtime?: 'development' | 'rebyte';
   pollIntervalMs?: number;
   requestTimeoutMs?: number;
@@ -44,6 +47,17 @@ export interface ApiOptions {
   streamKeepAliveMs?: number;
   /** local-dev is the fixed fixture identity; clerk verifies a real Bearer session token. */
   auth?: { mode: 'local-dev' } | { mode: 'clerk'; secretKey: string };
+}
+
+/** Base64 audio plus a few small fields. */
+const voiceBodyBytes = Math.ceil(maxDictationBytes / 3) * 4 + 16 * 1024;
+
+/** Aborts provider work when the client goes away before the response is written. */
+function requestSignal(res: ServerResponse): AbortSignal {
+  // IncomingMessage also emits 'close' once its body is read; only the response's close means the client left.
+  const controller = new AbortController();
+  res.once('close', () => { if (!res.writableFinished) controller.abort(); });
+  return controller.signal;
 }
 
 const terminal = (status: string) => ['completed', 'failed', 'cancelled'].includes(status);
@@ -331,6 +345,38 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
       });
       sendJSON(res, 202, receipt); return;
+    }
+    if (path === '/api/v1/conversation/voice-messages' && method === 'POST') {
+      if (!options.dictation || !repository.findUserMessage) throw new ServiceError(503, 'voice_unavailable', 'Voice input is not configured.', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      const data = await readJSON(req, requestTimeoutMs, voiceBodyBytes);
+      onlyFields(data, ['clientMessageId', 'audio', 'mimeType', 'deviceId', 'clientContext']);
+      const clip = dictationAudio(data.audio, data.mimeType);
+      const input = {
+        clientMessageId: requiredString(data, 'clientMessageId', 256),
+        ...(data.deviceId === undefined ? {} : { deviceId: uuid(requiredString(data, 'deviceId', 36)) }),
+        ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
+      };
+      // A retry after a lost response replays the stored text; it is never transcribed twice.
+      const accepted = async (text: string) => ({ ...await repository.acceptMessage(user.id, { ...input, text }), text });
+      const existing = await repository.findUserMessage(user.id, input.clientMessageId);
+      if (existing) { sendJSON(res, 202, await accepted(existing.text)); return; }
+      const text = await transcribeRequest(options.dictation, clip, requestSignal(res));
+      try { sendJSON(res, 202, await accepted(text)); }
+      catch (error) {
+        // A concurrent retry may have accepted its own transcript first.
+        const winner = error instanceof ServiceError && error.code === 'idempotency_conflict' ? await repository.findUserMessage(user.id, input.clientMessageId) : undefined;
+        if (!winner) throw error;
+        sendJSON(res, 202, await accepted(winner.text));
+      }
+      return;
+    }
+    if (path === '/api/v1/voice/transcriptions' && method === 'POST') {
+      if (!options.dictation) throw new ServiceError(503, 'voice_unavailable', 'Voice input is not configured.', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      const data = await readJSON(req, requestTimeoutMs, voiceBodyBytes);
+      onlyFields(data, ['audio', 'mimeType']);
+      sendJSON(res, 200, { text: await transcribeRequest(options.dictation, dictationAudio(data.audio, data.mimeType), requestSignal(res)) }); return;
     }
     if (path.startsWith('/api/v1/devices/') || path.startsWith('/api/v1/device-tool-invocations/')) {
       if (!repository.devices) throw new ServiceError(404, 'not_found', 'Device routes are unavailable');

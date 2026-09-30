@@ -125,6 +125,8 @@ to the originating login session, including when the same user signs in again.
 | --- | --- | --- |
 | `GET /conversation` | `afterSequence=0`, `limit=50` (1–100) | 200 `ConversationPage` |
 | `POST /conversation/messages` | `MessageCommand`, optional `deviceId` | 202 `MessageReceipt` |
+| `POST /conversation/voice-messages` | `VoiceMessageCommand`, optional `deviceId` | 202 `VoiceMessageReceipt` |
+| `POST /voice/transcriptions` | `VoiceClip` | 200 `{text: string}` |
 | `GET /tasks` | No query | 200 `{tasks: TaskSummary[]}` |
 | `POST /tasks` | `MessageCommand`, text max 4,000 code units; no `deviceId` | 202 `TaskReceipt` |
 | `GET /tasks/{taskId}/conversation` | Same pagination as main conversation | 200 `TaskConversationPage` |
@@ -138,6 +140,10 @@ ClientContext = { timeZone: string, currentDate: timestamp }
 MessageCommand = { clientMessageId: string, text: string, clientContext?: ClientContext }
 MessageReceipt = { messageId: UUID, submissionId: UUID }
 TaskReceipt = { taskId: UUID, conversationId: UUID, messageId: UUID, submissionId: UUID }
+VoiceClip = { audio: base64 string (decoded max 2 MiB), mimeType: "audio/mp4" | "audio/m4a" | "audio/aac" |
+              "audio/mpeg" | "audio/wav" | "audio/ogg" | "audio/webm" | "audio/flac" }
+VoiceMessageCommand = VoiceClip + { clientMessageId: string, clientContext?: ClientContext }
+VoiceMessageReceipt = MessageReceipt + { text: string }
 Submission = { submissionId: UUID, messageId: UUID, status: string,
                resultCount: integer, subscriberCount: integer,
                version: integer, cancelRequested: boolean,
@@ -153,6 +159,15 @@ TaskSummary = { taskId: UUID, conversationId: UUID, title: string, status: strin
                 createdAt: timestamp, updatedAt?: timestamp,
                 lastRunStartedAt: timestamp | null, lastRunCompletedAt: timestamp | null }
 ```
+
+A voice message is one command: the server transcribes the clip, accepts the
+transcript as that user message and starts its reply before responding, so the
+client shows a pending bubble until `text` arrives and then subscribes as usual.
+Retrying the same `clientMessageId` returns the originally accepted text without
+transcribing again. A clip without speech fails with 422 `empty_transcript` and
+accepts nothing; provider failures are 503 `transcription_unavailable`. Use
+`/voice/transcriptions` when the text should land somewhere other than chat, such
+as a new task. Neither route stores audio.
 
 Each user has one main conversation; task conversations are isolated. Ordinary
 message text is nonblank, without NUL and at most 32,768 UTF-16 code units.

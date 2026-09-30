@@ -34,6 +34,11 @@ leases and reconciliation prevent duplicate work during retries and recovery.
 English prompt modules live in `server/src/prompts/`; clients do not compose
 system instructions. Dynamic user context is serialized as data.
 
+Hold-to-talk transcription is the one model call inside an API request: the
+user is waiting on a clip of at most two minutes, the call is bounded to 30 seconds and
+stores nothing, and the same request then accepts the text as durable work.
+Idempotency by `clientMessageId` makes a retried clip return the text that was already accepted.
+
 Function calls pass through the application dispatcher. Device requests use an
 owned pending/claim/result flow; replayed stream events never authorize execution.
 Server adapters handle external services through Composio and internal tools

@@ -100,6 +100,9 @@ export function loadConfig(role: 'api' | 'worker') {
     temporal, transcriptArchive, memory,
     authMode: authMode as 'local-dev' | 'clerk', clerk,
     listening: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com', timeoutMs: 120_000 } : undefined,
+    // Hold-to-talk composer transcription; the client waits on this request.
+    voice: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com',
+      model: process.env.VOICE_TRANSCRIPTION_MODEL ?? 'gemini-3.5-transcribe', timeoutMs: 30_000 } : undefined,
     runtime, rebyte, composio, remotePollMs: integer('REBYTE_POLL_MS', 500, 50, 60_000),
     databaseUrl: loadDatabaseUrl(authMode as 'local-dev' | 'clerk'),
     host: developmentHost(authMode as 'local-dev' | 'clerk'),

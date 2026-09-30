@@ -62,13 +62,11 @@
     <key>CFBundleURLSchemes</key><array><string>ai.impo</string></array>
   </dict></array>
   <key>NSMicrophoneUsageDescription</key>
-  <string>When you tap Echo, Impo records audio, including while your iPhone is locked, and sends it to Impo and Google Gemini to create transcripts in Memories. Tap Stop to end recording.</string>
+  <string>When you hold the input field, Impo records your voice message and sends it to Impo and Google Gemini to turn it into text. When you tap Echo, Impo records audio, including while your iPhone is locked, and sends it to Impo and Google Gemini to create transcripts in Memories. Tap Stop to end recording.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>Impo uses your local network to connect to your private assistant server.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>When you ask about your schedule, Impo reads matching events. In Live chat, event details are sent to the Impo server and our AI service to answer you. Impo does not change your calendars.</string>
-  <key>NSSpeechRecognitionUsageDescription</key>
-  <string>When you hold the voice button, Impo turns your speech into a message. The text is sent to the Impo server and our AI service only when you release to send.</string>
   <key>NSRemindersFullAccessUsageDescription</key>
   <string>When you ask, Impo reads your reminders and adds the reminders you request. Relevant reminders are sent to the Impo server and our AI service to answer you.</string>
   <key>NSContactsUsageDescription</key>

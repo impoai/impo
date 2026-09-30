@@ -1,28 +1,35 @@
 import AVFoundation
 import Observation
-import Speech
 
-/// Hold-to-talk dictation for the chat composer: live microphone level and partial text while
-/// held, then the final transcript on release. Audio stays on the device; Apple's speech
-/// service may process it when on-device recognition is unavailable for the language.
+/// A recorded hold-to-talk clip. Impo transcribes it on the server.
+struct VoiceClip: Equatable, Sendable {
+    let data: Data
+    let mimeType: String
+    /// UI tests: the text the server would return for this clip.
+    var fixtureTranscript: String?
+}
+
+/// Hold-to-talk capture for the chat composer: live microphone level while held, then a
+/// compact AAC clip on release. Transcription happens on the Impo server, not on the device.
 @MainActor @Observable
 final class VoiceDictation {
-    enum Phase: Equatable { case idle, starting, recording, transcribing }
-    enum Outcome: Equatable { case text(String), empty, unavailable(String) }
+    enum Phase: Equatable { case idle, starting, recording }
+    enum Outcome: Equatable { case clip(VoiceClip), empty, unavailable(String) }
+
+    /// A hold is one message; the server bounds uploads accordingly.
+    static let maxDuration: TimeInterval = 120
 
     private(set) var phase: Phase = .idle
-    private(set) var transcript = ""
     /// Recent input levels, 0...1, oldest first.
     private(set) var levels: [Double] = Array(repeating: 0, count: 40)
 
-    @ObservationIgnored private var engine: AVAudioEngine?
-    @ObservationIgnored private var tapInstalled = false
+    @ObservationIgnored private var recorder: AVAudioRecorder?
+    @ObservationIgnored private var fileURL: URL?
     @ObservationIgnored private var sessionActive = false
-    @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
-    @ObservationIgnored private var task: SFSpeechRecognitionTask?
+    @ObservationIgnored private var meterTask: Task<Void, Never>?
     @ObservationIgnored private var startTask: Task<Outcome?, Never>?
-    @ObservationIgnored private var finalContinuation: CheckedContinuation<Void, Never>?
-    @ObservationIgnored private var finalReceived = false
+    @ObservationIgnored private var peak: Double = 0
+    @ObservationIgnored private var startedAt: Date?
     @ObservationIgnored private var generation = UUID()
     /// UI tests: no microphone, a fixed transcript.
     @ObservationIgnored private let fixture: String?
@@ -36,13 +43,12 @@ final class VoiceDictation {
 
     var isActive: Bool { phase == .starting || phase == .recording }
 
-    /// Start listening. Returns a failure outcome when permissions or the recognizer are unavailable.
+    /// Start recording. `finish()` reports permission or microphone failures.
     func begin() {
         guard phase == .idle else { return }
         let token = UUID()
         generation = token
-        transcript = ""
-        finalReceived = false
+        peak = 0
         levels = Array(repeating: 0, count: levels.count)
         phase = .starting
         startTask = Task { [self] in
@@ -52,124 +58,95 @@ final class VoiceDictation {
         }
     }
 
-    /// Stop listening and return the final transcript. `phase` is `.transcribing` meanwhile.
+    /// Stop recording and return the clip.
     func finish() async -> Outcome {
         let token = generation
         let failure = await startTask?.value ?? nil
         guard generation == token else { return .empty }
         startTask = nil
         if let failure { return failure }
-        guard generation == token, phase == .recording else { return .empty }
-        phase = .transcribing
+        guard phase == .recording else { return .empty }
         if let fixture {
-            try? await Task.sleep(for: .seconds(2))
-            guard generation == token, !Task.isCancelled else { return .empty }
-            transcript = fixture
-        } else {
-            stopAudio()
-            request?.endAudio()
-            // The final result usually arrives well under a second after the audio ends.
-            if !finalReceived {
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    finalContinuation = continuation
-                    Task { @MainActor [weak self] in
-                        try? await Task.sleep(for: .seconds(3))
-                        guard self?.generation == token else { return }
-                        self?.resumeFinal()
-                    }
-                }
-            }
+            teardown()
+            generation = UUID()
+            return .clip(VoiceClip(data: Data(), mimeType: "audio/mp4", fixtureTranscript: fixture))
         }
-        guard generation == token, !Task.isCancelled else { return .empty }
-        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Not `currentTime`: it reads zero once the recorder stops itself at `maxDuration`.
+        let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+        recorder?.stop()
+        let url = fileURL
+        let heardSomething = peak >= 0.15
         generation = UUID()
         teardown()
-        return text.isEmpty ? .empty : .text(text)
+        // A tap or a silent hold is not worth a round trip.
+        guard duration >= 0.4, heardSomething, let url, let data = try? Data(contentsOf: url), !data.isEmpty else {
+            if let url { try? FileManager.default.removeItem(at: url) }
+            return .empty
+        }
+        try? FileManager.default.removeItem(at: url)
+        return .clip(VoiceClip(data: data, mimeType: "audio/mp4"))
     }
 
     func cancel() {
         generation = UUID()
         startTask?.cancel()
         startTask = nil
+        recorder?.stop()
+        if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
         teardown()
     }
 
     private func start(_ token: UUID) async -> Outcome? {
-        if let fixture {
+        if fixture != nil {
             phase = .recording
-            for (index, word) in fixture.split(separator: " ").enumerated() {
-                try? await Task.sleep(for: .milliseconds(120))
-                guard generation == token else { return nil }
-                transcript = fixture.split(separator: " ").prefix(index + 1).joined(separator: " ")
-                push(Double.random(in: 0.2...0.9))
-                _ = word
+            meterTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(120))
+                    guard let self, self.generation == token else { return }
+                    self.push(Double.random(in: 0.2...0.9))
+                }
             }
             return nil
         }
         // A first-time permission prompt interrupts the hold; the next hold records.
-        let prompted = AVAudioApplication.shared.recordPermission == .undetermined || SFSpeechRecognizer.authorizationStatus() == .notDetermined
+        let prompted = AVAudioApplication.shared.recordPermission == .undetermined
         guard await Self.microphoneAllowed() else { return .unavailable("Allow Microphone access in Settings to talk to Impo.") }
         guard generation == token else { return nil }
-        guard await Self.speechAllowed() else { return .unavailable("Allow Speech Recognition in Settings to talk to Impo.") }
-        guard generation == token else { return nil }
         if prompted { return .unavailable("You're all set. Hold the input field again to talk.") }
-        guard let recognizer = Self.recognizer(), recognizer.isAvailable else { return .unavailable("Speech recognition isn't available right now. Try typing instead.") }
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.addsPunctuation = true
-        if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
-        let engine = AVAudioEngine()
-        self.engine = engine
-        self.request = request
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("voice-\(token.uuidString).m4a")
+        // 16 kHz mono AAC keeps a two-minute hold near 360 KB.
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 24_000,
+        ]
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+            try session.setCategory(.record, mode: .default, options: [.duckOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             sessionActive = true
-            let input = engine.inputNode
-            let format = input.outputFormat(forBus: 0)
-            guard format.sampleRate > 0, format.channelCount > 0 else { return .unavailable("No microphone is available.") }
-            input.installTap(onBus: 0, bufferSize: 1024, format: format,
-                             block: Self.audioTap(request: request) { [weak self] level in
-                guard let self, self.generation == token, self.phase == .recording else { return }
-                self.push(level)
-            })
-            tapInstalled = true
-            engine.prepare()
-            try engine.start()
+            guard session.isInputAvailable else { return .unavailable("No microphone is available.") }
+            let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.isMeteringEnabled = true
+            fileURL = url
+            self.recorder = recorder
+            guard recorder.record(forDuration: Self.maxDuration) else { return .unavailable("Couldn't start the microphone. Try again.") }
         } catch {
             return .unavailable("Couldn't start the microphone. Try again.")
         }
-        task = recognizer.recognitionTask(with: request, resultHandler: Self.recognitionHandler { [weak self] text, done in
-            guard let self, self.generation == token else { return }
-            if let text { self.transcript = text }
-            if done { self.finalReceived = true; self.resumeFinal() }
-        })
+        startedAt = Date()
         phase = .recording
+        meterTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard let self, self.generation == token, let recorder = self.recorder else { return }
+                recorder.updateMeters()
+                // Map roughly -50...-10 dBFS onto 0...1.
+                let level = Double((recorder.averagePower(forChannel: 0) + 50) / 40)
+                self.peak = max(self.peak, level)
+                self.push(level)
+            }
+        }
         return nil
-    }
-
-    // AVFoundation and Speech invoke these Objective-C callbacks on their own queues.
-    // Construct them outside MainActor so Swift 6 doesn't insert a main-executor
-    // assertion before the explicit hop that updates observable UI state.
-    nonisolated static func audioTap(request: SFSpeechAudioBufferRecognitionRequest,
-                                    onLevel: @escaping @MainActor @Sendable (Double) -> Void) -> AVAudioNodeTapBlock {
-        { buffer, _ in
-            request.append(buffer)
-            let level = Self.level(buffer)
-            Task { @MainActor in onLevel(level) }
-        }
-    }
-
-    nonisolated static func recognitionHandler(
-        onResult: @escaping @MainActor @Sendable (String?, Bool) -> Void
-    ) -> (SFSpeechRecognitionResult?, Error?) -> Void {
-        { result, error in
-            let text = result?.bestTranscription.formattedString
-            let done = result?.isFinal == true || error != nil
-            Task { @MainActor in onResult(text, done) }
-        }
     }
 
     private func push(_ level: Double) {
@@ -177,39 +154,17 @@ final class VoiceDictation {
         levels.append(max(0, min(1, level)))
     }
 
-    private func resumeFinal() {
-        finalContinuation?.resume()
-        finalContinuation = nil
-    }
-
     private func teardown() {
-        stopAudio()
-        resumeFinal()
-        task?.cancel()
-        task = nil
-        request = nil
-        engine = nil
-        phase = .idle
-    }
-
-    private func stopAudio() {
-        engine?.stop()
-        if let engine, tapInstalled {
-            engine.inputNode.removeTap(onBus: 0)
-            tapInstalled = false
-        }
+        meterTask?.cancel()
+        meterTask = nil
+        recorder = nil
+        fileURL = nil
+        startedAt = nil
         if sessionActive {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             sessionActive = false
         }
-    }
-
-    /// Prefer the user's first language so Chinese and English speakers both get their own model.
-    private static func recognizer() -> SFSpeechRecognizer? {
-        for identifier in Locale.preferredLanguages {
-            if let recognizer = SFSpeechRecognizer(locale: Locale(identifier: identifier)) { return recognizer }
-        }
-        return SFSpeechRecognizer()
+        phase = .idle
     }
 
     private static func microphoneAllowed() async -> Bool {
@@ -218,28 +173,5 @@ final class VoiceDictation {
         case .denied: return false
         default: return await AVAudioApplication.requestRecordPermission()
         }
-    }
-
-    private static func speechAllowed() async -> Bool {
-        switch SFSpeechRecognizer.authorizationStatus() {
-        case .authorized: return true
-        case .notDetermined:
-            return await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { @Sendable status in
-                    continuation.resume(returning: status == .authorized)
-                }
-            }
-        default: return false
-        }
-    }
-
-    nonisolated private static func level(_ buffer: AVAudioPCMBuffer) -> Double {
-        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
-        var sum: Float = 0
-        for index in 0..<Int(buffer.frameLength) { sum += samples[index] * samples[index] }
-        let rms = sqrt(sum / Float(buffer.frameLength))
-        // Map roughly -50...-10 dBFS onto 0...1.
-        let decibels = 20 * log10(max(rms, 0.000_01))
-        return Double((decibels + 50) / 40)
     }
 }

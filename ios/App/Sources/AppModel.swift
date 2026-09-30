@@ -79,6 +79,9 @@ final class AppModel {
         let text: String
         var deviceID: String?
         var clientContext: MessageClientContext?
+        /// A voice message keeps its clip until the server accepts it; `text` stays empty.
+        var audio: Data?
+        var audioMimeType: String?
     }
     private struct LiveContext {
         let operationID: UUID
@@ -477,6 +480,63 @@ final class AppModel {
         return true
     }
 
+    /// A user message whose text is still being transcribed on the server.
+    var awaitingTranscript: Bool { messages.last.map { $0.role == "user" && $0.text.isEmpty } ?? false }
+
+    /// Send a hold-to-talk clip. A "…" bubble stands in for the message until the server
+    /// returns its transcript; the server starts the reply from that same text.
+    @discardableResult
+    func sendVoice(_ clip: VoiceClip) -> Bool {
+        guard !isThinking, !awaitingTranscript else { return false }
+        guard useLiveBackend else {
+            // Demo mode has no server to transcribe; UI tests supply the transcript.
+            // Without a transcript the caller falls back to `transcribe`, which explains why.
+            guard let text = clip.fixtureTranscript else { return false }
+            let placeholder = ChatMessage(role: "user", text: "")
+            messages.append(placeholder)
+            Task {
+                try? await Task.sleep(for: .milliseconds(1500))
+                messages.removeAll { $0.id == placeholder.id }
+                send(text)
+            }
+            return true
+        }
+        do {
+            let url = try endpoint()
+            let scope = url.absoluteString + "|" + activeIdentityTag
+            guard pendingInputs[scope] == nil else {
+                chatError = "Your last message is still waiting for confirmation. Tap Retry before sending another."
+                return false
+            }
+            let pending = PendingInput(clientID: UUID().uuidString, text: "",
+                clientContext: MessageClientContext(timeZone: TimeZone.current.identifier, currentDate: ISO8601DateFormatter().string(from: Date())),
+                audio: clip.data, audioMimeType: clip.mimeType)
+            pendingInputs[scope] = pending
+            messages.append(ChatMessage(id: pending.clientID, role: "user", text: ""))
+            ListeningDiagnostics.shared.record("chat.voice_send_started", ["clientMessageId":pending.clientID,"bytes":String(clip.data.count)])
+            startLive(endpoint: url)
+        } catch {
+            chatError = "Use a loopback or private local-network server origin, such as http://192.168.1.10:3001, without a path or credentials."
+            return false
+        }
+        if selectedScenario == nil {
+            selectedScenario = "Something else"
+            defaults.set(selectedScenario, forKey: "instant.scenario")
+        }
+        return true
+    }
+
+    /// Text for a clip without sending it, e.g. to start a task from speech.
+    func transcribe(_ clip: VoiceClip) async throws -> String {
+        guard useLiveBackend else {
+            guard let text = clip.fixtureTranscript else { throw VoiceTranscriptionError.needsServer }
+            try await Task.sleep(for: .milliseconds(800))
+            return text
+        }
+        let api = InstantClient(baseURL: try endpoint(), tokenProvider: activeTokenProvider, session: session)
+        return try await api.transcribeVoice(audio: clip.data, mimeType: clip.mimeType)
+    }
+
     @discardableResult
     private func startLive(endpoint: URL) -> Task<Void, Never> {
         invalidateOperation()
@@ -503,9 +563,20 @@ final class AppModel {
                             pending.deviceID = device.deviceId
                             pendingInputs[context.scope] = pending
                         }
-                        let receipt = try await api.sendMessage(clientMessageId: pending.clientID, text: pending.text,
-                            deviceId: pending.deviceID, clientContext: pending.clientContext)
-                        try check(context)
+                        let receipt: (messageId: String, submissionId: String)
+                        if let audio = pending.audio {
+                            // One request: the server transcribes, accepts that text and starts the reply.
+                            let voice = try await api.sendVoiceMessage(clientMessageId: pending.clientID, audio: audio,
+                                mimeType: pending.audioMimeType ?? "audio/mp4", deviceId: pending.deviceID, clientContext: pending.clientContext)
+                            try check(context)
+                            if let index = messages.firstIndex(where: { $0.id == pending.clientID }) { messages[index].text = voice.text }
+                            receipt = (voice.messageId, voice.submissionId)
+                        } else {
+                            let sent = try await api.sendMessage(clientMessageId: pending.clientID, text: pending.text,
+                                deviceId: pending.deviceID, clientContext: pending.clientContext)
+                            try check(context)
+                            receipt = (sent.messageId, sent.submissionId)
+                        }
                         ListeningDiagnostics.shared.record("chat.message_accepted", ["clientMessageId":pending.clientID,"submissionId":receipt.submissionId])
                         if pendingInputs[context.scope]?.clientID == pending.clientID { pendingInputs.removeValue(forKey: context.scope) }
                         if let index = messages.firstIndex(where: { $0.id == pending.clientID }) { messages[index].id = receipt.messageId }
@@ -515,6 +586,13 @@ final class AppModel {
                 } catch {
                     guard isCurrent(context) else { return }
                     if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
+                    if (error as? InstantAPIError)?.code == "empty_transcript", let pending = pendingInputs[context.scope], pending.audio != nil {
+                        // Nothing was accepted; drop the clip and its "…" bubble instead of offering a retry.
+                        pendingInputs.removeValue(forKey: context.scope)
+                        messages.removeAll { $0.id == pending.clientID }
+                        chatError = "Didn't catch that. Hold the input field while you speak, then release."
+                        return
+                    }
                     // Resending is safe (the pending input keeps its clientMessageId); a dropped
                     // stream or brief outage reconnects before asking the user to retry.
                     failures += 1
@@ -801,6 +879,11 @@ final class AppModel {
 
 /// Failures worth reconnecting automatically: network drops, a stream cut off before its
 /// finish, and gateway/unavailable responses. Anything else is reported to the user.
+enum VoiceTranscriptionError: LocalizedError {
+    case needsServer
+    var errorDescription: String? { "Voice input needs the Impo server. Type your message instead." }
+}
+
 func isTransientNetworkError(_ error: any Error) -> Bool {
     if let url = error as? URLError { return url.code != .cancelled }
     if let stream = error as? StreamProtocolError { return stream == .incompleteStream }
