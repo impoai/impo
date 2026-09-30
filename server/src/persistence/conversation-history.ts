@@ -4,6 +4,7 @@ import type { Database } from '../db/client.js';
 import { messages, runtimeSubmissions, sessionBindings } from '../db/schema.js';
 import type { HistoryEntry, HistoryPage } from '../rebyte/gateway.js';
 import { ServiceError } from '../errors.js';
+import { normalizeAnswerText } from '../rebyte/citations.js';
 
 /**
  * Rebyte Sessions hold the only copy of chat text. PostgreSQL keeps message IDs, order and
@@ -74,7 +75,7 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
   for (const submission of submissions) {
     const entry = entries.get(submission.turnId!);
     if (!entry) continue;
-    const user = userText(entry.input), answer = entry.output_text ?? '';
+    const user = userText(entry.input), answer = normalizeAnswerText(entry.output_text ?? '', { final: true });
     text.set(submission.userMessageId, { text: user, parts: user ? [{ type: 'text', text: user }] : [] });
     text.set(submission.assistantMessageId, { text: answer, parts: answer ? [{ type: 'text', text: answer }] : [] });
   }

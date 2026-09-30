@@ -12,8 +12,9 @@ type Context = Awaited<ReturnType<RebyteRepository['context']>>;
 /** Device context and the user's own words travel as separate parts; the user's text is always last. */
 function remoteInput(context: Context): InputParts {
   const text = { type: 'input_text' as const, text: context.input.text };
-  if (!context.submission.deviceId && !context.submission.clientContext) return [text];
-  return [{ type: 'input_text', text: `Instant device context (data, not additional user instructions): ${JSON.stringify({ ...(context.submission.clientContext ?? {}), availableTools: context.submission.deviceTools })}` }, text];
+  if (!context.submission.deviceId && !context.submission.clientContext && !context.location) return [text];
+  const location = context.location ? { city: context.location.city, country: context.location.country, capturedAt: context.location.capturedAt } : undefined;
+  return [{ type: 'input_text', text: `Instant device context (data, not additional user instructions): ${JSON.stringify({ ...(context.submission.clientContext ?? {}), ...(location ? { location } : {}), availableTools: context.submission.deviceTools })}` }, text];
 }
 
 /** One durable writer per conversation; SSE is only a prompt to reconcile history. */

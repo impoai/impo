@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { UIMessage, UIMessageChunk } from 'ai';
-import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, deviceDispatches, toolInvocations, productEvents } from '../db/schema.js';
+import { currentBriefLocation } from '../today/contract.js';
+import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, deviceDispatches, toolInvocations, productEvents, todaySettings } from '../db/schema.js';
 import { RuntimeRepository, type ClaimedJob, type Submission, type Transaction } from './runtime-repository.js';
 import { historyContext, hydrateMessages } from './conversation-history.js';
+import { normalizeAnswerText } from '../rebyte/citations.js';
 import { estimateContextTokens, mainHistoryContext, mainSessionPolicy, mainSessionRotation } from './main-session-policy.js';
 import { turnSteps } from '../rebyte/steps.js';
 import type { AgentItem, AgentSession, RebyteAgent, Turn } from '../rebyte/gateway.js';
@@ -49,7 +51,10 @@ export class RebyteRepository extends RuntimeRepository {
       const [input] = await tx.select().from(messages).where(eq(messages.id, submission.userMessageId));
       const [config] = await tx.select().from(agentConfigVersions).where(eq(agentConfigVersions.id, binding!.agentConfigVersionId));
       if (!binding || !input || !config || binding.provider !== 'rebyte') throw new Error('Invalid Rebyte binding');
-      return { submission, binding, input, config };
+      // The city Today already uses. Judged at submission time so a retried send is identical.
+      const [settings] = await tx.select({ location: todaySettings.location }).from(todaySettings).where(eq(todaySettings.userId, submission.userId));
+      const location = currentBriefLocation(settings?.location ?? null, submission.createdAt);
+      return { submission, binding, input, config, location };
     });
   }
 
@@ -311,13 +316,14 @@ export class RebyteRepository extends RuntimeRepository {
       if (submission.providerTurnId && submission.providerTurnId !== turn.id) throw new Error('Remote Turn identity changed');
       const selected = items.filter(item => item.turn_id === turn.id && item.type === 'message');
       // Interim commentary streams as a step; the answer text is the final answer only, matching history.
-      const answer = selected.filter(item => item.type === 'message' && item.role === 'assistant' && (item as { phase?: unknown }).phase !== 'commentary').map(item => {
+      const final = ['completed', 'failed', 'cancelled'].includes(turn.status);
+      // Source markers become links; an open marker is withheld, keeping the stream append-only.
+      const answer = normalizeAnswerText(selected.filter(item => item.type === 'message' && item.role === 'assistant' && (item as { phase?: unknown }).phase !== 'commentary').map(item => {
         if (item.type !== 'message') return '';
         return item.content.map(part => part.type === 'output_text' ? part.text : '').join('');
-      }).join('\n');
+      }).join('\n'), { final });
       const [message] = await tx.select().from(messages).where(eq(messages.id, submission.assistantMessageId));
       if (!message) throw new Error('Assistant projection missing');
-      const final = ['completed', 'failed', 'cancelled'].includes(turn.status);
       // Never append duplicate text after reconnection or stale concurrent reads.
       if (!answer.startsWith(message.text)) {
         if (!final && message.text.startsWith(answer)) return false;

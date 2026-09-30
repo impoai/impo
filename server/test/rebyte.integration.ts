@@ -388,12 +388,23 @@ test('Rebyte SDK integration recovers remote side effects across local process f
         assert.notEqual(contextOf(bob).profile.displayName, profileName, 'another user never receives Alice\'s profile');
 
         const before = fake.sessions.length;
+        const setLocation = (capturedAt: string) => pool.query(`UPDATE today_settings SET location=$1 WHERE user_id='00000000-0000-4000-8000-000000000001'`,
+          [JSON.stringify({ city: 'Beijing', country: 'China', capturedAt, source: 'device' })]);
+        await setLocation(new Date().toISOString());
         const followUp = await request('/conversation/messages', { clientMessageId: randomUUID(), text: 'new turn context', clientContext: { currentDate: '2026-10-01T00:00:00Z', timeZone: 'America/New_York' } });
         assert.equal(followUp.status, 202);
         await state(followUp.body.submissionId as string, 'completed');
         assert.equal(fake.sessions.length, before, 'a new message date does not rotate the Session');
-        const input = fake.requests.filter(value => value.method === 'POST' && value.path.includes('/events')).at(-1)!.body;
-        assert.ok(JSON.stringify(input).includes('America/New_York'), 'new message context reaches the existing Session');
+        const lastInput = () => JSON.stringify(fake.requests.filter(value => value.method === 'POST' && value.path.includes('/events')).at(-1)!.body);
+        assert.ok(lastInput().includes('America/New_York'), 'new message context reaches the existing Session');
+        assert.ok(lastInput().includes('Beijing'), 'the Today city reaches the turn, so the time zone is never used to guess it');
+        assert.ok(!JSON.stringify(fake.sessions.filter(value => value.turns.some(turn => turn.text.startsWith('bob-private-')))).includes('Beijing'), 'another user never receives Alice\'s city');
+
+        await setLocation(new Date(Date.now() - 2 * 24 * 3600_000).toISOString());
+        const stale = await request('/conversation/messages', { clientMessageId: randomUUID(), text: 'stale location turn', clientContext: { currentDate: '2026-10-01T00:00:00Z', timeZone: 'Asia/Shanghai' } });
+        await state(stale.body.submissionId as string, 'completed');
+        assert.ok(!lastInput().includes('Beijing'), 'a stale device location is not presented as current');
+        await pool.query(`UPDATE today_settings SET location=NULL WHERE user_id='00000000-0000-4000-8000-000000000001'`);
 
         const goal = `profile-task-${randomUUID()}`;
         const task = await request('/tasks', { clientMessageId: randomUUID(), text: goal });
