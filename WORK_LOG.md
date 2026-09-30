@@ -31,3 +31,4 @@
 - 2026-09-30 | Prepared | iOS build 37 with the Settings reorganization and the Echo/About you change; no server changes.
 - 2026-09-30 | Deployed | TestFlight 0.1.0 (37), built from 622e2c0, is available to Team with English test notes. External testing still waits on build 22 in Apple beta review.
 - 2026-09-30 | Prepared | iOS build 38 republishes the complete build 37 source, including in-place response selection and the Settings/Echo updates; targeted acceptance and TestFlight processing are pending.
+- 2026-09-30 | Deployed | TestFlight 0.1.0 (38), built from 2d84420, is available to Team with English notes. In-place selection and full-response/main-chat UI checks passed, and the signed IPA was verified. Public-group delivery still awaits build 22 beta review.
