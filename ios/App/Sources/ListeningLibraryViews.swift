@@ -51,7 +51,9 @@ struct ListeningTranscriptLibrary: View {
                                  visibleDay: { visibleDate = $0 }, select: { selected = $0 })
                 if !timeline.days.isEmpty {
                     EchoDateRail(days: timeline.calendar, visibleDate: visibleDate, jump: { jump($0) })
-                } else if timeline.loadingIndex {
+                } else if timeline.loadingIndex && !timeline.loaded {
+                    // Only the first load shows a spinner; background refreshes after each
+                    // Echo sync keep the current content instead of flashing.
                     ProgressView("Loading your timeline…").frame(maxWidth: .infinity)
                 } else if timeline.loaded || !app.useLiveBackend {
                     VStack(alignment: .leading, spacing: 16) {

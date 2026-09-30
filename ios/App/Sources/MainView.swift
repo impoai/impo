@@ -459,18 +459,31 @@ private struct ChatView: View {
                     .accessibilityIdentifier("scenario.next")
             }.font(.system(size: 12)).foregroundStyle(InstantStyle.muted)
             Text("What should we start with?").font(InstantStyle.serif(18)).padding(.bottom, 2)
-            if scenarioPage == 0 {
-                ForEach(Array(scenarios.enumerated()), id: \.offset) { index, scenario in
-                    scenarioRow(title: scenario.0, subtitle: scenario.1, icon: scenario.2, number: index + 1)
-                        .accessibilityIdentifier("scenario.\(index)")
+            // Both pages always occupy the taller page's height. The chat is anchored to the
+            // bottom, so a shorter page would move the page arrows out from under the finger.
+            ZStack(alignment: .top) {
+                scenarioPageContent(0) {
+                    ForEach(Array(scenarios.enumerated()), id: \.offset) { index, scenario in
+                        scenarioRow(title: scenario.0, subtitle: scenario.1, icon: scenario.2, number: index + 1)
+                            .accessibilityIdentifier("scenario.\(index)")
+                    }
                 }
-            } else {
-                scenarioRow(title: "Everyday Life", subtitle: "A little more space for the things you love", icon: "sun.max")
-                scenarioRow(title: "Learning & Ideas", subtitle: "Explore a question, a book, or something new", icon: "book")
-                scenarioRow(title: "Something else", subtitle: "I have something else in mind", icon: "bubble.left")
-                    .accessibilityIdentifier("scenario.other")
+                scenarioPageContent(1) {
+                    scenarioRow(title: "Everyday Life", subtitle: "A little more space for the things you love", icon: "sun.max")
+                    scenarioRow(title: "Learning & Ideas", subtitle: "Explore a question, a book, or something new", icon: "book")
+                    scenarioRow(title: "Something else", subtitle: "I have something else in mind", icon: "bubble.left")
+                        .accessibilityIdentifier("scenario.other")
+                }
             }
         }.padding(.top, 2)
+    }
+
+    private func scenarioPageContent<Rows: View>(_ page: Int, @ViewBuilder rows: () -> Rows) -> some View {
+        let visible = scenarioPage == page
+        return VStack(alignment: .leading, spacing: 8) { rows() }
+            .opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .accessibilityHidden(!visible)
     }
 
     private func scenarioRow(title: String, subtitle: String, icon: String, number: Int? = nil) -> some View {

@@ -65,9 +65,7 @@ final class InstantUITests: XCTestCase {
         tap("onboarding.avatar.2")
         capture("09 Choose assistant appearance")
         tap("onboarding.avatar.continue")
-        require("onboarding.trial.continue")
-        capture("10 Preview plan")
-        tap("onboarding.trial.continue")
+        // There is no plan or payment step; the avatar finishes onboarding.
         require("chat.input")
         capture("11 Main conversation")
 
@@ -178,7 +176,13 @@ final class InstantUITests: XCTestCase {
 
     func testScenarioSearchAndVoicePreview() {
         launchMain()
+        let arrowBefore = require("scenario.next").frame
         tap("scenario.next")
+        // The chat is bottom-anchored; a shorter second page must not move the page arrows.
+        let settled = expectation(description: "Page arrows settle")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { settled.fulfill() }
+        wait(for: [settled], timeout: 2)
+        XCTAssertEqual(require("scenario.next").frame.minY, arrowBefore.minY, accuracy: 1)
         capture("30 Scenario choices second page")
         tap("scenario.other")
         XCTAssertTrue(app.staticTexts["Answered: Something else"].waitForExistence(timeout: 5))

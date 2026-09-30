@@ -29,8 +29,7 @@ struct OnboardingView: View {
                 case 2: connections
                 case 3: intro
                 case 4: name
-                case 5: avatar
-                default: trial
+                default: avatar
                 }
             }
             .foregroundStyle(InstantStyle.ink)
@@ -525,78 +524,12 @@ struct OnboardingView: View {
             .padding(.bottom, 22)
             PillButton(title: "Continue") {
                 model.persistProfile()
-                advance(to: 6)
+                model.completeOnboarding()
             }
             .accessibilityIdentifier("onboarding.avatar.continue")
             .padding(.horizontal, 38)
             .padding(.bottom, 20)
         }
-    }
-
-    private var trial: some View {
-        fittingPage {
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    Button { model.completeOnboarding() } label: {
-                        HStack(spacing: 5) { Text("Not now"); Image(systemName: "chevron.right") }
-                            .font(.system(size: 13)).foregroundStyle(InstantStyle.muted)
-                    }
-                    .accessibilityIdentifier("onboarding.trial.skip")
-                }
-                .frame(height: 38).padding(.horizontal, 20)
-                DotMark(size: 15).padding(.top, 17).padding(.bottom, 31)
-                Text("We're all set.\nLet \(model.assistantName) move with your day.")
-                    .font(InstantStyle.serif(24)).lineSpacing(4).multilineTextAlignment(.center)
-                    .foregroundStyle(InstantStyle.forest)
-                    .minimumScaleFactor(0.75).padding(.horizontal, 20)
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Text("Pro").font(InstantStyle.serif(25, italic: true)).foregroundStyle(InstantStyle.forest)
-                        Spacer()
-                        Text("Demo preview").font(.system(size: 10)).foregroundStyle(InstantStyle.muted)
-                    }
-                    .padding(.bottom, 15)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(InstantStyle.accent.opacity(0.7)).frame(height: 1)
-                    }
-                    .padding(.bottom, 20)
-                    Text("7-Day Free").font(InstantStyle.serif(39)).minimumScaleFactor(0.7).lineLimit(1)
-                    Text("Then $20/month").font(.system(size: 16)).padding(.top, 4)
-                    Text("Full Impo experience for everyday work.")
-                        .font(.system(size: 14)).padding(.top, 31).padding(.bottom, 12)
-                    Rectangle().fill(InstantStyle.border).frame(height: 0.5)
-                    VStack(alignment: .leading, spacing: 13) {
-                        feature("Monthly frontier AI usage included")
-                        feature("Long-term memory that grows with you")
-                        feature("Daily briefings and proactive follow-ups")
-                        feature("Scheduled and on-demand tasks")
-                    }
-                    .padding(.top, 19)
-                }
-                .padding(30)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .paperSurface(cornerRadius: 18)
-                .padding(.horizontal, 18)
-                .padding(.top, 27)
-                Spacer(minLength: 18)
-                PillButton(title: "Continue") { model.completeOnboarding() }
-                    .accessibilityIdentifier("onboarding.trial.continue")
-                    .padding(.horizontal, 22)
-                Text("Preview only · no trial starts and no payment is taken")
-                    .font(.system(size: 10)).foregroundStyle(InstantStyle.muted)
-                    .padding(.top, 12).padding(.bottom, 13)
-            }
-        }
-    }
-
-    private func feature(_ title: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "checkmark").font(.system(size: 14))
-                .foregroundStyle(InstantStyle.forest)
-            Text(title).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
-        }
-        .foregroundStyle(InstantStyle.muted)
     }
 
     private func progressHeader(fraction: CGFloat, back: Int) -> some View {
