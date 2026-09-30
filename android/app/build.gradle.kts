@@ -1,4 +1,7 @@
 import java.util.Properties
+import java.net.URI
+import java.security.KeyStore
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -9,6 +12,12 @@ plugins {
 val local = Properties().apply { rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
 fun config(name: String) = providers.gradleProperty(name).orNull ?: local.getProperty(name, "")
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+val releaseApiUrl = config("impo.release.apiUrl").ifBlank { config("impo.apiUrl") }
+val releaseClerkKey = config("impo.release.clerkKey").ifBlank { config("impo.clerkKey") }
+val signingFile = rootProject.file(config("impo.signingProperties").ifBlank { "../.local/android/release/signing.properties" })
+val signing = Properties().apply { if (signingFile.exists()) signingFile.inputStream().use { load(it) } }
+val releaseVersionCode = config("impo.versionCode").ifBlank { "1" }.toInt()
+val releaseVersionName = config("impo.versionName").ifBlank { "0.1.0" }
 android {
     namespace = "ai.impo"
     compileSdk = 36
@@ -16,21 +25,60 @@ android {
         applicationId = "ai.impo.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", quoted(config("impo.apiUrl")))
         buildConfigField("String", "CLERK_PUBLISHABLE_KEY", quoted(config("impo.clerkKey")))
     }
+    signingConfigs {
+        create("release") {
+            signing.getProperty("storeFile")?.let { storeFile = rootProject.file(it) }
+            storePassword = signing.getProperty("storePassword")
+            keyAlias = signing.getProperty("keyAlias")
+            keyPassword = signing.getProperty("keyPassword")
+            storeType = "PKCS12"
+        }
+    }
     buildTypes {
         debug { applicationIdSuffix = ".debug" }
-        release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") }
+        release {
+            isDebuggable = false
+            isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
+            buildConfigField("String", "API_BASE_URL", quoted(releaseApiUrl))
+            buildConfigField("String", "CLERK_PUBLISHABLE_KEY", quoted(releaseClerkKey))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/LICENSE.md", "META-INF/LICENSE-notice.md") }
     testOptions { unitTests.isReturnDefaultValues = true }
 }
+val validateReleaseConfiguration = tasks.register("validateReleaseConfiguration") {
+    doLast {
+        val endpoint = runCatching { URI(releaseApiUrl) }.getOrNull()
+        check(endpoint?.scheme == "https" && !endpoint.host.isNullOrBlank() && endpoint.userInfo == null && endpoint.query == null && endpoint.fragment == null &&
+            endpoint.host !in setOf("localhost", "127.0.0.1", "10.0.2.2") && !endpoint.host.endsWith(".invalid") && !endpoint.host.endsWith(".example")) {
+            "Release requires a public HTTPS impo.release.apiUrl (or impo.apiUrl)."
+        }
+        check(releaseClerkKey.startsWith("pk_live_") && releaseClerkKey.length > 16) { "Release requires a live Clerk publishable key in impo.release.clerkKey (or impo.clerkKey)." }
+        check(releaseVersionCode > 0 && releaseVersionCode <= 2_100_000_000 && releaseVersionName.isNotBlank()) { "Release version code/name must be valid and increase for each publication." }
+        check(signingFile.isFile) { "Missing private signing properties. Run npm run android:signing:init once; never replace an existing release key." }
+        listOf("storeFile", "storePassword", "keyAlias", "keyPassword", "certificateSha256").forEach { name ->
+            check(!signing.getProperty(name).isNullOrBlank()) { "Missing $name in private signing properties." }
+        }
+        val keyFile = rootProject.file(signing.getProperty("storeFile"))
+        check(keyFile.isFile) { "Release keystore is missing. Restore the original signing key; do not generate a replacement." }
+        val keys = KeyStore.getInstance("PKCS12").apply { keyFile.inputStream().use { load(it, signing.getProperty("storePassword").toCharArray()) } }
+        check(keys.isKeyEntry(signing.getProperty("keyAlias"))) { "Release signing alias does not contain a private key." }
+        val certificate = keys.getCertificate(signing.getProperty("keyAlias"))
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(certificate.encoded).joinToString("") { "%02x".format(it) }
+        check(fingerprint.equals(signing.getProperty("certificateSha256").replace(":", ""), ignoreCase = true)) { "Signing certificate changed. Restore the original release key." }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseConfiguration) }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
     implementation(project(":client"))

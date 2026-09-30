@@ -53,3 +53,6 @@ android/.kotlin/
 *.xcconfig
 !*.example.xcconfig
 !ios/App/Config.xcconfig
+
+# Wrangler local state
+.wrangler/

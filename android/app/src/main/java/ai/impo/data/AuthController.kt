@@ -6,6 +6,7 @@ import com.clerk.api.Clerk
 import com.clerk.api.network.serialization.ClerkResult
 import com.clerk.api.network.serialization.errorMessage
 import com.clerk.api.session.GetTokenOptions
+import com.clerk.api.sso.OAuthProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -13,6 +14,7 @@ import java.net.URI
 
 data class Account(val id: String, val name: String, val email: String?, val baseUrl: String, val development: Boolean)
 data class AuthState(val loading: Boolean = true, val account: Account? = null, val error: String? = null)
+enum class SignInProvider { Google, Apple }
 class AuthController(private val store: SettingsStore, private val scope: CoroutineScope, val configured: Boolean) {
     private val mutable = MutableStateFlow(AuthState())
     val state = mutable.asStateFlow()
@@ -41,10 +43,19 @@ class AuthController(private val store: SettingsStore, private val scope: Corout
         store.setDevelopmentEndpoint(url)
         mutable.value = AuthState(false, Account("development:alice:$url", "Developer", "Local development", url, true))
     }
-    suspend fun signIn() {
+    suspend fun signIn(provider: SignInProvider) {
         if (!configured) { mutable.value = AuthState(false, error = "Set your Clerk publishable key and API URL to enable sign-in."); return }
-        when (val result = Clerk.auth.signInWithAccountPortal()) {
-            is ClerkResult.Failure -> mutable.value = AuthState(false, error = result.errorMessage)
+        if (state.value.account != null) return
+        mutable.update { it.copy(error = null) }
+        // The pinned SDK's Account Portal method sends no strategy and cannot
+        // obtain a browser URL. Its supported OAuth flow also transfers new
+        // users to sign-up and activates the session after the native callback.
+        val oauth = when (provider) {
+            SignInProvider.Google -> OAuthProvider.GOOGLE
+            SignInProvider.Apple -> OAuthProvider.APPLE
+        }
+        when (val result = Clerk.auth.signInWithOAuth(oauth)) {
+            is ClerkResult.Failure -> mutable.update { if (it.account == null) it.copy(loading = false, error = result.errorMessage) else it }
             is ClerkResult.Success -> Unit // SDK account flow is the authority, not browser dismissal.
         }
     }

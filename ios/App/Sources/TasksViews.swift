@@ -93,7 +93,7 @@ struct TasksView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await tasks.refresh(using: model) }
-        .task(id: model.useLiveBackend) { await tasks.refresh(using: model) }
+        .task(id: model.listeningScope) { await tasks.refresh(using: model) }
         .fullScreenCover(item: $tasks.route, onDismiss: { Task { await tasks.refresh(using: model) } }) { route in
             Group {
                 switch route {

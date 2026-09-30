@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Impo — a fully open-source personal agent</title>
-  <meta name="description" content="Impo is a fully open-source personal agent, from the clients to the backend. Explore the code on GitHub and join the community on Discord. iOS today; Android and Web planned.">
-  <meta property="og:title" content="Impo — a fully open-source personal agent">
-  <meta property="og:description" content="Your personal agent, fully open source. Explore the project on GitHub and build with us on Discord. iOS today; Android and Web planned.">
+  <title>Impo — Fully open source. Capture everything with Echo.</title>
+  <meta name="description" content="Meet Impo, an open assistant that captures everything around your life. Capture conversations with Echo, revisit transcripts, and build personal memory. Fully open source, for Android and iPhone.">
+  <meta property="og:title" content="Impo — Fully open source. Capture everything with Echo.">
+  <meta property="og:description" content="An open assistant that captures everything around your life. Echo turns conversations and spoken thoughts into transcripts and useful memory. Explore Impo for Android and iPhone.">
   <meta property="og:image" content="https://impo.ai/assets/apple-touch-icon.png">
   <meta name="theme-color" content="#f4eee3">
   <link rel="icon" href="/assets/favicon.ico" sizes="any">
@@ -19,7 +19,7 @@
     <div class="wrap">
       <a class="brand" href="/"><img src="/assets/instant-mark.svg" alt=""><span>Impo</span></a>
       <nav class="site-nav" aria-label="Main navigation">
-        <a class="hide-sm" href="#what">What it does</a>
+        <a class="hide-sm" href="#download">Get the app</a>
         <a href="https://github.com/impoai/impo">GitHub</a>
         <a href="https://discord.gg/84ZYn3xcGV">Discord</a>
       </nav>
@@ -31,17 +31,27 @@
       <div class="wrap">
         <div>
           <p class="eyebrow">Meet Impo</p>
-          <h1>Your personal agent.<br>Fully <em>open source.</em></h1>
-          <p class="lede">A little room for your day. Talk things through, delegate a task, capture an idea, and get a helpful nudge when it matters. Make Impo your own, and help shape what comes next.</p>
-          <div class="hero-actions">
-            <a class="action action-primary" href="https://github.com/impoai/impo">
-              <span>Explore GitHub</span><span aria-hidden="true">↗</span>
-            </a>
-            <a class="action" href="https://discord.gg/84ZYn3xcGV">
-              <span>Join Discord</span><span aria-hidden="true">↗</span>
-            </a>
+          <h1><span>Fully <em>open source.</em></span><span>Capture everything<br>with <em>Echo.</em></span></h1>
+          <p class="lede">An open assistant that captures everything around your life.</p>
+          <div class="hero-actions" id="download" role="group" aria-label="Get Impo">
+            <div class="download-option">
+              <a class="action action-primary" href="/android.apk" aria-describedby="android-requirements">
+                <span>Download Android</span><span aria-hidden="true">↓</span>
+              </a>
+              <p class="download-meta" id="android-requirements">APK · Android 9+</p>
+            </div>
+            <div class="download-option">
+              <a class="action" href="https://testflight.apple.com/join/Wgkx6k3V" aria-describedby="ios-requirements ios-beta-status">
+                <span>iOS on TestFlight</span><span aria-hidden="true">↗</span>
+              </a>
+              <p class="download-meta" id="ios-requirements">TestFlight · iOS 18+</p>
+            </div>
           </div>
-          <p class="platform-note">iOS and backend available. Android is in development with emulator testing complete. Web is planned. <a href="https://github.com/impoai/impo#roadmap">See the roadmap</a>.</p>
+          <p class="platform-note" id="ios-beta-status">The iOS beta is not accepting new testers yet.</p>
+          <div class="hero-community" aria-label="Project and community">
+            <a href="https://github.com/impoai/impo">Explore GitHub <span aria-hidden="true">↗</span></a>
+            <a href="https://discord.gg/84ZYn3xcGV">Join Discord <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
         <div class="hero-art">
           <img src="/assets/robin.webp" width="720" height="720" alt="A robin perched on a green notebook">
@@ -49,37 +59,37 @@
       </div>
     </section>
 
-    <section class="section" id="what">
+    <section class="section" id="echo" aria-labelledby="echo-heading">
       <div class="wrap">
-        <h2>Make space for what's next.</h2>
-        <p class="intro">From a conversation to a completed task, Impo helps you keep the day moving.</p>
-        <div class="cards">
-          <article class="card">
-            <img src="/assets/SceneSchedule.svg" alt="">
-            <h3>Your day, at a glance</h3>
-            <p>Today brings helpful briefings into one calm place, with morning, midday, and evening editions you can return to.</p>
-          </article>
-          <article class="card">
-            <img src="/assets/SceneWork.svg" alt="">
-            <h3>Ideas with follow-through</h3>
-            <p>Talk to your agent and delegate a task. Work keeps going when you leave, with the conversation ready when you return.</p>
-          </article>
-          <article class="card">
-            <img src="/assets/SceneHealth.svg" alt="">
-            <h3>Context on your terms</h3>
-            <p>Capture spoken ideas with Echo and choose what to connect. Broader access to Composio's tool catalog is on the roadmap.</p>
-          </article>
-        </div>
+        <h2 id="echo-heading">Echo. Capture your day.</h2>
+        <p class="intro">Conversations, passing thoughts, ideas out loud. Return to them as transcripts, and give your agent context to remember.</p>
+        <ol class="echo-steps" role="list">
+          <li>
+            <span class="step-number" aria-hidden="true">01</span>
+            <h3>Capture the moment</h3>
+            <p>Start Echo for the conversations and spoken thoughts you want to keep. Pause or stop whenever you choose.</p>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">02</span>
+            <h3>Return to the words</h3>
+            <p>Browse transcripts in your personal timeline. Jump back to a day and pick up the details.</p>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">03</span>
+            <h3>Keep the context</h3>
+            <p>Impo draws useful memories from Echo, so future conversations can start with more of your story.</p>
+          </li>
+        </ol>
       </div>
     </section>
 
     <section class="section" id="open-source">
       <div class="wrap">
         <h2>Every part. Fully open source.</h2>
-        <p class="intro">From the client frontends to the backend and agent integrations. A complete project to understand, adapt, and build together.</p>
+        <p class="intro">Native apps and backend, all open source. Explore the code, run your own setup, and help shape what comes next.</p>
         <div class="promise">
           <div><h3>The whole project</h3><p>Explore how the app, shared backend, background work, and agent integrations fit together. Follow the architecture and development on <a href="https://github.com/impoai/impo">GitHub</a>.</p></div>
-          <div><h3>Across your devices</h3><p>The iOS client and backend are implemented. Android and Web are planned, sharing the same conversations, tasks, and personal context.</p></div>
+          <div><h3>Across your devices</h3><p>Native apps for Android and iPhone keep your conversations, tasks, and personal context connected to your account. A web app is planned.</p></div>
           <div><h3>Built with the community</h3><p>Ask a question, suggest an idea, or help build the next feature. Join <a href="https://discord.gg/84ZYn3xcGV">the discussion on Discord</a> and shape Impo with us.</p></div>
         </div>
       </div>

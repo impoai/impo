@@ -1,0 +1,9 @@
+{
+  "name": "impo-ai",
+  "pages_build_output_dir": "../../site",
+  "compatibility_date": "2026-09-30",
+  "r2_buckets": [
+    { "binding": "ANDROID_RELEASES", "bucket_name": "impo-android-releases" },
+    { "binding": "PR_DOCUMENTS", "bucket_name": "impo-pr-lens-documents" }
+  ]
+}

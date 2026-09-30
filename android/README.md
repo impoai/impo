@@ -4,8 +4,10 @@ Impo's Android client uses Kotlin and Jetpack Compose with the shared
 [application protocol](../contracts/client-protocol.md). The source includes
 Chat, Tasks, Brief, Memories, Echo recording/history, connections, native
 Calendar Provider and Health Connect adapters, and account/settings screens.
-The debug build, unit tests and API 35 emulator acceptance have passed. Physical
-device behavior and deployed account/provider access still require validation.
+The debug and signed release builds, unit tests and API 35 emulator acceptance
+have passed. Download the signed testing build from
+[impo.ai/android.apk](https://impo.ai/android.apk). Production Google/Apple login
+pages are verified; full account login and physical-device behavior remain pending.
 
 ## Local setup
 
@@ -92,11 +94,129 @@ impo.clerkKey=pk_test_your_publishable_key
 
 The API base URL excludes `/api/v1`. Matching Gradle properties can also be
 supplied by the build environment. Configure the corresponding Clerk
-application/account portal and your own API deployment. The app uses Clerk's
-native SDK for account access, session observation, token refresh and sign-out.
+application and your own API deployment. The app uses Clerk's native SDK for
+Google and Apple sign-in/sign-up, session observation, token refresh and sign-out.
+Enable the Native API and both social providers in your Clerk instance, including
+their production web OAuth credentials. The pinned Clerk Android SDK 1.0.1 uses
+`clerk://<applicationId>.oauth`; allowlist `clerk://ai.impo.android.oauth` for the
+release app. Debug builds have a separate `.debug` application ID and callback.
+The SDK supplies the matching manifest receiver and activates the native session
+when authentication completes. Account Portal behavior in newer SDK documentation
+uses a different API and callback; it does not describe this pinned version.
 Browser dismissal alone does not establish a session or connector account.
 All provider secrets, Clerk server keys, Rebyte, Composio, S3 and transcription
 credentials remain on the server.
+
+Apple's browser flow also needs a Services ID, a Sign in with Apple private
+key, Team ID and Key ID in Clerk. Enabling native iOS Apple sign-in alone does
+not supply those credentials. Production uses `ai.impo.signin` with the Clerk
+domain and `https://clerk.impo.ai/v1/oauth_callback` as its return URL. Keep the
+private key out of client configuration and source control.
+
+### Signed releases
+
+Configure production public values in ignored `android/local.properties`:
+
+```properties
+impo.release.apiUrl=https://your-production-api.example
+impo.release.clerkKey=pk_live_your_publishable_key
+```
+
+Release-specific values keep debug configuration independent. If omitted, a
+release uses `impo.apiUrl` and `impo.clerkKey`; the release build still requires
+a public HTTPS endpoint and a live Clerk publishable key. In the live Clerk
+instance, enable the Native API, Google and Apple, and allowlist the exact
+`clerk://ai.impo.android.oauth` callback used by the pinned SDK 1.0.1 and the
+merged release manifest. Recheck SDK callback and registration requirements
+when upgrading; newer Account Portal documentation uses a different flow.
+
+Initialize a signing key once from the repository root:
+
+```sh
+npm run android:signing:init
+```
+
+This creates a persistent RSA signing key in PKCS12 format and private signing
+properties under ignored `.local/android/release/`. The directory is restricted
+to its owner; the keystore and properties have mode `0600`. Passwords are passed
+to `keytool` through its environment and never printed. Back up both files
+securely: installed apps can only update with the same signing key. Re-running
+initialization preserves existing files and refuses an incomplete key setup.
+Restore missing files from backup; do not replace an established release key.
+
+Build a signed, optimized APK, increasing the version code for each publication:
+
+```sh
+IMPO_ANDROID_VERSION_CODE=1 IMPO_ANDROID_VERSION_NAME=0.1.0 npm run build:android:release
+```
+
+The APK is `android/app/build/outputs/apk/release/app-release.apk`, with package
+`ai.impo.android`, minimum API 28 and target API 36. `impo.versionCode` and
+`impo.versionName` in local/Gradle properties also supply version values; the
+runner's environment values take precedence. Builds verify the expected
+signing-certificate fingerprint and fail for missing or changed signing
+material. `-Pimpo.signingProperties=/absolute/private/signing.properties` can
+select a protected signing file on another build machine; `storeFile` paths
+inside it are relative to `android/` unless absolute. Keep signing files out of
+source control and never pass passwords as Gradle command-line properties.
+
+Release builds disable debuggability and cleartext traffic, omit debug launch
+identities and instrumentation audio, and include the same production Silero
+model as the debug app. A signed build verifies packaging; it does not replace
+live account/provider or physical-device acceptance.
+
+### Publish the Android download
+
+The permanent download URL is **https://impo.ai/android.apk**. A private
+Cloudflare R2 bucket, `impo-android-releases`, stores signed APKs. The existing
+`impo-ai` Pages project serves only the download paths through
+`site/_worker.js`; other requests retain normal website asset handling. Its
+configuration preserves the existing `PR_DOCUMENTS` binding.
+
+After building the signed release, run from the repository root:
+
+```sh
+npm run publish:android -- --check
+npm run publish:android
+```
+
+`--check` validates only the local APK and prints its metadata. Cloudflare
+access and checks against the current remote version/signature run during
+publication.
+
+The publisher snapshots and verifies the release APK, rejects debug signatures,
+checks the package and increasing version code, and preserves the signing
+certificate used by previous releases. It uploads an immutable version path,
+downloads and verifies every byte, then updates `android/latest.json`. Finally
+it downloads the permanent URL and verifies the SHA-256 again. Private local
+receipts are saved under `.local/android/releases/`. A local lock prevents
+parallel publication from this checkout. Publish one release at a time across
+machines too; a detected change to the latest pointer stops promotion, but
+this is not a distributed lock.
+
+For the next release, increment the version code and keep the same signing key:
+
+```sh
+IMPO_ANDROID_VERSION_CODE=2 IMPO_ANDROID_VERSION_NAME=0.1.1 npm run build:android:release
+npm run publish:android
+```
+
+Public release metadata is at https://impo.ai/android/latest.json. Versioned
+files use `/android/releases/<versionName>-<versionCode>/impo.apk`; old versions
+are retained. The permanent URL is not cached, while versioned files are
+immutable. GET, HEAD and byte ranges are supported. A repeated publication of
+the identical current APK verifies it without replacing anything.
+
+Download handler or website changes require an authenticated Cloudflare CLI:
+
+```sh
+npm run test:android:downloads
+npm run deploy:android:downloads
+```
+
+This deploys the full `site/` directory to production Pages with the required R2
+bindings. Keep Wrangler bundling enabled so the shared download module is
+included. APK-only releases do not need a website deployment.
 
 ## Code boundaries
 
@@ -189,7 +309,7 @@ Before claiming hardware parity, check a physical microphone, lock-screen
 capture, interruptions, long offline queues, geocoding/location, Calendar
 Provider data, Health Connect availability/grants and account switching.
 
-Voice-chat/hold-to-speak, attachments/camera uploads, billing/subscriptions,
-recurring user-created tasks, diary generation, immediate account deletion and
-remote push registration are not implemented backend features. The Android UI
-does not turn iOS previews into promises. Web remains planned.
+The Android app does not yet include voice-chat/hold-to-speak, attachments/camera
+uploads, billing/subscriptions, recurring user-created tasks, diary generation,
+immediate account deletion or remote push registration. iOS and the server
+already support voice chat. Web remains planned.

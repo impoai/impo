@@ -42,6 +42,27 @@ in Xcode or `project.yml`. Use an API address the device can reach. Regenerate
 with XcodeGen after adding files or editing project configuration. Keep signing
 certificates, provisioning profiles, API credentials and exports outside Git.
 
+### Sign in with Apple
+
+The Apple button uses Clerk's native `signInWithApple()` flow. Enable Sign in
+with Apple for the app's exact App ID in Apple Developer, and register the
+matching App ID prefix and bundle ID under Clerk's Native applications. Enable
+the Native API and Apple social connection in the same Clerk instance used by
+the build. `Instant.entitlements` includes `com.apple.developer.applesignin`;
+regenerate provisioning profiles after enabling the capability and confirm
+that the profile and signed device app both carry it.
+
+Android's browser-based Apple OAuth uses Apple's web flow. That additionally needs
+an Apple Services ID associated with the same primary App ID, the Clerk domain
+and return URL, and a Sign in with Apple private key configured in Clerk.
+An App Store Connect API key is a separate management credential and cannot
+serve as the Apple sign-in key. Keep private keys outside the repository.
+
+Validate first-time authorization, Hide My Email, repeat sign-in and session
+restoration on a physical iPhone. A successful build or Clerk sign-in-ticket
+test does not validate the Apple authorization flow. Changing providers with
+different email addresses also needs an explicit account-linking flow.
+
 ## Build and test
 
 ```sh

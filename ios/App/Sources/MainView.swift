@@ -16,6 +16,7 @@ struct MainView: View {
     @State private var voiceCancelled = false
     @State private var voiceBlocked = false
     @State private var voiceNotice: String?
+    @State private var voiceCompletion: Task<Void, Never>?
     @State private var composerFocused = false
 
     var body: some View {
@@ -73,7 +74,9 @@ struct MainView: View {
         .onChange(of: phase) { _, phase in
             if phase == .active { Task { await model.restoreConversation() } }
             else if phase == .background { model.suspendStream() }
+            if phase == .background || (phase == .inactive && model.dictation.phase != .starting) { cancelVoice() }
         }
+        .onDisappear { cancelVoice() }
         .onChange(of: model.useLiveBackend) { _, _ in model.changeChatMode() }
         .onChange(of: showSettings) { old, new in
             if old && !new { model.persistProfile(); Task { await model.restoreConversation() } }
@@ -142,13 +145,6 @@ struct MainView: View {
                         .background(InstantStyle.orangePaper, in: Circle())
                         .overlay(Circle().strokeBorder(InstantStyle.paperElevated.opacity(0.8), lineWidth: 1))
                         .foregroundStyle(InstantStyle.forest).contentShape(Rectangle())
-                        .gesture(DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if !voiceActive && !voiceBlocked { startVoice() }
-                                let cancel = value.translation.height < -65
-                                if voiceActive && cancel != voiceCancelled { voiceCancelled = cancel; UISelectionFeedbackGenerator().selectionChanged() }
-                            }
-                            .onEnded { _ in endVoice() })
                         .accessibilityElement().accessibilityLabel("Hold to talk")
                         .accessibilityHint("Release to send. Slide up to cancel.")
                         .accessibilityIdentifier("chat.voice")
@@ -166,6 +162,15 @@ struct MainView: View {
             .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 5)
             .foregroundStyle(InstantStyle.forest)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 29))
+            .contentShape(RoundedRectangle(cornerRadius: 29))
+            .gesture(ComposerHoldGesture(enabled: composer.isEmpty,
+                onBegan: startVoice,
+                onMoved: { cancel in
+                    if voiceActive && cancel != voiceCancelled {
+                        voiceCancelled = cancel
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                }, onEnded: endVoice, onCancelled: cancelVoice))
             .overlay(RoundedRectangle(cornerRadius: 29).strokeBorder(InstantStyle.paperElevated, lineWidth: 1))
             .shadow(color: InstantStyle.forest.opacity(0.06), radius: 7, y: 3)
 
@@ -241,17 +246,28 @@ struct MainView: View {
         if cancelled { model.dictation.cancel(); return }
         // Show the pending "…" bubble where the message will land.
         if model.selectedTab != 2 { model.selectedTab = 0 }
-        Task {
-            switch await model.dictation.finish() {
+        voiceCompletion = Task {
+            let outcome = await model.dictation.finish()
+            guard !Task.isCancelled else { return }
+            switch outcome {
             case .text(let text):
                 composer = text
                 send()
             case .empty:
-                voiceNotice = "Didn't catch that. Hold the button while you speak, then release."
+                voiceNotice = "Didn't catch that. Hold the input field while you speak, then release."
             case .unavailable(let message):
                 voiceNotice = message
             }
         }
+    }
+
+    private func cancelVoice() {
+        voiceCompletion?.cancel()
+        voiceCompletion = nil
+        voiceActive = false
+        voiceCancelled = false
+        voiceBlocked = false
+        model.dictation.cancel()
     }
 
     private func send() {
@@ -262,6 +278,7 @@ struct MainView: View {
             composer = ""; composerFocused = false
             Task {
                 do { tasks.route = .detail(try await tasks.create(text, using: model)) }
+                catch is CancellationError {} // The account changed; its text must not reappear.
                 catch { composer = text; tasks.loadError = (error as? TaskInputError)?.errorDescription ?? "Couldn't create this task. Check your connection and try again." }
             }
             return

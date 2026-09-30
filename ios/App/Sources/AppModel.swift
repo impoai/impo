@@ -83,14 +83,25 @@ final class AppModel {
     private struct LiveContext {
         let operationID: UUID
         let endpoint: URL
-        let usesRealAuth: Bool
-        var scope: String { endpoint.absoluteString + "|" + (usesRealAuth ? "clerk" : AppModel.liveIdentity) }
+        let identity: String
+        var scope: String { endpoint.absoluteString + "|" + identity }
     }
     /// All features use scope-bound handles to the same refreshable token store.
     private var activeTokenProvider: any InstantTokenProvider {
         usesRealAuth ? ClerkTokenProvider() : StaticInstantToken(Self.liveIdentity)
     }
-    private var activeIdentityTag: String { usesRealAuth ? "clerk" : Self.liveIdentity }
+    /// The identity that account-bound local state (pending input, device receipts,
+    /// connectors) is keyed by: the actual Clerk user, never just "some Clerk user".
+    private var activeIdentityTag: String {
+        guard usesRealAuth else { return Self.liveIdentity }
+        return "clerk:" + (Clerk.shared.user?.id ?? "signed-out")
+    }
+    nonisolated static let accountOwnerKey = "instant.accountOwner"
+    /// Keys that describe this device or app build, not an account. Every other
+    /// unscoped `instant.` key is account state and is cleared when the owner changes;
+    /// `instant.listening.` keys already carry their account scope.
+    nonisolated private static let deviceKeys: Set<String> = ["instant.installationID", debugModeKey, accountOwnerKey,
+        "instant.backend", "instant.live", "instant.appliedBuildServer"]
 
     /// Drives the existing onboarding login buttons with a real Clerk sign-in;
     /// on success this app talks to the real deployed backend under the signed-in
@@ -126,8 +137,9 @@ final class AppModel {
     }
 
     private func didSignIn() throws {
-        guard Clerk.shared.session != nil else { throw ClerkTokenError.notSignedIn }
+        guard Clerk.shared.session != nil, Clerk.shared.user != nil else { throw ClerkTokenError.notSignedIn }
         usesRealAuth = true
+        adoptAccount(activeIdentityTag)
         #if !DEBUG
         // Release pairs the production Clerk instance with the deployed
         // production backend (see ClerkConfig). A Debug build's real sign-in
@@ -141,6 +153,40 @@ final class AppModel {
         }
         useLiveBackend = true
         #endif
+        configureConnectors()
+    }
+
+    /// Local account state belongs to exactly one identity. Sign-out clears it, but an
+    /// identity can also change without it (an expired or revoked session followed by a
+    /// different sign-in, or Clerk restoring another account), so every sign-in re-checks.
+    func adoptAccount(_ identity: String) {
+        let owner = defaults.string(forKey: Self.accountOwnerKey)
+        guard owner != identity else { return }
+        if owner != nil { clearAccountState() }
+        else if identity.hasPrefix("clerk:") {
+            // Before owners were recorded, every Clerk account shared the "|clerk" input slot.
+            // Its only possible owner is the account this install was already signed in to.
+            var inputs = pendingInputs
+            for key in inputs.keys where key.hasSuffix("|clerk") {
+                inputs[String(key.dropLast("clerk".count)) + identity] = inputs.removeValue(forKey: key)
+            }
+            pendingInputs = inputs
+        }
+        defaults.set(identity, forKey: Self.accountOwnerKey)
+    }
+
+    /// Drop another account's profile, pending input, device consent and visible chat.
+    private func clearAccountState() {
+        invalidateOperation()
+        stopDeviceConnection()
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("instant.") && !key.hasPrefix("instant.listening.") && !Self.deviceKeys.contains(key) {
+            defaults.removeObject(forKey: key)
+        }
+        isOnboarded = false; selectedTab = 0
+        assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; mode = "Balanced"
+        messages = []; liveSteps = []; selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil
+        calendarEnabled = false; healthEnabled = false; remindersEnabled = false; contactsEnabled = false
     }
 
     /// Clerk restores a signed-in session from the Keychain on launch (it
@@ -364,6 +410,7 @@ final class AppModel {
 
     private func isCurrent(_ context: LiveContext) -> Bool {
         !Task.isCancelled && useLiveBackend && operationID == context.operationID && (try? endpoint()) == context.endpoint
+            && activeIdentityTag == context.identity
     }
 
     private func check(_ context: LiveContext) throws {
@@ -433,7 +480,7 @@ final class AppModel {
     @discardableResult
     private func startLive(endpoint: URL) -> Task<Void, Never> {
         invalidateOperation()
-        let context = LiveContext(operationID: operationID, endpoint: endpoint, usesRealAuth: usesRealAuth)
+        let context = LiveContext(operationID: operationID, endpoint: endpoint, identity: activeIdentityTag)
         let api = InstantClient(baseURL: endpoint, tokenProvider: activeTokenProvider, session: session)
         startDeviceConnection()
         isThinking = true
@@ -673,6 +720,7 @@ final class AppModel {
     private func startDeviceConnection() {
         guard useLiveBackend, isForeground, deviceTask == nil, let url = try? endpoint() else { return }
         let token = deviceOperationID
+        let identity = activeIdentityTag
         let api = InstantClient(baseURL: url, tokenProvider: activeTokenProvider, session: session)
         deviceConnectionStatus = "Connecting your iPhone…"
         deviceTask = Task { [self] in
@@ -681,7 +729,7 @@ final class AppModel {
                     let registered = try await api.registerDevice(installationId: installationID, tools: availableDeviceTools)
                     try Task.checkCancellation()
                     guard deviceOperationID == token else { return }
-                    let scope = url.absoluteString + "|" + activeIdentityTag + "|" + registered.deviceId
+                    let scope = url.absoluteString + "|" + identity + "|" + registered.deviceId
                     let hash = SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
                     let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                     let runner = try DeviceToolRunner(transport: api, deviceID: registered.deviceId,

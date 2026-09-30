@@ -28,6 +28,7 @@ import androidx.navigation.compose.*
 import ai.impo.BuildConfig
 import ai.impo.data.*
 import ai.impo.nativebridge.NativeBridge
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 fun openWeb(context: Context, raw: String) {
@@ -52,10 +53,20 @@ fun openWeb(context: Context, raw: String) {
     val auth by vm.auth.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var connecting by remember { mutableStateOf(false) }
+    var connecting by remember { mutableStateOf<SignInProvider?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var development by rememberSaveable { mutableStateOf(false) }
     var endpoint by rememberSaveable { mutableStateOf("http://10.0.2.2:3011") }
+    fun signIn(provider: SignInProvider) {
+        connecting = provider
+        error = null
+        scope.launch {
+            try { vm.auth.signIn(provider) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { error = failure.message }
+            finally { connecting = null }
+        }
+    }
     Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Spacer(Modifier.height(32.dp))
         AssistantAvatar(0, 80)
@@ -66,8 +77,14 @@ fun openWeb(context: Context, raw: String) {
             Text("Chat, delegate a task, collect spoken thoughts with Echo, and find your daily perspective in Brief.", color = Muted)
         }
         ErrorNotice(error ?: auth.error)
-        Button(onClick = { connecting = true; scope.launch { try { vm.auth.signIn() } catch (e: Exception) { error = e.message } finally { connecting = false } } }, enabled = !connecting,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("auth.signIn")) { Text(if (connecting) "Opening sign-in…" else "Sign in or create an account") }
+        Button(onClick = { signIn(SignInProvider.Google) }, enabled = connecting == null,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("auth.google")) {
+            Text(if (connecting == SignInProvider.Google) "Opening Google…" else "Continue with Google")
+        }
+        OutlinedButton(onClick = { signIn(SignInProvider.Apple) }, enabled = connecting == null,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("auth.apple")) {
+            Text(if (connecting == SignInProvider.Apple) "Opening Apple…" else "Continue with Apple")
+        }
         Text("Your memories, conversations and recordings stay connected to your account.", color = Muted, style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(onClick = { openWeb(context, "https://impo.ai/privacy/") }) { Text("Privacy") }

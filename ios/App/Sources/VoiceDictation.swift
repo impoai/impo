@@ -16,6 +16,8 @@ final class VoiceDictation {
     private(set) var levels: [Double] = Array(repeating: 0, count: 40)
 
     @ObservationIgnored private var engine: AVAudioEngine?
+    @ObservationIgnored private var tapInstalled = false
+    @ObservationIgnored private var sessionActive = false
     @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
     @ObservationIgnored private var startTask: Task<Outcome?, Never>?
@@ -45,7 +47,7 @@ final class VoiceDictation {
         phase = .starting
         startTask = Task { [self] in
             let failure = await start(token)
-            if failure != nil, generation == token { phase = .idle }
+            if failure != nil, generation == token { teardown() }
             return failure
         }
     }
@@ -54,6 +56,7 @@ final class VoiceDictation {
     func finish() async -> Outcome {
         let token = generation
         let failure = await startTask?.value ?? nil
+        guard generation == token else { return .empty }
         startTask = nil
         if let failure { return failure }
         guard generation == token, phase == .recording else { return .empty }
@@ -63,8 +66,7 @@ final class VoiceDictation {
             guard generation == token, !Task.isCancelled else { return .empty }
             transcript = fixture
         } else {
-            engine?.stop()
-            engine?.inputNode.removeTap(onBus: 0)
+            stopAudio()
             request?.endAudio()
             // The final result usually arrives well under a second after the audio ends.
             if !finalReceived {
@@ -80,6 +82,7 @@ final class VoiceDictation {
         }
         guard generation == token, !Task.isCancelled else { return .empty }
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        generation = UUID()
         teardown()
         return text.isEmpty ? .empty : .text(text)
     }
@@ -106,9 +109,10 @@ final class VoiceDictation {
         // A first-time permission prompt interrupts the hold; the next hold records.
         let prompted = AVAudioApplication.shared.recordPermission == .undetermined || SFSpeechRecognizer.authorizationStatus() == .notDetermined
         guard await Self.microphoneAllowed() else { return .unavailable("Allow Microphone access in Settings to talk to Impo.") }
-        guard await Self.speechAllowed() else { return .unavailable("Allow Speech Recognition in Settings to talk to Impo.") }
-        if prompted { return .unavailable("You're all set. Hold the button again to talk.") }
         guard generation == token else { return nil }
+        guard await Self.speechAllowed() else { return .unavailable("Allow Speech Recognition in Settings to talk to Impo.") }
+        guard generation == token else { return nil }
+        if prompted { return .unavailable("You're all set. Hold the input field again to talk.") }
         guard let recognizer = Self.recognizer(), recognizer.isAvailable else { return .unavailable("Speech recognition isn't available right now. Try typing instead.") }
 
         let request = SFSpeechAudioBufferRecognitionRequest()
@@ -116,38 +120,56 @@ final class VoiceDictation {
         request.addsPunctuation = true
         if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
         let engine = AVAudioEngine()
+        self.engine = engine
+        self.request = request
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            sessionActive = true
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
             guard format.sampleRate > 0, format.channelCount > 0 else { return .unavailable("No microphone is available.") }
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-                request.append(buffer)
-                let level = Self.level(buffer)
-                Task { @MainActor in self?.push(level) }
-            }
+            input.installTap(onBus: 0, bufferSize: 1024, format: format,
+                             block: Self.audioTap(request: request) { [weak self] level in
+                guard let self, self.generation == token, self.phase == .recording else { return }
+                self.push(level)
+            })
+            tapInstalled = true
             engine.prepare()
             try engine.start()
         } catch {
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             return .unavailable("Couldn't start the microphone. Try again.")
         }
-        guard generation == token else { engine.stop(); engine.inputNode.removeTap(onBus: 0); return nil }
-        self.engine = engine
-        self.request = request
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            let text = result?.bestTranscription.formattedString
-            let done = result?.isFinal == true || error != nil
-            Task { @MainActor in
-                guard let self, self.generation == token else { return }
-                if let text { self.transcript = text }
-                if done { self.finalReceived = true; self.resumeFinal() }
-            }
-        }
+        task = recognizer.recognitionTask(with: request, resultHandler: Self.recognitionHandler { [weak self] text, done in
+            guard let self, self.generation == token else { return }
+            if let text { self.transcript = text }
+            if done { self.finalReceived = true; self.resumeFinal() }
+        })
         phase = .recording
         return nil
+    }
+
+    // AVFoundation and Speech invoke these Objective-C callbacks on their own queues.
+    // Construct them outside MainActor so Swift 6 doesn't insert a main-executor
+    // assertion before the explicit hop that updates observable UI state.
+    nonisolated static func audioTap(request: SFSpeechAudioBufferRecognitionRequest,
+                                    onLevel: @escaping @MainActor @Sendable (Double) -> Void) -> AVAudioNodeTapBlock {
+        { buffer, _ in
+            request.append(buffer)
+            let level = Self.level(buffer)
+            Task { @MainActor in onLevel(level) }
+        }
+    }
+
+    nonisolated static func recognitionHandler(
+        onResult: @escaping @MainActor @Sendable (String?, Bool) -> Void
+    ) -> (SFSpeechRecognitionResult?, Error?) -> Void {
+        { result, error in
+            let text = result?.bestTranscription.formattedString
+            let done = result?.isFinal == true || error != nil
+            Task { @MainActor in onResult(text, done) }
+        }
     }
 
     private func push(_ level: Double) {
@@ -161,17 +183,25 @@ final class VoiceDictation {
     }
 
     private func teardown() {
+        stopAudio()
         resumeFinal()
         task?.cancel()
         task = nil
         request = nil
-        if let engine {
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        }
         engine = nil
         phase = .idle
+    }
+
+    private func stopAudio() {
+        engine?.stop()
+        if let engine, tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        if sessionActive {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            sessionActive = false
+        }
     }
 
     /// Prefer the user's first language so Chinese and English speakers both get their own model.
@@ -195,7 +225,9 @@ final class VoiceDictation {
         case .authorized: return true
         case .notDetermined:
             return await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
+                SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                    continuation.resume(returning: status == .authorized)
+                }
             }
         default: return false
         }

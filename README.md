@@ -52,7 +52,7 @@ without fixed release dates.
 | --- | --- | --- |
 | **Backend and agent execution** | Implemented; evolving | Continue improving durable runs, recovery, tool integrations, and developer setup. Keep one API for all clients. |
 | **iOS frontend** | Implemented; evolving | Refine chat, Tasks, Brief, Echo, native permissions, and background behavior. |
-| **Android frontend** | Implemented; emulator verified | Kotlin/Compose app for Chat, Tasks, Brief, Memories, Echo, connections and native permissions. Validate physical-device behavior and deployed accounts before release. |
+| **Android frontend** | Signed APK; emulator verified | Kotlin/Compose app for Chat, Tasks, Brief, Memories, Echo, connections and native permissions. [Download for testing](https://impo.ai/android.apk); physical-device and full account acceptance remain pending. |
 | **Web frontend** | Planned | Bring chat, task management, Brief, and Echo history to the browser through the same authenticated API. Add browser-supported capture where practical. |
 | **Shared client contracts** | Implemented foundation; expanding | Extend protocol fixtures and recovery tests so clients share consistent identity, history, task state, and tool results. |
 | **Composio integrations** | Rebyte connector shelf implemented | Add per-action confirmation for sensitive writes. |
@@ -230,6 +230,10 @@ your own signing configuration and a reachable server address; see the
 
 ### Open the Android app
 
+Install the latest signed testing build from **[impo.ai/android.apk](https://impo.ai/android.apk)**
+on Android 9 or later. The download URL stays the same across releases. Version,
+size and SHA-256 are available in the [release metadata](https://impo.ai/android/latest.json).
+
 Install JDK 17, Android SDK Platform 36 and the API 35 Google APIs arm64 emulator
 image. Run the following from the repository root:
 
@@ -246,7 +250,11 @@ For deployed sign-in, configure your API URL and Clerk publishable key in
 untracked `android/local.properties`. See the [Android guide](android/README.md)
 for account, permission and physical-device validation boundaries. Android's
 86 unit tests, protocol integration and 12 API 35 instrumentation tests passed.
-Physical-device and deployed-account validation remain release requirements.
+The signed build uses the production API and supports Google/Apple OAuth.
+Production provider initiation and both Google/Apple login pages were verified;
+full account login and physical-device acceptance remain pending. See the
+[release workflow](android/README.md#publish-the-android-download) to update the
+permanent download using the existing signing key.
 
 ### Optional services
 

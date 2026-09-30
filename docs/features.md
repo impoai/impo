@@ -6,7 +6,8 @@ Each user has one main conversation and current main Agent Session. One-shot
 tasks use isolated conversations and Sessions. Work survives a client disconnect;
 task rows show relative last-modified time. User-defined recurring tasks are planned.
 
-iOS chat supports hold-to-talk voice input: release to send, or swipe up to
+iOS chat supports hold-to-talk across the empty input field: tap to type,
+hold to record, release to send, or swipe up to
 cancel. Apple Speech provides partial text and the final transcript, using
 on-device recognition when available. Otherwise Apple may process the audio.
 This is separate from Echo. Physical microphone and language behavior still

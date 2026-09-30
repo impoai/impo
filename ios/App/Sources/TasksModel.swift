@@ -51,6 +51,16 @@ final class TasksModel {
     @ObservationIgnored private var demoThreads: [String: [ChatMessage]] = [:] { didSet { saveDemo() } }
     @ObservationIgnored private var demoTasks: [TaskItem] = []
     private static let demoKey = "instant.demoTasks"
+    /// The account (endpoint + identity) whose tasks are shown; nil in offline Demo.
+    @ObservationIgnored private var scope: String?
+    @ObservationIgnored private var revision = UUID()
+
+    /// Another account's task titles and open conversation never stay on screen.
+    func configure(scope: String?) {
+        guard scope != self.scope else { return }
+        self.scope = scope; revision = UUID()
+        tasks = []; loadError = nil; route = nil
+    }
     private struct DemoStore: Codable { var tasks: [TaskItem]; var threads: [String: [ChatMessage]] }
 
     init() {
@@ -67,6 +77,8 @@ final class TasksModel {
     }
 
     func refresh(using app: AppModel) async {
+        configure(scope: app.listeningScope)
+        let token = revision
         guard let api = app.liveClient() else {
             // After Reset Demo the stored tasks are gone even though this model outlived it.
             if UserDefaults.standard.data(forKey: Self.demoKey) == nil { demoThreads = [:]; demoTasks = [] }
@@ -75,6 +87,7 @@ final class TasksModel {
         }
         do {
             let summaries = try await api.tasks()
+            guard token == revision else { return }
             tasks = summaries.map { summary in
                 TaskItem(id: summary.taskId, title: summary.title, status: summary.status,
                          createdAt: parseDate(summary.createdAt) ?? Date(),
@@ -83,6 +96,7 @@ final class TasksModel {
             }
             loadError = nil
         } catch {
+            guard token == revision else { return }
             loadError = "Couldn't load your tasks. Pull to try again."
         }
     }
@@ -98,7 +112,9 @@ final class TasksModel {
             demoThreads[id] = [ChatMessage(role: "user", text: text)]
             return id
         }
+        let token = revision
         let receipt = try await api.createTask(clientMessageId: UUID().uuidString, text: text, clientContext: currentClientContext())
+        guard token == revision else { throw CancellationError() }
         let now = Date()
         tasks.removeAll { $0.id == receipt.taskId }
         tasks.insert(TaskItem(id: receipt.taskId, title: text, status: "queued", createdAt: now, runStartedAt: now), at: 0)

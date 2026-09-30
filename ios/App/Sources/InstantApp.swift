@@ -37,6 +37,7 @@ struct InstantApp: App {
             .environment(permissions)
             .task(id: "\(model.listeningScope ?? "offline")|\(model.isOnboarded)") {
                 permissions.configure(scope: model.listeningScope)
+                tasks.configure(scope: model.listeningScope)
                 today.configure(scope: model.listeningScope, client: model.listeningClient())
                 memories.configure(scope: model.listeningScope, client: model.listeningClient())
                 await today.syncContext(displayName: model.displayName)

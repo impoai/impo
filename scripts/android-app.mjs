@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,31 @@ function read(binary, args) {
 const gradleBinary = process.env.IMPO_GRADLE_BIN || join(root, 'android/gradlew');
 const gradle = (...args) => run(gradleBinary, ['-p', join(root, 'android'), '--console=plain', ...args]);
 const device = (...args) => run(adb, ['-s', serial, ...args]);
+async function initializeSigning() {
+  const directory = join(local, 'release');
+  const properties = join(directory, 'signing.properties');
+  const keystore = join(directory, 'impo-release.jks');
+  if (existsSync(properties) || existsSync(keystore)) {
+    if (!existsSync(properties) || !existsSync(keystore)) throw new Error('Signing setup is incomplete. Restore the existing release key/properties; initialization never replaces them.');
+    console.log(`Reusing existing release signing material in ${directory}; no files changed.`);
+    return;
+  }
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  const password = randomBytes(36).toString('base64url');
+  const base = `storeFile=../.local/android/release/impo-release.jks\nstorePassword=${password}\nkeyAlias=impo\nkeyPassword=${password}\n`;
+  // Save the password before creating the key, so interrupted initialization is recoverable.
+  writeFileSync(properties, base, { flag: 'wx', mode: 0o600 });
+  const signingEnv = { ...env, IMPO_SIGNING_PASSWORD: password };
+  const keytool = join(java, 'bin/keytool');
+  await run(keytool, ['-genkeypair', '-alias', 'impo', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000', '-dname', 'CN=Impo Android, O=Impo', '-storetype', 'PKCS12', '-keystore', keystore, '-storepass:env', 'IMPO_SIGNING_PASSWORD', '-keypass:env', 'IMPO_SIGNING_PASSWORD'], { env: signingEnv });
+  chmodSync(keystore, 0o600);
+  const certificate = spawnSync(keytool, ['-exportcert', '-alias', 'impo', '-keystore', keystore, '-storepass:env', 'IMPO_SIGNING_PASSWORD'], { env: signingEnv, timeout: 15000 });
+  if (certificate.status !== 0 || !certificate.stdout?.length) throw new Error('Key was preserved, but certificate export failed. Repair signing metadata without replacing the key.');
+  const fingerprint = createHash('sha256').update(certificate.stdout).digest('hex');
+  writeFileSync(properties, `${base}certificateSha256=${fingerprint}\n`, { mode: 0o600 });
+  console.log(`Created persistent release signing key. Back up ${directory} securely.\nPublic certificate SHA-256: ${fingerprint}`);
+}
 async function emulator() {
   if (read(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']) === '1') return;
   const avd = 'Impo_API_35';
@@ -59,6 +85,15 @@ async function launch(fixture = false) {
 }
 switch (command) {
   case 'build': await gradle(':app:assembleDebug'); break;
+  case 'signing-init': await initializeSigning(); break;
+  case 'release': {
+    const version = [];
+    if (process.env.IMPO_ANDROID_VERSION_CODE) version.push(`-Pimpo.versionCode=${process.env.IMPO_ANDROID_VERSION_CODE}`);
+    if (process.env.IMPO_ANDROID_VERSION_NAME) version.push(`-Pimpo.versionName=${process.env.IMPO_ANDROID_VERSION_NAME}`);
+    await gradle(...version, ':app:assembleRelease');
+    console.log('Signed release APK: android/app/build/outputs/apk/release/app-release.apk');
+    break;
+  }
   case 'test': await gradle(':client:test', ':app:testDebugUnitTest'); break;
   case 'client-test': await gradle('--configure-on-demand', ':client:test'); break;
   case 'lint': await gradle(':app:lintDebug'); break;

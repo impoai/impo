@@ -2,3 +2,10 @@
 # Public deployment configuration only. No provider secret keys belong here.
 impo.apiUrl=https://your-api.example
 impo.clerkKey=pk_test_your_publishable_key
+
+# Optional separate production values; release falls back to the values above.
+# Release builds require HTTPS and a pk_live_ key.
+# impo.release.apiUrl=https://your-production-api.example
+# impo.release.clerkKey=pk_live_your_publishable_key
+# impo.versionCode=1
+# impo.versionName=0.1.0
