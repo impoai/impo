@@ -52,6 +52,7 @@ export class RebyteWorker {
   private async drive(job: ClaimedJob, signal: AbortSignal): Promise<void> {
     if (job.type !== 'rebyte.drive') throw new Error('Unexpected Rebyte job');
     if (await this.repository.cancelUnsent(job)) return;
+    await this.repository.prepareMainSession(job);
     let context = await this.repository.context(job);
     if (context.binding.status === 'failed') { await this.repository.failSession(job); return; }
     if (context.config.config.baseURL !== this.repository.runtime.agentConfig?.baseURL) throw new Error('Stored Session endpoint differs from runtime configuration');
@@ -80,13 +81,9 @@ export class RebyteWorker {
           providerAgentId = (await this.repository.bindAgent(job, agent, agentState.attempt!.id)).providerAgentId!;
         }
       }
-      const intent = await this.repository.creationIntent(job);
-      const metadata = {
-        instant_app: 'instant', instant_kind: useSavedAgent ? 'main' : 'task', instant_conversation: context.submission.conversationId,
-        instant_binding: context.binding.id, instant_creation: intent.attempt.id, instant_submission: context.submission.id,
-      };
-      let session;
-      if (intent.mayCreate) {
+      const existing = await this.repository.existingCreationAttempt(job);
+      let prepared: { agent: { model: string; instructions: string; tools: AgentToolParam[] }; environment: EnvironmentParam } | undefined;
+      if (!existing) {
         const { model, instructions, tools } = context.config.config;
         if (typeof model !== 'string' || typeof instructions !== 'string' || !Array.isArray(tools)) throw new Error('Invalid stored Agent configuration');
         // Configurations stored before the Sandbox existed keep running without one.
@@ -100,10 +97,23 @@ export class RebyteWorker {
           deviceTools: context.submission.deviceTools,
           ...(previous ? { previousConversationHistory: previous } : {}),
         });
+        prepared = { agent: { model, instructions: sessionInstructions, tools: tools as AgentToolParam[] }, environment };
+      }
+      // History reads may fail. Persist uncertainty only once the create request is ready;
+      // recovery of an existing intent never needs to fetch the previous Session again.
+      if (await this.repository.cancelUnsent(job)) return;
+      const intent = existing ? { attempt: existing, mayCreate: false } : await this.repository.creationIntent(job);
+      const metadata = {
+        instant_app: 'instant', instant_kind: useSavedAgent ? 'main' : 'task', instant_conversation: context.submission.conversationId,
+        instant_binding: context.binding.id, instant_creation: intent.attempt.id, instant_submission: context.submission.id,
+      };
+      let session;
+      if (intent.mayCreate) {
+        if (!prepared) throw new Error('Session creation was not prepared');
         session = useSavedAgent
           // The Saved Agent's model and tools may predate this binding's config; always send the current ones.
-          ? await this.gateway.createSession({ input: remoteInput(context), metadata, agentId: providerAgentId, agent: { model, instructions: sessionInstructions, tools: tools as AgentToolParam[] }, environment }, signal)
-          : await this.gateway.createSession({ input: remoteInput(context), metadata, agent: { model, instructions: sessionInstructions, tools: tools as AgentToolParam[] }, environment }, signal);
+          ? await this.gateway.createSession({ input: remoteInput(context), metadata, agentId: providerAgentId, ...prepared }, signal)
+          : await this.gateway.createSession({ input: remoteInput(context), metadata, ...prepared }, signal);
       }
       else {
         const matches = await this.gateway.findSessions(metadata, signal);
@@ -177,7 +187,7 @@ export class RebyteWorker {
             await this.gateway.submitToolResult(sessionId, result, `instant-tool-result-${result.id}`, signal);
             await this.repository.acknowledgeToolResult(job, result.id);
           }
-          if (await this.repository.reconcile(job, turn, items)) return;
+          if (await this.repository.reconcile(job, turn, items, session.agent)) return;
         } else {
           const session = await this.gateway.retrieve(sessionId, signal);
           if (session.status === 'failed') { await this.repository.failSession(job); return; }

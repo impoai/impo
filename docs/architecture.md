@@ -20,7 +20,11 @@ accepts durable work. The API and worker run as separate processes.
 PostgreSQL holds identity, ownership, execution state, leases and tool receipts.
 Drizzle entities under `server/src/db/` are the schema source of truth.
 
-The Rebyte worker creates or reuses a per-user main Saved Agent and Session.
+The Rebyte worker keeps one main Saved Agent per user and rotates its current
+Session before unsent input after six idle hours, eight turns, or an estimated
+12,000-token context. It carries two completed turns (up to 3,000 text characters),
+adds the profile, and keeps Memory retrieval first. Historical Session mappings
+preserve the complete conversation for clients. Rotation adds no summarization call.
 One-shot tasks have independent conversations and Sessions. Stable IDs,
 leases and reconciliation prevent duplicate work during retries and recovery.
 English prompt modules live in `server/src/prompts/`; clients do not compose

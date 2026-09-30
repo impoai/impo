@@ -66,6 +66,7 @@ export const sessionBindings = pgTable('session_bindings', {
   provider: text('provider').notNull().default('development'),
   providerSessionId: text('provider_session_id'),
   historyContext: text('history_context'),
+  contextTokenEstimate: integer('context_token_estimate'),
   status: text('status', { enum: ['creating', 'active', 'unknown', 'failed', 'retired'] }).notNull().default('creating'),
   isCurrent: boolean('is_current').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -79,6 +80,7 @@ export const sessionBindings = pgTable('session_bindings', {
   foreignKey({ name: 'session_bindings_owned_conversation_fk', columns: [table.userId, table.conversationId], foreignColumns: [conversations.userId, conversations.id] }),
   check('session_bindings_status_check', sql`${table.status} IN ('creating', 'active', 'unknown', 'failed', 'retired')`),
   check('session_bindings_active_session_check', sql`${table.status} <> 'active' OR ${table.providerSessionId} IS NOT NULL`),
+  check('session_bindings_context_token_estimate_check', sql`${table.contextTokenEstimate} IS NULL OR ${table.contextTokenEstimate} >= 0`),
 ]);
 
 export const sessionCreationAttempts = pgTable('session_creation_attempts', {

@@ -328,6 +328,8 @@ test('Rebyte SDK integration recovers remote side effects across local process f
         const newer = await request('/tasks', { clientMessageId: randomUUID(), text: 'newer task for activity ordering' });
         await state(newer.body.submissionId as string, 'completed');
         assert.equal(((await request('/tasks')).body.tasks as Array<{ taskId: string }>)[0]?.taskId, newer.body.taskId);
+        await pool.query('UPDATE session_bindings SET context_token_estimate=50000 WHERE provider_session_id=$1', [taskSession!.id]);
+        await pool.query("UPDATE runtime_submissions SET completed_at=now()-interval '7 hours' WHERE id=$1", [created.body.submissionId]);
         const followUp = await request(`/tasks/${created.body.taskId}/messages`, { clientMessageId: randomUUID(), text: 'follow up in task' });
         assert.equal(followUp.status, 202, JSON.stringify(followUp.body));
         await state(followUp.body.submissionId as string, 'completed');
@@ -448,6 +450,89 @@ test('Rebyte SDK integration recovers remote side effects across local process f
         const receipts = await pool.query('SELECT status,execution_location FROM tool_invocations WHERE submission_id=$1', [second.submissionId]);
         assert.ok(receipts.rows.every(r => r.status === 'submitted' && r.execution_location === 'server'));
       } finally { if (worker) await stop(worker); store.close(); await connection.close(); }
+    });
+    await t.test('idle and queued turn limits rotate only main Chat, preserving history and Saved Agent identity', async () => {
+      const user = 'bob', bobId = '00000000-0000-4000-8000-000000000002';
+      const old = fake.sessions.find(s => s.turns.some(turn => turn.text.startsWith('bob-private-')))!;
+      await pool.query("UPDATE runtime_submissions SET completed_at=now()-interval '7 hours' WHERE user_id=$1", [bobId]);
+      const before = fake.sessions.length;
+      const agentCount = fake.agents.length;
+      fake.answers.push('short answer 1');
+      const first = await submit('bounded turn 1', randomUUID(), user);
+      const worker = start('src/worker-main.ts');
+      try {
+        await state(first.submissionId, 'completed', user);
+        const fresh = fake.sessions.find(s => s.turns.some(turn => turn.text === first.text))!;
+        assert.notEqual(fresh.id, old.id, 'six hours of inactivity starts fresh context');
+        for (let index = 2; index <= 7; index++) {
+          fake.answers.push(`short answer ${index}`);
+          const next = await submit(`bounded turn ${index}`, randomUUID(), user);
+          await state(next.submissionId, 'completed', user);
+        }
+        assert.equal(fresh.turns.length, 7);
+        fake.answers.push('short answer 8', 'short answer 9', 'short answer 10');
+        fake.holdNextTurn = true;
+        const eighth = await submit('bounded turn 8', randomUUID(), user);
+        const turn = await waitFor('eighth turn held', async () => fresh.turns[7]);
+        const ninth = await submit('bounded turn 9', randomUUID(), user);
+        const tenth = await submit('bounded turn 10', randomUUID(), user);
+        assert.equal(fake.sessions.length, before + 1, 'the active turn is never interrupted');
+        assert.equal((await request(`/submissions/${ninth.submissionId}`, undefined, user)).body.status, 'queued');
+        fake.complete(fresh, turn);
+        await state(eighth.submissionId, 'completed', user);
+        await state(tenth.submissionId, 'completed', user);
+        const replacement = fake.sessions.find(s => s.turns.some(t => t.text === ninth.text))!;
+        assert.equal(fresh.turns.length, 8);
+        assert.equal(replacement.turns.length, 2, 'already queued messages move to the new binding');
+        assert.equal(fake.sessions.length, before + 2);
+        assert.equal(fake.agents.length, agentCount);
+        assert.equal(replacement.agent.id, old.agent.id);
+        assert.ok(replacement.agent.instructions.includes('Start every user turn with impo_search_memory'));
+        const dynamic = JSON.parse(String(replacement.agent.instructions).split('\n').at(-1)!);
+        const carry = JSON.parse(dynamic.previousConversationHistory);
+        assert.deepEqual(carry.messages.map((m: JSONRecord) => m.text), ['bounded turn 7', 'short answer 7', 'bounded turn 8', 'short answer 8']);
+        const view = await request('/conversation?limit=100', undefined, user);
+        assert.equal(view.status, 200);
+        const texts = (view.body.messages as JSONRecord[]).map(m => m.text);
+        assert.ok(texts.includes(old.turns[0]!.text), 'oldest history is still readable');
+        assert.ok(texts.includes(first.text) && texts.includes(tenth.text));
+        const rows = await pool.query('SELECT count(*)::int AS count FROM session_bindings WHERE user_id=$1 AND is_current', [bobId]);
+        assert.equal(rows.rows[0].count, 1);
+      } finally { await stop(worker); }
+    });
+
+    await t.test('large tool output triggers the context budget and history outages do not strand creation', async () => {
+      const user = 'bob';
+      fake.answers.push('Short final answer');
+      fake.nextSteps = [{ type: 'command_execution', command: 'read fixture', cwd: '/workspace', status: 'completed', exit_code: 0, duration_ms: 1, output: 'x'.repeat(40_000) }];
+      const large = await submit('Read a large tool result', randomUUID(), user);
+      const worker = start('src/worker-main.ts');
+      try {
+        await state(large.submissionId, 'completed', user);
+        const previous = fake.sessions.find(s => s.turns.some(t => t.text === large.text))!;
+        const estimate = (await pool.query('SELECT context_token_estimate FROM session_bindings WHERE provider_session_id=$1', [previous.id])).rows[0].context_token_estimate;
+        assert.ok(estimate > 12_000, 'count tool output, not just the final answer or aggregate usage');
+        assert.ok(previous.turns.length < 8, 'this exercises context size independently of the turn limit');
+        const before = fake.sessions.length;
+        fake.failHistory = true;
+        const next = await submit('Continue after large output', randomUUID(), user);
+        await waitFor('history failure deferred', async () => {
+          const row = (await pool.query('SELECT error FROM runtime_submissions WHERE id=$1', [next.submissionId])).rows[0];
+          return row.error ? true : undefined;
+        });
+        const attempts = await pool.query('SELECT a.id FROM session_creation_attempts a JOIN runtime_submissions s ON s.binding_id=a.binding_id WHERE s.id=$1', [next.submissionId]);
+        assert.equal(attempts.rows.length, 0, 'no creation uncertainty until history is ready');
+        assert.equal(fake.sessions.length, before);
+        fake.failHistory = false;
+        await state(next.submissionId, 'completed', user);
+        assert.equal(fake.sessions.length, before + 1, 'retry creates exactly one replacement');
+        const replacement = fake.sessions.at(-1)!;
+        assert.notEqual(replacement.id, previous.id);
+        assert.ok(!replacement.agent.instructions.includes('x'.repeat(100)), 'tool output is not copied into the carry');
+        assert.ok(replacement.agent.instructions.includes('Short final answer'));
+        await assertAnswer(next.submissionId, replacement.turns[0]!.answer, user);
+        await assert.rejects(pool.query('UPDATE session_bindings SET context_token_estimate=-1 WHERE provider_session_id=$1', [replacement.id]), /session_bindings_context_token_estimate_check/);
+      } finally { fake.failHistory = false; await stop(worker); }
     });
     assert.deepEqual(fake.errors, [], 'the real SDK must use the expected Agents API wire contract');
   } finally {

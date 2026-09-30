@@ -21,7 +21,7 @@ const healthTool: PlannedTool = {
 };
 const tools = [calendarTool.name, healthTool.name];
 // The full Main Agent tool set also includes the (non-device) task delegation tool.
-const agentTools = [...tools, 'instant_create_task', 'web_search'];
+const agentTools = [...tools, 'instant_create_task', 'impo_search_memory', 'web_search'];
 const syntheticCalendar = {
   test_data: true, source: 'explicit protocol test data; not EventKit', observed_at: '2026-09-22T12:00:00+08:00', truncated: false,
   events: [{ id: 'test-calendar-event', title: 'SYNTHETIC_CALENDAR_MARKER', start: '2026-09-22T10:00:00+08:00', end: '2026-09-22T11:00:00+08:00', all_day: false }],
@@ -262,7 +262,7 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
         const late = await result(call, claimed.body.executionId, { success: true, output: syntheticCalendar });
         assert.equal(late.status, 410); assert.equal(late.body.error.code, 'invocation_expired');
         await completed(id);
-        const turn = fake.sessions[0].turns.at(-1)!;
+        const turn = fake.sessions.at(-1)!.turns.at(-1)!;
         const remote = resultsFor(turn.id); assert.equal(remote.length, 1); assert.equal(remote[0].success, false);
         assert.match(remote[0].error, /expir|timeout|deadline/);
         assert.equal((await pending()).length, 0);
@@ -303,11 +303,11 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
       try {
         await completed(id);
         assert.equal((await pending(limited)).length, 0);
-        const remote = resultsFor(fake.sessions[0].turns.at(-1)!.id);
+        const remote = resultsFor(fake.sessions.at(-1)!.turns.at(-1)!.id);
         assert.equal(remote.length, 3); assert.ok(remote.every(value => value.success === false));
         const unbound = await submit([calendarTool], ''); await completed(unbound);
         assert.equal((await pending()).length, 0);
-        const unboundResults = resultsFor(fake.sessions[0].turns.at(-1)!.id);
+        const unboundResults = resultsFor(fake.sessions.at(-1)!.turns.at(-1)!.id);
         assert.equal(unboundResults.length, 1); assert.equal(unboundResults[0].success, false);
       } finally { await stop(worker); }
     });
@@ -336,7 +336,7 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
         assert.equal((await pending(device)).length, 0);
         await expireWorker(id); worker = start('src/worker-main.ts');
         await completed(id);
-        const remote = resultsFor(fake.sessions[0].turns.at(-1)!.id);
+        const remote = resultsFor(fake.sessions.at(-1)!.turns.at(-1)!.id);
         assert.equal(remote.length, 2);
         assert.equal(remote.find(value => value.call_id === calendar.toolCallId)?.success, true);
         const denied = remote.find(value => value.call_id === health.toolCallId)!;
@@ -350,8 +350,9 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
       const runningID = await submit([]);
       const worker = start('src/worker-main.ts');
       try {
-        const oldSession = fake.sessions[0];
-        const heldTurn = await waitFor('held legacy turn', async () => oldSession.turns.at(-1)?.status === 'in_progress' ? oldSession.turns.at(-1) : undefined);
+        const heldTurn = await waitFor('held legacy turn', async () => fake.sessions.at(-1)?.turns.at(-1)?.status === 'in_progress' ? fake.sessions.at(-1)!.turns.at(-1) : undefined);
+        const oldSession = fake.sessions.at(-1)!;
+        const sessionsBefore = fake.sessions.length;
         const binding = (await pool.query('SELECT id, agent_config_version_id FROM session_bindings WHERE provider_session_id=$1', [oldSession.id])).rows[0];
         const legacyID = randomUUID();
         await pool.query(`INSERT INTO agent_config_versions (id, version, hash, config)
@@ -361,14 +362,14 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
         oldSession.agent.tools = [];
         const busy = await request('/conversation/messages', { clientMessageId: randomUUID(), text: 'Must not upgrade an active Session', deviceId: aliceDevice });
         assert.equal(busy.status, 409); assert.equal(busy.body.error.code, 'config_upgrade_pending');
-        assert.equal(fake.sessions.length, 1);
+        assert.equal(fake.sessions.length, sessionsBefore);
         fake.complete(oldSession, heldTurn!); await completed(runningID);
         const before = (await pool.query('SELECT id, text FROM messages ORDER BY sequence')).rows;
-        const oldInput = (await pool.query('SELECT m.text FROM messages m JOIN runtime_submissions s ON s.user_message_id=m.id WHERE s.id=$1', [runningID])).rows[0].text;
+        const oldInput = heldTurn!.text.split('\n\n').at(-1)!;
         const upgradedID = await submit([calendarTool]);
         const [call] = await expectPending(1);
-        assert.equal(fake.sessions.length, 2);
-        const newSession = fake.sessions[1];
+        assert.equal(fake.sessions.length, sessionsBefore + 1);
+        const newSession = fake.sessions.at(-1)!;
         assert.deepEqual(newSession.agent.tools.map((tool: JSONRecord) => tool.name ?? tool.type).sort(), [...agentTools].sort());
         assert.ok(newSession.agent.instructions.includes(oldInput), 'new Session receives the most recent persisted history');
         const retired = (await pool.query('SELECT status, is_current FROM session_bindings WHERE id=$1', [binding.id])).rows[0];
@@ -380,7 +381,7 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
         assert.deepEqual(after.slice(0, before.length), before, 'local messages survive Session replacement unchanged');
         assert.equal(after.length, before.length + 2, 'restored history is not projected as duplicate chat messages');
         const continued = await submit([]); await completed(continued);
-        assert.equal(fake.sessions.length, 2); assert.equal(newSession.turns.length, 2);
+        assert.equal(fake.sessions.length, sessionsBefore + 1); assert.equal(newSession.turns.length, 2);
         assert.equal((await pool.query('SELECT count(*)::int AS count FROM session_bindings WHERE is_current')).rows[0].count, 1);
       } finally { await stop(worker); }
     });

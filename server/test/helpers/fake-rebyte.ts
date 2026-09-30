@@ -23,6 +23,7 @@ export class FakeRebyte {
   nextSteps: JSONRecord[] = [];
   answers: string[] = [];
   historyReads = 0;
+  failHistory = false;
   holdNextToolResult = false;
   holdNextAgentCreate = false;
   holdNextCreate = false;
@@ -225,7 +226,8 @@ export class FakeRebyte {
       this.sessions.push(session);
       assert.ok(Array.isArray(body.input) && body.input.length === 1 && body.input[0].role === 'user', 'the creation request carries the first message');
       const turn = this.beginTurn(session, body.input[0].content);
-      this.later(() => this.complete(session, turn));
+      if (this.holdNextTurn) this.holdNextTurn = false;
+      else this.later(() => this.complete(session, turn));
       if (this.holdNextCreate) {
         this.holdNextCreate = false;
         this.heldCreates.push({ response, session });
@@ -243,6 +245,7 @@ export class FakeRebyte {
     if (route[2] === 'history' && request.method === 'GET') {
       // Rebyte history: per Turn, the user input parts and the final answer only.
       this.historyReads++;
+      if (this.failHistory) { this.json(response, 503, { error: { message: 'History is temporarily unavailable' } }); return; }
       this.page(response, url, session.turns.map(turn => ({ object: 'agent.session.history_entry', id: turn.id, status: turn.status, created_at: turn.created_at, completed_at: turn.completed_at, error: turn.error,
         input: (session.items.find(item => item.id === `item_user_${turn.id}`)?.content ?? []) as JSONRecord[],
         output_text: turn.status === 'completed' ? String((turn.assistant.content as JSONRecord[])?.[0]?.text ?? '') : null })));

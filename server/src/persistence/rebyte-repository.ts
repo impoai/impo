@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { UIMessage, UIMessageChunk } from 'ai';
 import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, deviceDispatches, toolInvocations, productEvents } from '../db/schema.js';
 import { RuntimeRepository, type ClaimedJob, type Submission, type Transaction } from './runtime-repository.js';
 import { historyContext, hydrateMessages } from './conversation-history.js';
+import { estimateContextTokens, mainHistoryContext, mainSessionPolicy, mainSessionRotation } from './main-session-policy.js';
 import { turnSteps } from '../rebyte/steps.js';
 import type { AgentItem, AgentSession, RebyteAgent, Turn } from '../rebyte/gateway.js';
 import { toolResultPayload } from '../rebyte/gateway.js';
@@ -16,6 +17,32 @@ export const taskTitlePlaceholder = '…';
 
 /** Remote requests happen outside these transactions; every write checks the lease. */
 export class RebyteRepository extends RuntimeRepository {
+  /** The queue has one writer per conversation. Rotate only before any remote input intent. */
+  async prepareMainSession(job: ClaimedJob): Promise<void> {
+    await this.withLease(job, async (tx, submission) => {
+      if (submission.status !== 'queued' || submission.inputStartedAt || submission.inputAcknowledged || submission.providerTurnId || submission.cancelRequested) return;
+      // Serialize with message admission so new messages bind to the replacement too.
+      const [conversation] = await tx.select().from(conversations)
+        .where(and(eq(conversations.id, submission.conversationId), eq(conversations.userId, submission.userId))).for('update');
+      if (conversation?.kind !== 'main') return;
+      const [binding] = await tx.select().from(sessionBindings).where(eq(sessionBindings.id, submission.bindingId));
+      if (!binding || binding.provider !== 'rebyte' || binding.status !== 'active' || !binding.isCurrent) return;
+      const [activity] = await tx.select({ turns: sql<number>`count(*)::int`, lastCompletedAt: sql<Date | null>`max(${runtimeSubmissions.completedAt})`.mapWith(runtimeSubmissions.completedAt) })
+        .from(runtimeSubmissions).where(and(eq(runtimeSubmissions.bindingId, binding.id), isNotNull(runtimeSubmissions.providerTurnId), inArray(runtimeSubmissions.status, ['completed', 'failed', 'cancelled'])));
+      const [input] = await tx.select({ text: messages.text }).from(messages).where(eq(messages.id, submission.userMessageId));
+      const reason = mainSessionRotation({ turns: activity!.turns, lastCompletedAt: activity!.lastCompletedAt,
+        contextTokens: binding.contextTokenEstimate, inputTokens: estimateContextTokens({ text: input?.text, context: submission.clientContext }) });
+      if (!reason) return;
+      await tx.update(sessionBindings).set({ isCurrent: false, status: 'retired', updatedAt: new Date() }).where(eq(sessionBindings.id, binding.id));
+      const [replacement] = await tx.insert(sessionBindings).values({ userId: submission.userId, conversationId: submission.conversationId,
+        agentConfigVersionId: binding.agentConfigVersionId, provider: 'rebyte', status: 'creating' }).returning();
+      // Queued messages were admitted against the old binding. None has a remote write or tool receipt yet.
+      await tx.update(runtimeSubmissions).set({ bindingId: replacement!.id, updatedAt: new Date() }).where(and(
+        eq(runtimeSubmissions.userId, submission.userId), eq(runtimeSubmissions.conversationId, submission.conversationId), eq(runtimeSubmissions.bindingId, binding.id),
+        eq(runtimeSubmissions.status, 'queued'), isNull(runtimeSubmissions.inputStartedAt), eq(runtimeSubmissions.inputAcknowledged, false), isNull(runtimeSubmissions.providerTurnId)));
+    });
+  }
+
   async context(job: ClaimedJob) {
     return this.withLease(job, async (tx, submission) => {
       const [binding] = await tx.select().from(sessionBindings).where(eq(sessionBindings.id, submission.bindingId));
@@ -93,6 +120,14 @@ export class RebyteRepository extends RuntimeRepository {
   async renew(job: ClaimedJob, leaseMs: number): Promise<void> {
     await this.withLease(job, async tx => {
       await tx.update(outboxJobs).set({ leaseUntil: sql`clock_timestamp() + ${leaseMs} * interval '1 millisecond'` }).where(eq(outboxJobs.id, job.id));
+    });
+  }
+
+  /** Recover an existing intent without depending on another history read. */
+  async existingCreationAttempt(job: ClaimedJob) {
+    return this.withLease(job, async (tx, submission) => {
+      const [attempt] = await tx.select().from(sessionCreationAttempts).where(eq(sessionCreationAttempts.bindingId, submission.bindingId)).orderBy(asc(sessionCreationAttempts.createdAt)).limit(1);
+      return attempt;
     });
   }
 
@@ -271,7 +306,7 @@ export class RebyteRepository extends RuntimeRepository {
   }
 
   /** Re-read active Items by ID: an existing in-progress Item can grow in place. */
-  async reconcile(job: ClaimedJob, turn: Turn, items: AgentItem[]): Promise<boolean> {
+  async reconcile(job: ClaimedJob, turn: Turn, items: AgentItem[], agent: AgentSession['agent']): Promise<boolean> {
     return this.withLease(job, async (tx, submission) => {
       if (submission.providerTurnId && submission.providerTurnId !== turn.id) throw new Error('Remote Turn identity changed');
       const selected = items.filter(item => item.turn_id === turn.id && item.type === 'message');
@@ -320,6 +355,8 @@ export class RebyteRepository extends RuntimeRepository {
       if (answer.length || hadText) parts.push({ type: 'text', text: answer });
       await tx.update(messages).set({ text: answer, status: 'streaming', parts, updatedAt: new Date() }).where(eq(messages.id, message.id));
       if (final) {
+        await tx.update(sessionBindings).set({ contextTokenEstimate: estimateContextTokens({ instructions: agent.instructions, tools: agent.tools, items }), updatedAt: new Date() })
+          .where(eq(sessionBindings.id, submission.bindingId));
         if (answer.length || hadText) chunks.push({ type: 'text-end', id: partId });
         const status = submission.cancelRequested || turn.status === 'cancelled' ? 'cancelled' : turn.status === 'failed' ? 'failed' : 'completed';
         if (status === 'cancelled') chunks.push({ type: 'abort' });
@@ -385,13 +422,25 @@ export class RebyteRepository extends RuntimeRepository {
    * Rebyte (never stored). Null for a conversation's first Session.
    */
   async rotationHistory(job: ClaimedJob, signal?: AbortSignal): Promise<string | null> {
-    const { submission, input, earlier } = await this.withLease(job, async (tx, submission) => {
+    const { submission, input, earlier, conversation } = await this.withLease(job, async (tx, submission) => {
       const [input] = await tx.select({ sequence: messages.sequence }).from(messages).where(eq(messages.id, submission.userMessageId));
       const [earlier] = await tx.select({ id: sessionBindings.id }).from(sessionBindings)
         .where(and(eq(sessionBindings.conversationId, submission.conversationId), ne(sessionBindings.id, submission.bindingId))).limit(1);
-      return { submission, input, earlier };
+      const [conversation] = await tx.select({ kind: conversations.kind }).from(conversations).where(eq(conversations.id, submission.conversationId));
+      return { submission, input, earlier, conversation };
     });
     if (!earlier || !input) return null;
+    if (conversation?.kind === 'main') {
+      const turns = await this.db.select({ userMessageId: runtimeSubmissions.userMessageId, assistantMessageId: runtimeSubmissions.assistantMessageId })
+        .from(runtimeSubmissions).innerJoin(messages, eq(messages.id, runtimeSubmissions.userMessageId))
+        .where(and(eq(runtimeSubmissions.userId, submission.userId), eq(runtimeSubmissions.conversationId, submission.conversationId),
+          eq(runtimeSubmissions.status, 'completed'), lt(messages.sequence, input.sequence)))
+        .orderBy(desc(messages.sequence)).limit(mainSessionPolicy.carryTurns);
+      if (!turns.length) return null;
+      const rows = await this.db.select().from(messages).where(and(eq(messages.userId, submission.userId),
+        inArray(messages.id, turns.flatMap(turn => [turn.userMessageId, turn.assistantMessageId])))).orderBy(desc(messages.sequence));
+      return mainHistoryContext(await hydrateMessages(this.db, this.runtime.history, submission.userId, rows, signal));
+    }
     const rows = await this.db.select({ id: messages.id, role: messages.role, status: messages.status, text: messages.text, parts: messages.parts }).from(messages)
       .where(and(eq(messages.userId, submission.userId), eq(messages.conversationId, submission.conversationId), eq(messages.status, 'completed'), lt(messages.sequence, input.sequence)))
       .orderBy(desc(messages.sequence)).limit(41);

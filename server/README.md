@@ -86,9 +86,21 @@ worker. `/health` reports the selected runtime. The server pins
 `@rebyteai/agent-sdk@0.2.4` and uses `client.beta.agents`.
 
 Each user has one main conversation, a lazily created Saved Agent, and one current
-main Session. Ordinary follow-ups reuse that Session. Instructions and tools are
-configured for the Session. Tasks use separate conversations and inline agent
+main Session. Main Chat rotates before an unsent turn after six idle hours, eight
+remote turns, or an estimated 12,000-token context (including the next input).
+The replacement carries only the last two completed turns, up to 3,000 text
+characters, with 750 per message; profile and Memory-first instructions remain.
+The conversation, Saved Agent and full readable history survive rotation. No
+extra model summary is generated. Tasks use separate conversations and inline agent
 Sessions; they do not create a Saved Agent for every task.
+
+`src/persistence/main-session-policy.ts` owns these server-side defaults. Context
+size is a soft estimate from UTF-8 JSON bytes / 3, including instructions, tools
+and Session Items; it is not an exact tokenizer or aggregate Turn usage. A single
+large turn can exceed the budget and triggers rotation before the next input.
+Existing Sessions without an estimate rotate on their next unsent turn. Queued
+messages move together; active, waiting and uncertain remote inputs retain their
+original Session for recovery. Tasks and background briefs are unaffected.
 
 The worker subscribes to Rebyte events before follow-up input and reconciles
 ordered Turns and Items. Stable IDs support history recovery without repeating
