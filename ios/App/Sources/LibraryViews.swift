@@ -49,9 +49,12 @@ struct SettingsView: View {
                                 settingsRow("Connections", detail: "Calendar, Health, Gmail and 100+ apps") { sheet = .connections }
                                     .accessibilityIdentifier("settings.connections")
                                 divider
-                                settingsRow("Notifications", detail: "Chat, tasks and Brief") {
+                                settingsRow("Notifications", detail: "Chat, tasks, Brief and Echo reminders") {
                                     sheet = .notifications
                                 }.accessibilityIdentifier("settings.notifications")
+                                divider
+                                settingsRow("Echo schedule", detail: "Reminders and automatic stop") { sheet = .echoSchedule }
+                                    .accessibilityIdentifier("settings.echo-schedule")
                             }.padding(.horizontal, 18)
                         }
                         sectionLabel("About")
@@ -101,6 +104,7 @@ struct SettingsView: View {
                 case .debug: ListeningDebugView()
                 case .connections: LibraryConnectionsView()
                 case .notifications: NotificationSettingsView()
+                case .echoSchedule: EchoScheduleView()
                 case .profile: ProfileDetailView()
                 case .plan: LibraryInfoSheet(title: "Your Impo preview", symbol: "sparkles", text: "Explore your assistant, conversations, and personal space. Plans and billing are not available in this preview.")
                 case .usage: LibraryInfoSheet(title: "Monthly usage", symbol: "chart.bar.xaxis", text: "Usage information will appear here when plans are available. There is no subscription or allowance attached to this preview.")
@@ -327,7 +331,7 @@ struct SettingsView: View {
     }
 
     private enum SettingsSheet: String, Identifiable {
-        case connections, profile, plan, usage, debug, notifications
+        case connections, profile, plan, usage, debug, notifications, echoSchedule
         var id: String { rawValue }
     }
 }

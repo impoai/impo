@@ -7,6 +7,7 @@ struct ListeningTranscriptLibrary: View {
     @State private var selected: ListeningSegment?
     @State private var showDates = false
     @State private var showSync = false
+    @State private var showSchedule = false
     @State private var visibleDate: String?
     @State private var targetDay: String?
     @State private var navigation = UUID()
@@ -25,6 +26,8 @@ struct ListeningTranscriptLibrary: View {
                     }.frame(minHeight: 44)
                 }.accessibilityLabel("Browse Echo by date").accessibilityIdentifier("listening.by-date")
                 Spacer(minLength: 0)
+                Button { showSchedule = true } label: { Image(systemName: "clock.badge.checkmark").frame(width: 44, height: 44) }
+                    .accessibilityLabel("Echo schedule").accessibilityIdentifier("echo.schedule.open")
                 if visibleDate != nil && visibleDate != timeline.days.first?.date || targetDay != nil {
                     Button("Latest") { jump(nil) }.font(.subheadline)
                         .accessibilityIdentifier("echo.latest").frame(minHeight: 44)
@@ -33,6 +36,10 @@ struct ListeningTranscriptLibrary: View {
                     Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44)
                 }.accessibilityLabel("Echo sync options").accessibilityIdentifier("echo.sync-options")
             }.padding(.leading, 20).padding(.trailing, 8)
+            if let stop = listening.scheduledStopAt, listening.isListening {
+                Text("Stops \(stop.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption).foregroundStyle(InstantStyle.muted).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.bottom, 8)
+            }
             if !listening.pending.isEmpty {
                 Button { showSync = true } label: {
                     Label("\(listening.pending.count) saved on this iPhone · waiting to sync", systemImage: "arrow.up.circle")
@@ -72,6 +79,7 @@ struct ListeningTranscriptLibrary: View {
                 EchoDateBrowser(days: timeline.calendar) { jump($0.isEmpty ? nil : $0) }.swipeToDismiss()
             }
             .sheet(isPresented: $showSync) { EchoSyncSettings().swipeToDismiss() }
+            .sheet(isPresented: $showSchedule) { EchoScheduleView().swipeToDismiss() }
     }
     private func jump(_ day: String?) {
         targetDay = day; visibleDate = day ?? timeline.days.first?.date; navigation = UUID()

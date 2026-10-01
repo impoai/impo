@@ -44,7 +44,8 @@ class NotificationTest {
         assertTrue(route.isCurrent(registration, Instant.parse("2026-10-01T00:00:00Z")))
         assertFalse(route.isCurrent(UUID.randomUUID().toString(), Instant.parse("2026-10-01T00:00:00Z")))
         assertFalse(route.isCurrent(registration, Instant.parse("2026-10-01T01:00:00Z")))
-        for ((key, value) in listOf("version" to "2", "category" to "echo", "targetId" to "1-1-1-1-1", "expiresAt" to "invalid"))
+        assertEquals("echo", PushRoute.parse(data + ("category" to "echo"))?.category)
+        for ((key, value) in listOf("version" to "2", "category" to "unknown", "targetId" to "1-1-1-1-1", "expiresAt" to "invalid"))
             assertNull(PushRoute.parse(data + (key to value)))
     }
 }

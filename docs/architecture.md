@@ -99,3 +99,15 @@ Changing capabilities rotates an idle Rebyte Session with history preservation;
 a busy Session returns `config_upgrade_pending` until the current turn settles.
 Tasks never receive native device tools. See the
 [native tool contract](../contracts/native-device-tools.md).
+
+## Echo calendar reminders and native stop
+
+`EchoScheduleRepository` owns a revisioned plan in the notification preference
+JSON. `EchoScheduleProvisioner` discovers changes and signals one Temporal
+calendar workflow per user. Due reminders enter the existing notification outbox
+with a fifteen-minute expiry and revision checks. No provider model call or
+microphone command runs in the scheduling workflow. iOS `ListeningModel` and
+Android `EchoRecordingService` apply the last synced plan to their own active
+recording, using an immutable session anchor and an offline local deadline.
+The API, timezone rules and lifecycle limits are in
+[Echo schedule](../contracts/echo-schedule.md).

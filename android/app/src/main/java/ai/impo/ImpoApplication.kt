@@ -19,6 +19,7 @@ class ImpoApplication : Application() {
     lateinit var settings: SettingsStore
     lateinit var auth: AuthController
     lateinit var push: PushNotifications
+    lateinit var echoSchedule: ai.impo.data.EchoScheduleController
     internal var upgrade = ai.impo.data.SoftUpgrade()
     @Volatile var nativeAccount: NativeAccount? = null
     override fun onCreate() {
@@ -28,6 +29,7 @@ class ImpoApplication : Application() {
         if (configured) Clerk.initialize(this, publishableKey = BuildConfig.CLERK_PUBLISHABLE_KEY)
         auth = AuthController(settings, scope, configured)
         push = PushNotifications(this)
+        echoSchedule = ai.impo.data.EchoScheduleController(this)
         NativeBridge.install(this) { nativeAccount }
         scope.launch {
             auth.state.distinctUntilChangedBy { it.loading to it.account?.requestScope }.collect { state ->
@@ -36,6 +38,7 @@ class ImpoApplication : Application() {
                 nativeAccount = state.account?.let { NativeAccount(it.id, ImpoClient(it.baseUrl, auth.tokenProvider(it), allowInsecureLocalhost = it.development && BuildConfig.DEBUG)) }
                 NativeBridge.accountChanged(this@ImpoApplication)
                 push.configure(state.account)
+                echoSchedule.configure(state.account)
             }
         }
     }

@@ -26,12 +26,14 @@ import { dictationAudio, maxDictationBytes, transcribeRequest, type Dictation } 
 import type { NotificationRepository } from '../db/repositories/notification-repository.js';
 import { registrationInput, settingsInput, type Registration, type Revocation } from '../notifications/contract.js';
 import type { AccountDeletionRepository } from '../db/repositories/account-deletion-repository.js';
+import type { EchoScheduleRepository } from '../db/repositories/echo-schedule-repository.js';
 
 export type ApiRepository = Pick<RuntimeRepository,
   'health' | 'findUser' | 'findOrCreateUser' | 'acceptMessage' | 'getConversation' | 'getSubmission' | 'cancelSubmission' | 'readEvents'>
   & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
 
 export interface ApiOptions {
+  echoSchedules?: Pick<EchoScheduleRepository, 'get' | 'save'>;
   accounts?: Pick<AccountDeletionRepository, 'closedIdentity' | 'status' | 'prepare' | 'confirm'>;
   accountDeletionEnabled?: boolean;
   notifications?: Pick<NotificationRepository, 'settings' | 'updateSettings' | 'register' | 'revoke'>;
@@ -181,6 +183,12 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 202, await options.accounts.confirm(user.id, await readJSON(req, requestTimeoutMs))); return;
       }
       throw new ServiceError(404, 'not_found', 'Account route not found');
+    }
+    if (path === '/api/v1/echo/schedule') {
+      if (!options.echoSchedules) throw new ServiceError(503, 'echo_schedule_unavailable', 'Echo schedules are not configured.', true);
+      if (method === 'GET') { sendJSON(res, 200, await options.echoSchedules.get(user.id)); return; }
+      if (method === 'PUT') { sendJSON(res, 200, await options.echoSchedules.save(user.id, await readJSON(req, requestTimeoutMs))); return; }
+      throw new ServiceError(405, 'method_not_allowed', 'Use GET or PUT for Echo schedules.');
     }
     if (path.startsWith('/api/v1/notifications/')) {
       if (!options.notifications) throw new ServiceError(503, 'notifications_unavailable', 'Notifications are not configured', true);

@@ -381,7 +381,7 @@ notification permission and channel controls remain additional gates. The app
 reports foreground presence, suppresses foreground presentation, deduplicates
 events, rejects expired or old-account routes and revokes registration before
 sign-out. The same [notification policy](../contracts/notifications.md) applies
-to iOS. Echo reminders and recurring task schedules remain future work.
+to iOS. Echo reminders use the shared [weekly schedule](../contracts/echo-schedule.md); recurring task schedules remain future work.
 
 Build configuration comes from ignored `local.properties` entries
 `impo.firebase.projectId`, `impo.firebase.senderId`, `impo.firebase.apiKey`,
@@ -410,3 +410,13 @@ Android emulator account and displayed “You have a brief” / “Tap to read i
 The signed APK cold-launched and both immutable and permanent download URLs
 passed complete SHA-256 verification. Physical-device and production-account
 acceptance remain unverified.
+
+## Echo schedules
+
+Settings → Echo schedule and the clock button in Memories → Echo edit the same
+account plan as iOS. Choose weekdays, a reminder time, an optional automatic stop
+and a fixed time zone. Saving a plan never starts the microphone. The native
+foreground service reads its account cache before capture and keeps the original
+session deadline across pauses and interruptions. It finalizes accepted audio
+when stopping, including offline. Other-device changes apply after a foreground
+sync. See [the shared contract](../contracts/echo-schedule.md) for exact timing.

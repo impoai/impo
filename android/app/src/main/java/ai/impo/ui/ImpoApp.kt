@@ -159,6 +159,7 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
     val route = backStack?.destination?.route ?: "chat"
     val recording by NativeBridge.recording.collectAsStateWithLifecycle()
     val go: (String) -> Unit = { target -> nav.navigate(target) { launchSingleTop = true } }
+    var echoReminderEvent by remember { mutableStateOf<String?>(null) }
     val pushRoute by vm.app.push.route.collectAsStateWithLifecycle()
     LaunchedEffect(pushRoute) {
         pushRoute?.let { route ->
@@ -166,6 +167,7 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
                 "chat" -> go("chat")
                 "tasks" -> go("task/${route.targetId}")
                 "brief" -> { vm.openNotificationBrief(route.targetId); go("brief") }
+                "echo" -> { echoReminderEvent = route.eventId; go("memories") }
             }
             vm.app.push.consumeRoute()
         }
@@ -190,10 +192,11 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
                 composable("chat") { ChatScreen(vm, state, go) }
                 composable("brief") { BriefScreen(vm, state, go) }
                 composable("tasks") { TasksScreen(vm, state, go) }
-                composable("memories") { MemoriesScreen(vm, state, go) }
+                composable("memories") { MemoriesScreen(vm, state, go, echoReminderEvent) }
                 composable("settings") { SettingsScreen(vm, state, go, back) }
                 composable("assistant") { Column { PageHeader("Your assistant", back = back); PersonalizeScreen(state.profile, saving = "profile" in state.busy, buttonLabel = "Save changes") { vm.saveProfile(it, onSaved = back) } } }
                 composable("connections") { ConnectionsScreen(vm, state, back) }
+                composable("echo-schedule") { EchoScheduleScreen(vm, back) }
                 composable("brief-settings") { BriefSettingsScreen(vm, state, back) }
                 composable("task/{id}") { entry -> val id = entry.arguments?.getString("id")!!; LaunchedEffect(id) { vm.openTask(id) }; TaskConversationScreen(vm, state, back) }
                 composable("echo/{id}") { entry -> val id = entry.arguments?.getString("id")!!; LaunchedEffect(id) { vm.openRecord(id) }; EchoDetailScreen(vm, state, id, back) }

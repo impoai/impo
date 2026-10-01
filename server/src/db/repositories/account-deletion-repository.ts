@@ -7,6 +7,7 @@ import { deletionChallengeMs, deletionGraceMs, identityHash, parseConfirmation, 
 import { transcriptKey } from '../../listening/transcript-archive.js';
 import { batchWorkflowId, listeningWorkflowId } from '../../listening/batch-contract.js';
 import { backgroundWorkflowId } from '../../background/contract.js';
+import { echoScheduleWorkflowId } from '../../echo/schedule.js';
 
 export class AccountDeletionRepository {
   constructor(private readonly db: Database, private readonly now: () => Date = () => new Date()) {}
@@ -76,7 +77,7 @@ export class AccountDeletionRepository {
         authProvider: user.authProvider, authSubject: user.authSubject, conversationIds: conversations.map(r => r.id),
         sessionIds: ids([...sessions, ...attempts, ...briefs, ...memoryRuns]), agentIds: ids([...agents, ...agentAttempts]),
         objectKeys: [...new Set(objectKeys)], memoryDatabaseName: `impo-mem-${userId}`, connections,
-        workflows: [backgroundWorkflowId(userId), listeningWorkflowId(userId), ...batches.map(r => batchWorkflowId(userId, r.clientBatchId)), ...notificationEvents.map(r => `impo/notification/${r.id}`)],
+        workflows: [backgroundWorkflowId(userId), listeningWorkflowId(userId), echoScheduleWorkflowId(userId), ...batches.map(r => batchWorkflowId(userId, r.clientBatchId)), ...notificationEvents.map(r => `impo/notification/${r.id}`)],
       };
       const requestedAt = this.now();
       const [accepted] = await tx.update(s.accountDeletions).set({ status: 'pending', manifest, requestedAt, appleManualRevocationRequired }).where(eq(s.accountDeletions.id, request.id)).returning();

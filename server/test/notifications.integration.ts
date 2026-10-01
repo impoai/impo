@@ -57,8 +57,8 @@ test('foreground on any account device suppresses Chat and Tasks, including befo
 test('preferences sync by owner, cancel pending delivery and do not backfill after re-enable', async () => {
   const f = await fixture(); const event = await enqueue(f.alice);
   await f.repo.updateSettings(f.alice, { chat: false, brief: false });
-  assert.deepEqual(await f.repo.settings(f.alice), { chat: false, tasks: true, brief: false });
-  assert.deepEqual(await f.repo.settings(f.bob), { chat: true, tasks: true, brief: true });
+  assert.deepEqual(await f.repo.settings(f.alice), { chat: false, tasks: true, brief: false, echo: true });
+  assert.deepEqual(await f.repo.settings(f.bob), { chat: true, tasks: true, brief: true, echo: true });
   assert.equal((await enqueue(f.alice)).status, 'suppressed');
   const activity = notificationActivities(f.repo, { async send() { assert.fail('Disabled category was delivered'); } });
   await activity.deliverNotification(event.id);
@@ -96,7 +96,8 @@ test('HTTP endpoints enforce authentication, ownership, shape and category valid
   try {
     assert.equal((await request('settings', 'GET', undefined, 'wrong')).status, 401);
     assert.equal((await request('settings', 'PATCH', { chat: 'yes' })).status, 400);
-    assert.equal((await request('settings', 'PATCH', { echo: true })).status, 400);
+    assert.equal((await request('settings', 'PATCH', { unknown: true })).status, 400);
+    assert.equal((await request('settings', 'PATCH', { echo: false })).status, 200);
     const changed = await request('settings', 'PATCH', { tasks: false }); assert.equal(changed.status, 200);
     assert.equal((await changed.json()).tasks, false);
     assert.equal((await (await request('settings', 'GET', undefined, 'instant-dev-bob')).json()).tasks, true);

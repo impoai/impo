@@ -106,6 +106,8 @@ import java.util.UUID
             item {
                 SectionLabel("Echo")
                 PaperCard {
+                    SettingsLink("Echo schedule", "Reminders and an optional stop time", Icons.Outlined.Schedule, "settings.echo-schedule") { go("echo-schedule") }
+                    HorizontalDivider(color = Border)
                     SettingsToggle("Upload on Wi-Fi only", "Keep saved audio on this device until an unmetered Wi-Fi connection is available.", state.profile.wifiOnly, "settings.wifi") {
                         vm.saveProfile(state.profile.copy(wifiOnly = it))
                     }
@@ -436,7 +438,7 @@ internal fun validateBriefSettings(zone: String, locale: String, slots: List<Bri
     }
 }
 
-@Composable private fun SettingsToggle(title: String, detail: String, checked: Boolean, tag: String, enabled: Boolean = true, change: (Boolean) -> Unit) {
+@Composable internal fun SettingsToggle(title: String, detail: String, checked: Boolean, tag: String, enabled: Boolean = true, change: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)

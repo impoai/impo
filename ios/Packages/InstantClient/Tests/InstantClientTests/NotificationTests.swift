@@ -23,7 +23,8 @@ final class NotificationTests: XCTestCase {
         XCTAssertTrue(route.isCurrent(registration: registration, now: now))
         XCTAssertFalse(route.isCurrent(registration: UUID().uuidString, now: now))
         XCTAssertFalse(route.isCurrent(registration: registration, now: now.addingTimeInterval(3600)))
-        data["category"] = "echo"; XCTAssertNil(PushRoute(data: data))
+        data["category"] = "echo"; XCTAssertEqual(PushRoute(data: data)?.category, .echo)
+        data["category"] = "unknown"; XCTAssertNil(PushRoute(data: data))
         data["category"] = "chat"; data["version"] = "2"; XCTAssertNil(PushRoute(data: data))
     }
 }

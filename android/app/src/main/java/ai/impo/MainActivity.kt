@@ -60,6 +60,6 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.CLERK_PUBLISHABLE_KEY.isNotBlank()) Clerk.auth.handle(intent.data)
         if (BuildConfig.DEBUG) intent.getStringExtra("impo.test.api")?.let { endpoint -> lifecycleScope.launch { model.auth.connectDevelopment(endpoint) } }
     }
-    override fun onResume() { super.onResume(); (application as ImpoApplication).push.foreground(true); model.resumed() }
-    override fun onStop() { (application as ImpoApplication).push.foreground(false); model.paused(); super.onStop() }
+    override fun onResume() { super.onResume(); (application as ImpoApplication).push.foreground(true); (application as ImpoApplication).echoSchedule.foreground(true); model.resumed() }
+    override fun onStop() { (application as ImpoApplication).push.foreground(false); (application as ImpoApplication).echoSchedule.foreground(false); model.paused(); super.onStop() }
 }

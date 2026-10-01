@@ -19,6 +19,7 @@ final class ListeningInterruptionTests: XCTestCase {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         locations = ControlledEchoLocationReader()
         captures = []; foreground = true; blockNextStart = false; failNextStart = false; failuresRemaining = 0
+        UserDefaults.standard.removeObject(forKey: "impo.echo.schedule.interruption-test")
         makeModel()
     }
 
@@ -330,6 +331,56 @@ final class ListeningInterruptionTests: XCTestCase {
     private func begin() async throws {
         model.agreeAndStart()
         try await eventually { self.model.isRecording }
+    }
+
+    func testScheduledStopFinalizesCaptureAndCannotBeResumed() async throws {
+        model.applyEchoSchedule(EchoSchedule(enabled: true, weekdays: Array(1...7)))
+        try await begin()
+        let deadline = try XCTUnwrap(model.scheduledStopAt)
+        XCTAssertFalse(model.checkScheduledStop(now: deadline.addingTimeInterval(-1)))
+        XCTAssertTrue(model.checkScheduledStop(now: deadline))
+        try await eventually { !self.model.isFinishing }
+        XCTAssertEqual(captures[0].stopCalls, 1)
+        XCTAssertFalse(model.isListening); XCTAssertNil(model.scheduledStopAt)
+        XCTAssertEqual(model.notice, "Echo stopped at your scheduled time.")
+        model.resume(); model.audioInterruptionEnded(shouldResume: true); model.resumeOnForeground()
+        XCTAssertFalse(model.isStarting); XCTAssertEqual(captures.count, 1)
+    }
+
+    func testPauseAndRecorderReplacementKeepOriginalScheduledDeadline() async throws {
+        model.applyEchoSchedule(EchoSchedule(enabled: true, weekdays: Array(1...7)))
+        try await begin()
+        let deadline = try XCTUnwrap(model.scheduledStopAt)
+        model.audioInterrupted(); try await eventually { !self.model.isFinishing }
+        model.resume(); try await eventually { self.model.isRecording }
+        XCTAssertEqual(model.scheduledStopAt, deadline)
+        model.audioInterrupted(); try await eventually { !self.model.isFinishing }
+        foreground = false
+        XCTAssertTrue(model.checkScheduledStop(now: deadline))
+        model.audioInterruptionEnded(shouldResume: true)
+        XCTAssertFalse(model.isListening); XCTAssertFalse(model.isStarting)
+        XCTAssertEqual(captures.count, 2)
+    }
+
+    func testScheduledStopWhileMicrophoneStartsDoesNotReviveLateCapture() async throws {
+        model.applyEchoSchedule(EchoSchedule(enabled: true, weekdays: Array(1...7)))
+        blockNextStart = true; model.agreeAndStart()
+        try await eventually { self.captures.first?.isStartWaiting == true }
+        XCTAssertTrue(model.checkScheduledStop(now: try XCTUnwrap(model.scheduledStopAt)))
+        captures[0].releaseStart()
+        try await eventually { !self.model.isFinishing }
+        XCTAssertFalse(model.isRecording); XCTAssertFalse(model.isListening)
+        XCTAssertEqual(captures[0].stopCalls, 1)
+    }
+
+    func testScheduleCacheIsScopedAndOffOnAnotherAccount() async throws {
+        let plan = EchoSchedule(enabled: true, weekdays: Array(1...7))
+        model.applyEchoSchedule(plan)
+        model.configure(scope: "another-echo-schedule-owner", client: client())
+        XCTAssertFalse(model.echoSchedule.enabled)
+        model.configure(scope: "interruption-test", client: client())
+        XCTAssertEqual(model.echoSchedule, plan)
+        XCTAssertFalse(model.isListening)
     }
     private func client() -> InstantClient {
         InstantClient(baseURL: URL(string: "https://interruption.invalid")!, bearerToken: "test")

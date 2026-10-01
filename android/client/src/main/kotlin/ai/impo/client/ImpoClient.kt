@@ -81,6 +81,13 @@ class ImpoClient(
         }, expected = 202)
     suspend fun accountDeletionStatus(requestId: String): AccountDeletionReceipt = get(listOf("account", "deletions", identifier(requestId)))
     suspend fun notificationPreferences(): NotificationPreferences = get(listOf("notifications", "settings"))
+    suspend fun echoSchedule(): EchoSchedule = get<EchoSchedule>(listOf("echo", "schedule")).also { if (!it.isValid) throw ProtocolException("Invalid Echo schedule") }
+    suspend fun saveEchoSchedule(value: EchoSchedule): EchoSchedule {
+        require(value.isValid)
+        val body = ProtocolJson.encodeToJsonElement(value).jsonObject.toMutableMap()
+        body["revision"] = value.revision?.let(::JsonPrimitive) ?: JsonNull
+        return send<EchoSchedule>("PUT", listOf("echo", "schedule"), JsonObject(body)).also { if (!it.isValid) throw ProtocolException("Invalid Echo schedule") }
+    }
     suspend fun updateNotificationPreference(category: String, enabled: Boolean): NotificationPreferences {
         require(category in setOf("chat", "tasks", "brief"))
         return send("PATCH", listOf("notifications", "settings"), buildJsonObject { put(category, enabled) })

@@ -4,13 +4,15 @@ import type { Database } from '../client.js';
 import { notificationSettings, notificationEvents, notificationDeliveries, pushInstallations, todayBriefs } from '../schema.js';
 import type { Transaction } from './runtime-repository.js';
 import { ServiceError } from '../../errors.js';
-import { defaultNotificationSettings, notificationLifetimeMs, presenceWindowMs, type NotificationCategory, type NotificationSettings, type Registration, type Revocation } from '../../notifications/contract.js';
+import { categories, defaultNotificationSettings, notificationLifetimeMs, presenceWindowMs, type NotificationCategory, type NotificationSettings, type Registration, type Revocation } from '../../notifications/contract.js';
+import { parseEchoSchedule } from '../../echo/schedule.js';
 
 type Query = Database | Transaction;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const missing = () => new ServiceError(404, 'not_found', 'Notification installation not found');
 const conflict = () => new ServiceError(409, 'registration_conflict', 'Notification registration changed; refresh this installation');
-const settingsView = (row?: { preferences: NotificationSettings }): NotificationSettings => row ? { ...defaultNotificationSettings, ...row.preferences } : { ...defaultNotificationSettings };
+const settingsView = (row?: { preferences: NotificationSettings }): NotificationSettings => Object.fromEntries(categories.map(category => [category,
+  typeof row?.preferences[category] === 'boolean' ? row.preferences[category] : defaultNotificationSettings[category]])) as NotificationSettings;
 async function allowed(db: Query, userId: string, category: NotificationCategory, now = new Date()) {
   const [preferences] = await db.select().from(notificationSettings).where(eq(notificationSettings.userId, userId));
   if (!settingsView(preferences)[category]) return false;
@@ -21,12 +23,12 @@ async function allowed(db: Query, userId: string, category: NotificationCategory
 }
 
 /** Called inside the source completion transaction. No historical scan or provider call. */
-export async function enqueueNotification(tx: Transaction, input: { userId: string; sourceKey: string; category: NotificationCategory; targetId: string; failed?: boolean }) {
+export async function enqueueNotification(tx: Transaction, input: { userId: string; sourceKey: string; category: NotificationCategory; targetId: string; failed?: boolean; expiresAt?: Date }) {
   const now = new Date();
   const eligible = await allowed(tx, input.userId, input.category, now);
   const targets = eligible ? await tx.select().from(pushInstallations).where(and(eq(pushInstallations.userId, input.userId), eq(pushInstallations.enabled, true),
     eq(pushInstallations.revoked, false), isNotNull(pushInstallations.token), gt(pushInstallations.updatedAt, new Date(now.getTime() - 30 * 86400_000)))) : [];
-  const [event] = await tx.insert(notificationEvents).values({ ...input, createdAt: now, expiresAt: new Date(now.getTime() + notificationLifetimeMs), status: targets.length ? 'pending' : 'suppressed' })
+  const [event] = await tx.insert(notificationEvents).values({ ...input, createdAt: now, expiresAt: input.expiresAt ?? new Date(now.getTime() + notificationLifetimeMs), status: targets.length ? 'pending' : 'suppressed' })
     .onConflictDoNothing({ target: [notificationEvents.userId, notificationEvents.sourceKey] }).returning();
   if (event && targets.length) await tx.insert(notificationDeliveries).values(targets.map(t => ({ eventId: event.id, installationId: t.id, registrationId: t.registrationId, tokenHash: t.tokenHash! })));
 }
@@ -91,6 +93,11 @@ export class NotificationRepository {
       if (valid && event!.category === 'brief') {
         const [brief] = await tx.select({ id: todayBriefs.id }).from(todayBriefs).where(and(eq(todayBriefs.userId, event!.userId), eq(todayBriefs.id, event!.targetId), eq(todayBriefs.status, 'completed')));
         valid = !!brief;
+      }
+      if (valid && event!.category === 'echo') {
+        const [settings] = await tx.select().from(notificationSettings).where(eq(notificationSettings.userId, event!.userId));
+        try { const schedule = parseEchoSchedule(settings?.preferences.echoSchedule); valid = schedule.enabled && schedule.revision === event!.targetId; }
+        catch { valid = false; }
       }
       if (!valid) { await tx.update(notificationDeliveries).set({ status: 'suppressed', leaseToken: null, leaseUntil: null, updatedAt: new Date() }).where(eq(notificationDeliveries.id, id)); return; }
       const leaseToken = randomUUID();

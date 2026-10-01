@@ -28,6 +28,8 @@ import { notificationActivities, NotificationProvisioner } from './notifications
 import { AccountDeletionRepository } from './db/repositories/account-deletion-repository.js';
 import { accountDeletionActivities, AccountDeletionProvisioner } from './accounts/worker.js';
 import { createAccountCleanup } from './accounts/cleanup.js';
+import { EchoScheduleRepository } from './db/repositories/echo-schedule-repository.js';
+import { echoScheduleActivities, EchoScheduleProvisioner } from './echo/worker.js';
 
 const config = loadConfig('worker');
 if (config.notificationsEnabled && (!config.fcm || !config.temporal)) throw new Error('Notifications require FCM and Temporal configuration');
@@ -58,6 +60,7 @@ try {
     let provisioner: BackgroundProvisioner | undefined;
     let notificationProvisioner: NotificationProvisioner | undefined;
     let deletionProvisioner: AccountDeletionProvisioner | undefined;
+    let echoProvisioner: EchoScheduleProvisioner | undefined;
     if (config.temporal) {
       const users = new BackgroundUserRepository(database.db);
       background = await createBackgroundClient(config.temporal);
@@ -65,6 +68,7 @@ try {
       deletionProvisioner = new AccountDeletionProvisioner(accounts, background.client, config.temporal.taskQueue);
       temporal = await createTemporalWorker(config.temporal, {
         ...accountDeletionActivities(accounts, createAccountCleanup(config, background.client)),
+        ...(config.notificationsEnabled ? echoScheduleActivities(new EchoScheduleRepository(database.db)) : {}),
         ...(config.notificationsEnabled && config.fcm ? notificationActivities(new NotificationRepository(database.db), new FCMSender(config.fcm)) : {}),
         ...createBackgroundActivities(users, config.rebyte ? [
           todayStep(new TodayRepository(database.db, archive, new RebyteGateway(config.rebyte)), new RebyteGateway(config.rebyte), config.rebyte.model),
@@ -74,11 +78,13 @@ try {
       });
       provisioner = new BackgroundProvisioner(users, background);
       if (config.notificationsEnabled) notificationProvisioner = new NotificationProvisioner(new NotificationRepository(database.db), background.client, config.temporal.taskQueue);
+      if (config.notificationsEnabled) echoProvisioner = new EchoScheduleProvisioner(new EchoScheduleRepository(database.db), background.client, config.temporal.taskQueue);
     }
     const loops = [...(temporal ? [temporal.worker.run()] : []),
       ...(provisioner ? [provisioner.run(controller.signal)] : []),
       ...(notificationProvisioner ? [notificationProvisioner.run(controller.signal)] : []),
       ...(deletionProvisioner ? [deletionProvisioner.run(controller.signal)] : []),
+      ...(echoProvisioner ? [echoProvisioner.run(controller.signal)] : []),
       worker.run(controller.signal), ...(listening ? [listening.run(controller.signal)] : [])];
     try { await Promise.all(loops); }
     finally {

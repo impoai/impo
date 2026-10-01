@@ -193,6 +193,7 @@ struct NotificationSettingsView: View {
                     category("Chat replies", .chat)
                     category("Task updates", .tasks)
                     category("Brief", .brief)
+                    category("Echo reminders", .echo)
                 } header: { Text("Notify me about") } footer: { Text("These preferences sync across your devices. Chat and task alerts stay quiet while you're using Impo. Turning off Brief alerts keeps your Brief generation plan.") }
                 Section("On this iPhone") {
                     if permissions.notification == .notDetermined {

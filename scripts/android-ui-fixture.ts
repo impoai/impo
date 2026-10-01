@@ -13,6 +13,7 @@ import { ServiceError } from '../server/src/errors.js';
 import { parseUploadManifest } from '../server/src/listening/audio-upload.js';
 import { parseListeningBatch } from '../server/src/listening/batch-input.js';
 import { parseConfirmation } from '../server/src/accounts/contract.js';
+import { defaultEchoSchedule, parseEchoSchedule, type EchoSchedule } from '../server/src/echo/schedule.js';
 import { TranscriptionError } from '../server/src/listening/transcriber.js';
 import { validateTodaySettings } from '../server/src/db/repositories/today-repository.js';
 import { isDeviceTool, deviceHash, deviceToolNames } from '../server/src/tools/device-tools.js';
@@ -71,6 +72,7 @@ export function createAndroidFixture(
   const settings = new Map<string, Json>();
   const profiles = new Map<string, Json>();
   const notificationPreferences = new Map<string, Json>();
+  const echoSchedules = new Map<string, EchoSchedule>();
   const briefs = new Map<string, Json>();
   const memories = new Map<string, Json>();
   const records = new Map<string, Json>();
@@ -578,10 +580,18 @@ export function createAndroidFixture(
         if (!receipt) throw missing(); return receipt;
       },
     },
+    echoSchedules: {
+      get: async (userId: string) => echoSchedules.get(userId) ?? defaultEchoSchedule(),
+      save: async (userId: string, value: unknown) => {
+        const next = parseEchoSchedule(value), previous = echoSchedules.get(userId) ?? defaultEchoSchedule();
+        if (next.revision !== previous.revision) throw new ServiceError(409, 'echo_schedule_changed', 'Reload your schedule.');
+        const saved = { ...next, revision: randomUUID() }; echoSchedules.set(userId, saved); return saved;
+      },
+    },
     notifications: {
-      settings: async (userId: string) => ({ chat: true, tasks: true, brief: true, ...notificationPreferences.get(userId) }),
+      settings: async (userId: string) => ({ chat: true, tasks: true, brief: true, echo: true, ...notificationPreferences.get(userId) }),
       updateSettings: async (userId: string, patch: Json) => {
-        const saved = { chat: true, tasks: true, brief: true, ...notificationPreferences.get(userId), ...patch };
+        const saved = { chat: true, tasks: true, brief: true, echo: true, ...notificationPreferences.get(userId), ...patch };
         notificationPreferences.set(userId, saved); return saved;
       },
       register: async (_userId: string, _id: string, input: { registrationId: string }) => ({ registrationId: input.registrationId }),

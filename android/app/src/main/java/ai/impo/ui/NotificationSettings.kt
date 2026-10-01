@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
     val push by vm.app.push.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.app.push.refresh() }
-    for ((category, title) in listOf("chat" to "Chat replies", "tasks" to "Task updates", "brief" to "Brief")) {
+    for ((category, title) in listOf("chat" to "Chat replies", "tasks" to "Task updates", "brief" to "Brief", "echo" to "Echo reminders")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(title, Modifier.weight(1f))
             Switch(push.preferences.enabled(category), onCheckedChange = { vm.app.push.set(category, it) }, enabled = push.loaded,

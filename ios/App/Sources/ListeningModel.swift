@@ -42,6 +42,16 @@ final class ListeningModel: NSObject {
         return wifiOnly ? "Wi-Fi only · syncs automatically" : "Wi-Fi and cellular · syncs about every 30 seconds"
     }
     var startedAt: Date?
+    private(set) var echoSchedule = EchoSchedule()
+    private(set) var echoScheduleLoaded = false
+    private(set) var echoScheduleSaving = false
+    private(set) var echoScheduleError: String?
+    private(set) var scheduledStopAt: Date?
+    @ObservationIgnored private var scheduleAnchor: Date?
+    @ObservationIgnored private var scheduleStopTask: Task<Void, Never>?
+    @ObservationIgnored private var scheduleRequest = UUID()
+    @ObservationIgnored private var scheduleRefreshing = false
+    @ObservationIgnored private var lastScheduleRefresh = Date.distantPast
     var notice: String?
     var uploadError: String?
     var loadError: String?
@@ -180,7 +190,13 @@ final class ListeningModel: NSObject {
         historyNewerCursor = nil; historyDays = []; historyCalendarError = nil; historyCalendarLoading = false
         historyOperation = nil; calendarOperation = nil; historyBrowsingDate = nil; historyNavigationID = UUID()
         deletedSegmentIDs = []; retryRequested = []
+        echoSchedule = EchoSchedule(); echoScheduleLoaded = false; echoScheduleSaving = false; echoScheduleError = nil
+        scheduleRequest = UUID(); scheduleRefreshing = false; lastScheduleRefresh = .distantPast
         guard let newScope else { wifiOnly = false; return }
+        if let saved = UserDefaults.standard.data(forKey: "impo.echo.schedule.\(newScope)"),
+           let schedule = try? JSONDecoder().decode(EchoSchedule.self, from: saved), schedule.isValid {
+            echoSchedule = schedule
+        }
         wifiOnly = UserDefaults.standard.bool(forKey: "instant.listening.wifiOnly.\(newScope)")
         locationEnabled = UserDefaults.standard.object(forKey: "impo.echo.location.\(newScope)") as? Bool ?? true
         do {
@@ -224,6 +240,55 @@ final class ListeningModel: NSObject {
         beginListening()
     }
 
+    func refreshEchoSchedule(force: Bool = false) async {
+        guard let client, !echoScheduleSaving, !scheduleRefreshing, force || Date().timeIntervalSince(lastScheduleRefresh) > 60 else { return }
+        let owner = generation, request = UUID(); scheduleRequest = request; scheduleRefreshing = true; lastScheduleRefresh = Date()
+        defer { if scheduleRequest == request { scheduleRefreshing = false } }
+        do {
+            let value = try await client.echoSchedule()
+            guard owner == generation, scheduleRequest == request else { return }
+            applyEchoSchedule(value); echoScheduleLoaded = true; echoScheduleError = nil
+        } catch {
+            guard owner == generation, scheduleRequest == request else { return }
+            echoScheduleError = "Couldn't load your Echo schedule. Your last saved stop time still applies."
+        }
+    }
+
+    func saveEchoSchedule(_ value: EchoSchedule) async throws {
+        guard let client, !echoScheduleSaving else { throw InstantClientError.invalidResponse }
+        let owner = generation; scheduleRequest = UUID(); scheduleRefreshing = false; echoScheduleSaving = true
+        defer { if owner == generation { echoScheduleSaving = false } }
+        let saved = try await client.saveEchoSchedule(value)
+        guard owner == generation else { throw CancellationError() }
+        applyEchoSchedule(saved); echoScheduleLoaded = true; echoScheduleError = nil
+    }
+
+    func applyEchoSchedule(_ value: EchoSchedule) {
+        guard value.isValid else { return }
+        echoSchedule = value
+        if let scope, let encoded = try? JSONEncoder().encode(value) { UserDefaults.standard.set(encoded, forKey: "impo.echo.schedule.\(scope)") }
+        scheduledStopAt = scheduleAnchor.flatMap { value.nextStop(after: $0) }
+        armScheduledStop()
+    }
+
+    private func armScheduledStop() {
+        scheduleStopTask?.cancel(); scheduleStopTask = nil
+        guard isListening, let deadline = scheduledStopAt else { return }
+        if checkScheduledStop() { return }
+        let sessionID = listeningSessionID
+        scheduleStopTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow))) } catch { return }
+            guard let self, self.listeningSessionID == sessionID, self.scheduledStopAt == deadline else { return }
+            if !self.checkScheduledStop() { self.armScheduledStop() } // Wall clock may have changed.
+        }
+    }
+
+    @discardableResult func checkScheduledStop(now: Date = Date()) -> Bool {
+        guard isListening, let deadline = scheduledStopAt, now >= deadline else { return false }
+        stop(reason: "Echo stopped at your scheduled time.")
+        return true
+    }
+
     /// Account deletion discards this owner's queue; ordinary sign-out preserves it.
     func deleteLocalAccountData(scope deletedScope: String) async throws {
         if scope == deletedScope { configure(scope: nil, client: nil) }
@@ -232,7 +297,7 @@ final class ListeningModel: NSObject {
         let storage = try ListeningStore(scope: deletedScope, root: storageRoot)
         await ListeningBackgroundUpload.shared.cancelUploads(directory: storage.directory)
         if FileManager.default.fileExists(atPath: storage.directory.path) { try FileManager.default.removeItem(at: storage.directory) }
-        for prefix in ["instant.listening.wifiOnly.", "instant.listening.consent.", "impo.echo.location.", "impo.echo.locationExplained."] {
+        for prefix in ["instant.listening.wifiOnly.", "instant.listening.consent.", "impo.echo.location.", "impo.echo.locationExplained.", "impo.echo.schedule."] {
             UserDefaults.standard.removeObject(forKey: prefix + deletedScope)
         }
     }
@@ -267,6 +332,7 @@ final class ListeningModel: NSObject {
         guard allowed else { notice = "Microphone access is off. Enable it in iPhone Settings → Impo to start listening."; return }
         let sessionID = UUID(); listeningSessionID = sessionID
         startedAt = Date(); automaticResumeAllowed = true; systemInterruptionActive = false
+        scheduleAnchor = startedAt; scheduledStopAt = scheduleAnchor.flatMap { echoSchedule.nextStop(after: $0) }; armScheduledStop()
         await prepareCapture(sessionID: sessionID, attempt: attempt, resuming: false)
     }
 
@@ -283,6 +349,7 @@ final class ListeningModel: NSObject {
     }
 
     private func beginResume(retryIndex: Int = 0) {
+        if checkScheduledStop() { return }
         guard isListening, !isRecording, !isStarting, let sessionID = listeningSessionID else { return }
         guard !audioSetupTimedOut else { pauseReason = "The microphone isn't responding. Restart Impo to continue."; return }
         automaticResumeAllowed = true
@@ -302,6 +369,7 @@ final class ListeningModel: NSObject {
             await deactivation?.value // Never overlap two engines or finish the old file after reactivation.
             try Task.checkCancellation()
             guard startAttempt == attempt, listeningSessionID == sessionID, let store else { return }
+            if checkScheduledStop() { return }
             let captureToken = UUID(); captureGeneration = captureToken
             var captureStore = store; captureStore.sessionId = sessionID.uuidString.lowercased()
             locationReader.prepare()
@@ -329,6 +397,7 @@ final class ListeningModel: NSObject {
             try await listeningDeadline(preparing)
             // A delayed OS activation must not revive a stopped or interrupted attempt.
             guard startAttempt == attempt, listeningSessionID == sessionID, !Task.isCancelled else { return }
+            if checkScheduledStop() { return }
             preparation = nil
             if !resuming && !isAppActive() { stop(); return }
             let now = Date()
@@ -385,6 +454,7 @@ final class ListeningModel: NSObject {
 
     func resumeOnForeground() {
         log("app.foreground")
+        if checkScheduledStop() { return }
         capture?.setMeterForeground(true)
         guard automaticResumeAllowed else { return }
         // Foregrounding is the fallback for a missing end notification. A known
@@ -424,6 +494,7 @@ final class ListeningModel: NSObject {
     }
 
     func checkCaptureHealth() {
+        if checkScheduledStop() { return }
         locationStatus = locationReader.status
         diagnosticHeartbeat()
         if isRecording && capture?.isReceivingAudio == false { audioInputChanged() }
@@ -483,6 +554,7 @@ final class ListeningModel: NSObject {
         log("capture.stop", ["reason":reason ?? "user"])
         let hadSession = isListening || isStarting || capture != nil
         listeningSessionID = nil; automaticResumeAllowed = false; systemInterruptionActive = false
+        scheduleStopTask?.cancel(); scheduleStopTask = nil; scheduleAnchor = nil; scheduledStopAt = nil
         haltCapture(deactivateSession: true, syncAfter: true)
         timer?.invalidate(); timer = nil
         startedAt = nil; pausedAt = nil; pauseReason = nil

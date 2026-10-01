@@ -2,3 +2,4 @@ export { userListeningWorkflow, batchListeningWorkflow } from '../listening/temp
 export { userBackgroundWorkflow } from '../background/workflow.js';
 export { notificationWorkflow } from '../notifications/workflow.js';
 export { accountDeletionWorkflow } from '../accounts/workflow.js';
+export { echoScheduleWorkflow } from '../echo/workflow.js';

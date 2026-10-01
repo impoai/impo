@@ -1,9 +1,9 @@
 import { ServiceError } from '../errors.js';
 
-export const categories = ['chat', 'tasks', 'brief'] as const;
+export const categories = ['chat', 'tasks', 'brief', 'echo'] as const;
 export type NotificationCategory = typeof categories[number];
 export type NotificationSettings = Record<NotificationCategory, boolean>;
-export const defaultNotificationSettings: NotificationSettings = { chat: true, tasks: true, brief: true };
+export const defaultNotificationSettings: NotificationSettings = { chat: true, tasks: true, brief: true, echo: true };
 export const presenceWindowMs = 60_000;
 export const notificationLifetimeMs = 60 * 60_000;
 export type Registration = { installationSecret: string; revision: number; registrationId: string; platform: 'ios' | 'android'; token: string | null; enabled: boolean; foreground: boolean };
@@ -26,6 +26,7 @@ export function settingsInput(value: Record<string, unknown>): Partial<Notificat
   return value;
 }
 export function notificationCopy(category: NotificationCategory, failed: boolean) {
+  if (category === 'echo') return { title: 'Time for Echo', body: "Open Echo when you're ready to record." };
   if (category === 'brief') return { title: 'You have a brief', body: 'Tap to read it.' };
   if (category === 'tasks') return failed
     ? { title: "Your task couldn't finish", body: 'Tap to open the task.' }

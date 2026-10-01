@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import ai.impo.client.ImpoClient
 import java.io.File
+import java.time.Instant
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +24,7 @@ data class NativeAccount(val accountId: String, val api: ImpoClient) {
 }
 data class EchoRecordingState(
     val status: String = "stopped", val level: Float = 0f, val speech: Boolean = false,
-    val message: String? = null, val pendingBatches: Int = 0,
+    val message: String? = null, val pendingBatches: Int = 0, val scheduledStopAt: Instant? = null,
 ) { val isRecording get() = status == "recording"; val isPaused get() = status == "paused" }
 
 /** Recovery may finish after recording starts, or after the same account signs in again. */

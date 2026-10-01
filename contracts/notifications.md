@@ -8,6 +8,7 @@ APNs for iOS. Provider private keys belong only in the server secret store.
 | `chat` | A main Chat turn completes or fails | Chat replies | Main Chat |
 | `tasks` | A Task turn completes or fails | Task updates | That Task |
 | `brief` | A new Brief edition completes | Brief | That edition |
+| `echo` | A saved weekly reminder becomes due | Echo reminders | Echo timeline |
 
 Streaming chunks, tool progress, cancellation, failed Brief generation and Echo
 recording do not create remote alerts. Each source event has a unique key and is
@@ -16,17 +17,17 @@ not backfilled. Brief notification preference does not change its generation pla
 
 Preferences are one extensible JSON object per authenticated account in PostgreSQL
 (`notification_settings.preferences`) and sync across devices. Patches merge only
-the selected keys, preserving other categories. All three
+the selected keys, preserving other categories and the nested Echo plan. All four
 default to enabled; displaying an alert additionally requires native OS permission
 and an enabled, registered installation. System notification settings remain final.
 
-Scheduled Task updates and user-scheduled Echo reminders are future categories.
-They are not exposed as working settings until those features exist. Both the
+Recurring Task schedules remain future work. [Echo schedules](echo-schedule.md)
+use a dedicated calendar workflow and this same outbox. Both the
 hourly background producer (Brief) and ordinary Agent completion producers feed
 the same outbox and preference evaluation; notification delivery never generates
 an Agent response or runs an independent content-generation schedule.
 
-Chat and Task alerts are suppressed for the whole account when any installation
+Chat, Task and Echo reminder alerts are suppressed for the whole account when any installation
 has reported foreground presence within 60 seconds. Clients refresh presence every
 20 seconds and report background immediately. The server checks both when the event
 is created and immediately before sending. Suppressed events are not sent later.
@@ -36,7 +37,7 @@ can leave foreground presence stale for up to 60 seconds. A notification already
 handed to FCM/APNs cannot be recalled by a subsequent presence/preference update.
 
 Delivery uses a PostgreSQL outbox and a Temporal workflow per event. Retries expire
-after one hour and recheck preferences, ownership and token validity. Invalid FCM
+after one hour (fifteen minutes for Echo reminders) and recheck preferences, ownership and token validity. Invalid FCM
 tokens are disabled. A stable event ID is used for collapse/display deduplication;
 FCM has no exactly-once send operation, so an ambiguous network response can cause
 a retry. A provider acceptance receipt is not proof of display on a device.
@@ -60,6 +61,7 @@ and clears local notifications; in-flight OS alerts can briefly survive revocati
 | Chat request failed | Couldn't complete your request | Tap to return to the chat. |
 | Task completed | Your task is complete | Tap to view the result. |
 | Task failed | Your task couldn't finish | Tap to open the task. |
+| Echo reminder | Time for Echo | Open Echo when you're ready to record. |
 
 Use direct, calm wording without repeating the app name or implying that a
 failure needs unspecified user action. Completion means a finished turn; a
@@ -69,7 +71,7 @@ other's destination when their integer hash codes collide.
 
 ## Authenticated API
 
-- `GET /api/v1/notifications/settings` returns `{chat, tasks, brief}`.
+- `GET /api/v1/notifications/settings` returns `{chat, tasks, brief, echo}`.
 - `PATCH /api/v1/notifications/settings` accepts any nonempty subset of these boolean fields.
 - `PUT /api/v1/notifications/installations/:installationId` accepts
   `{installationSecret, revision, registrationId, platform, token, enabled, foreground}`.

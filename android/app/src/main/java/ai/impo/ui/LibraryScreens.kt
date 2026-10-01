@@ -108,10 +108,12 @@ import java.time.LocalDate
     }
 }
 
-@Composable fun MemoriesScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit) {
+@Composable fun MemoriesScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit, echoReminderEvent: String? = null) {
     var about by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(echoReminderEvent) { if (echoReminderEvent != null) about = false }
     Column(Modifier.fillMaxSize()) {
         PageHeader("Memories", "The little things, kept close.", actions = {
+            if (!about) IconButton(onClick = { go("echo-schedule") }, modifier = Modifier.testTag("echo.schedule.open")) { Icon(Icons.Outlined.Schedule, "Echo schedule") }
             IconButton(onClick = { if (about) vm.refreshMemories() else vm.refreshEcho() }) { Icon(Icons.Outlined.Refresh, "Refresh memories") }
         })
         Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -188,6 +190,7 @@ private data class TimelineRow(val key: String, val date: String? = null, val re
     }
     if (recording.isRecording || recording.isPaused) PaperCard(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
         Text(when { recording.isPaused -> "Take your time. Echo is paused."; recording.speech -> "Listening to your words…"; else -> "Ready when you are." }, color = Forest)
+        recording.scheduledStopAt?.let { stop -> Text("Stops ${java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d · HH:mm z").withZone(java.time.ZoneId.systemDefault()).format(stop)}", color = Muted, style = MaterialTheme.typography.bodySmall) }
         LinearProgressIndicator(progress = { recording.level.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = Forest, trackColor = Sage)
     }
     if (recording.pendingBatches > 0) Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -44,7 +44,7 @@ struct InstantApp: App {
                 push.configure(scope: model.listeningScope, client: model.listeningClient())
                 push.setForeground(scenePhase == .active)
                 while !Task.isCancelled {
-                    if scenePhase == .active { await push.refresh(); routePush() }
+                    if scenePhase == .active { await push.refresh(); routePush(); await listening.refreshEchoSchedule() }
                     try? await Task.sleep(for: .seconds(20))
                 }
             }
@@ -119,6 +119,7 @@ struct InstantApp: App {
             tasks.configure(scope: model.listeningScope)
             model.selectedTab = 2; tasks.route = .detail(route.targetId)
         case .brief: model.selectedTab = 1; model.notificationBriefID = route.targetId
+        case .echo: model.selectedTab = 3; model.transcriptNavigationID = UUID()
         }
         push.pendingRoute = nil
     }

@@ -1,14 +1,21 @@
 import Foundation
 
-public enum NotificationCategory: String, Codable, Sendable, CaseIterable { case chat, tasks, brief }
+public enum NotificationCategory: String, Codable, Sendable, CaseIterable { case chat, tasks, brief, echo }
 public struct NotificationPreferences: Codable, Equatable, Sendable {
     public var chat: Bool
     public var tasks: Bool
     public var brief: Bool
-    public init(chat: Bool = true, tasks: Bool = true, brief: Bool = true) { self.chat = chat; self.tasks = tasks; self.brief = brief }
+    public var echo: Bool
+    public init(chat: Bool = true, tasks: Bool = true, brief: Bool = true, echo: Bool = true) { self.chat = chat; self.tasks = tasks; self.brief = brief; self.echo = echo }
+    enum CodingKeys: String, CodingKey { case chat, tasks, brief, echo }
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        chat = try values.decode(Bool.self, forKey: .chat); tasks = try values.decode(Bool.self, forKey: .tasks); brief = try values.decode(Bool.self, forKey: .brief)
+        echo = try values.decodeIfPresent(Bool.self, forKey: .echo) ?? true
+    }
     public subscript(_ category: NotificationCategory) -> Bool {
-        get { switch category { case .chat: chat; case .tasks: tasks; case .brief: brief } }
-        set { switch category { case .chat: chat = newValue; case .tasks: tasks = newValue; case .brief: brief = newValue } }
+        get { switch category { case .chat: chat; case .tasks: tasks; case .brief: brief; case .echo: echo } }
+        set { switch category { case .chat: chat = newValue; case .tasks: tasks = newValue; case .brief: brief = newValue; case .echo: echo = newValue } }
     }
 }
 public struct PushRegistrationReceipt: Decodable, Sendable { public let registrationId: String }

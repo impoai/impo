@@ -5,7 +5,7 @@ import type { NotificationCategory, NotificationSettings } from '../../notificat
 
 export const notificationSettings = pgTable('notification_settings', {
   userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
-  preferences: jsonb('preferences').$type<NotificationSettings & Record<string, unknown>>().notNull().default(sql`'{"chat":true,"tasks":true,"brief":true}'::jsonb`),
+  preferences: jsonb('preferences').$type<NotificationSettings & Record<string, unknown>>().notNull().default(sql`'{"chat":true,"tasks":true,"brief":true,"echo":true}'::jsonb`),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [check('notification_settings_object', sql`jsonb_typeof(${t.preferences}) = 'object'`)]);
 export const pushInstallations = pgTable('push_installations', {
@@ -30,7 +30,7 @@ export const notificationEvents = pgTable('notification_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
 }, t => [unique('notification_events_source').on(t.userId, t.sourceKey), index('notification_events_pending').on(t.status, t.scheduledAt),
-  check('notification_events_category', sql`${t.category} IN ('chat','tasks','brief')`),
+  check('notification_events_category_v2', sql`${t.category} IN ('chat','tasks','brief','echo')`),
   check('notification_events_status', sql`${t.status} IN ('pending','ready','done','suppressed')`)]);
 export const notificationDeliveries = pgTable('notification_deliveries', {
   id: uuid('id').primaryKey().defaultRandom(), eventId: uuid('event_id').notNull().references(() => notificationEvents.id, { onDelete: 'cascade' }),

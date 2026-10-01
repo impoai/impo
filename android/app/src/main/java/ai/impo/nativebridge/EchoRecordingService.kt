@@ -23,6 +23,9 @@ class EchoRecordingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val transition = Mutex()
     private var capture: Job? = null
+    private val deadline = EchoStopDeadline()
+    private var stopTimer: Job? = null
+    private var closing = false
     private var owner: NativeAccount? = null
     private var streamId = UUID.randomUUID().toString()
     private var sessionId = UUID.randomUUID().toString()
@@ -41,6 +44,7 @@ class EchoRecordingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        if (closing) return START_NOT_STICKY
         val commandAccount = NativeBridge.account()
         if (action in setOf(ACTION_START, ACTION_RESUME, ACTION_PAUSE, ACTION_STOP)) {
             val current = commandAccount
@@ -84,6 +88,7 @@ class EchoRecordingService : Service() {
                     stopSelf(); return START_NOT_STICKY
                 }
                 scope.launch { transition.withLock {
+                    if (closing) return@withLock
                     if (NativeBridge.account() !== account || owner !== account) { checkAccount(); return@withLock }
                     if (VoiceMicrophone.inUse.value) {
                         NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(message = "Finish voice input before starting Echo.")
@@ -91,11 +96,17 @@ class EchoRecordingService : Service() {
                         return@withLock
                     }
                     if (capture?.isActive == true) return@withLock
+                    val saved = (application as ai.impo.ImpoApplication).settings.echoSchedule(account.accountId) ?: ai.impo.client.EchoSchedule()
+                    if (NativeBridge.account() !== account || owner !== account) { checkAccount(); return@withLock }
+                    deadline.start(saved, Instant.now())
+                    if (deadline.expired()) { finishRecording(account, scheduled = true); return@withLock }
+                    armStopTimer(account)
                     NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "recording", message = null)
                     capture = scope.launch(Dispatchers.IO) { record(account) }
                 } }
             }
             ACTION_PAUSE -> scope.launch { transition.withLock {
+                if (closing) return@withLock
                 if (NativeBridge.account() !== commandAccount || owner !== commandAccount) { checkAccount(); return@withLock }
                 val previous = capture; stopCapture(); previous?.join(); capture = null
                 if (NativeBridge.account() !== commandAccount) { checkAccount(); return@withLock }
@@ -104,10 +115,7 @@ class EchoRecordingService : Service() {
             } }
             ACTION_STOP -> scope.launch { transition.withLock {
                 if (NativeBridge.account() !== commandAccount || owner !== commandAccount) { checkAccount(); return@withLock }
-                val previous = capture; stopCapture(); previous?.join(); capture = null
-                if (NativeBridge.account() !== commandAccount) { checkAccount(); return@withLock }
-                NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "stopped", level = 0f, speech = false)
-                stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                finishRecording(commandAccount, scheduled = false)
             } }
             ACTION_ACCOUNT_CHANGED -> {
                 checkAccount()
@@ -154,6 +162,7 @@ class EchoRecordingService : Service() {
                 currentCoroutineContext().ensureActive()
                 check(NativeBridge.account() === account && owner === account) { "Recording account changed" }
                 check(!VoiceMicrophone.inUse.value) { "Finish voice input before starting Echo." }
+                if (deadline.expired()) { requestScheduledStop(account); throw CancellationException("Scheduled stop") }
                 initializedRecorder.startRecording()
             }
             check(audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone is unavailable" }
@@ -169,12 +178,14 @@ class EchoRecordingService : Service() {
             var count = 0
             var levelFrame = 0
             while (currentCoroutineContext().isActive && NativeBridge.account() === account) {
+                if (deadline.expired()) { requestScheduledStop(account); break }
                 if (android.os.SystemClock.elapsedRealtime() - renewedAt >= 5 * 60_000L || !wakeLock.isHeld) {
                     wakeLock.acquire(10 * 60_000L); renewedAt = android.os.SystemClock.elapsedRealtime()
                 }
                 check(hasMicrophonePermission()) { "Microphone permission was removed" }
                 val read = audio.read(frame, count, frame.size - count, AudioRecord.READ_BLOCKING)
                 if (NativeBridge.account() !== account || !currentCoroutineContext().isActive) break
+                if (deadline.expired()) { requestScheduledStop(account); break }
                 check(read > 0) { "Microphone was interrupted. Tap Resume to continue." }
                 count += read
                 if (count < frame.size) continue
@@ -210,6 +221,34 @@ class EchoRecordingService : Service() {
     }
 
     private fun stopCapture() { capture?.cancel(); runCatching { recorder?.stop() } }
+    private suspend fun finishRecording(account: NativeAccount?, scheduled: Boolean) {
+        closing = true
+        stopTimer?.cancel(); stopTimer = null
+        val previous = capture; stopCapture(); previous?.join(); capture = null
+        deadline.clear()
+        if (NativeBridge.account() !== account) { checkAccount(); return }
+        NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(status = "stopped", level = 0f, speech = false,
+            scheduledStopAt = null, message = if (scheduled) "Echo stopped at your scheduled time." else null)
+        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+    }
+    private fun requestScheduledStop(account: NativeAccount) {
+        scope.launch { transition.withLock {
+            if (owner === account && NativeBridge.account() === account && deadline.expired()) finishRecording(account, scheduled = true)
+        } }
+    }
+    private fun armStopTimer(account: NativeAccount) {
+        stopTimer?.cancel()
+        NativeBridge.mutableRecording.value = NativeBridge.recording.value.copy(scheduledStopAt = deadline.stopAt)
+        if (deadline.stopAt == null) return
+        stopTimer = scope.launch {
+            while (isActive && owner === account && NativeBridge.account() === account) {
+                val stop = deadline.stopAt ?: return@launch
+                val remaining = java.time.Duration.between(Instant.now(), stop).toMillis()
+                if (remaining <= 0) { requestScheduledStop(account); return@launch }
+                delay(minOf(remaining, 30_000))
+            }
+        }
+    }
     private fun hasMicrophonePermission() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun notification(paused: Boolean): Notification {
@@ -262,6 +301,15 @@ class EchoRecordingService : Service() {
             }
         }
         internal fun accountChanged() { activeService?.get()?.let { service -> service.scope.launch { service.checkAccount() } } }
+        internal fun scheduleChanged(accountId: String, schedule: ai.impo.client.EchoSchedule) {
+            val service = activeService?.get() ?: return
+            service.scope.launch {
+                val owner = service.owner ?: return@launch
+                if (owner.accountId != accountId || NativeBridge.account() !== owner) return@launch
+                service.deadline.update(schedule)
+                service.armStopTimer(owner)
+            }
+        }
         internal fun control(action: String): Boolean {
             val service = activeService?.get() ?: return false
             val token = NativeBridge.account()?.captureSession?.token

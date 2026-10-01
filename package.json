@@ -47,6 +47,7 @@
     "test:background": "node scripts/test-db.mjs --background",
     "test:today": "node scripts/test-db.mjs --today",
     "test:memory": "node scripts/test-db.mjs --memory",
+    "test:echo-schedule": "node scripts/test-db.mjs --echo-schedule",
     "test:notifications": "node scripts/test-db.mjs --notifications",
     "check:secrets": "node scripts/check-secrets.mjs",
     "test:accounts": "node scripts/test-db.mjs --accounts"

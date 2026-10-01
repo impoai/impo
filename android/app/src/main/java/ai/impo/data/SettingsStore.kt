@@ -53,10 +53,17 @@ class SettingsStore(private val context: Context) : ProfilePreferences {
         it[deletionKey] = ProtocolJson.encodeToString(value)
         it.remove(pendingDeletionKey)
         it[deletedKey] = it[deletedKey].orEmpty() + value.accountId
-        it.remove(key(value.accountId)); it.remove(legacyKey(value.accountId))
+        it.remove(key(value.accountId)); it.remove(legacyKey(value.accountId)); it.remove(echoKey(value.accountId))
     } }
     private fun key(account: String) = stringPreferencesKey("account_profile_${accountScope(account)}")
     private fun legacyKey(account: String) = stringPreferencesKey("profile_${accountScope(account)}")
+    private fun echoKey(account: String) = stringPreferencesKey("echo_schedule_${accountScope(account)}")
+    suspend fun echoSchedule(account: String): ai.impo.client.EchoSchedule? = context.settingsDataStore.data.first()[echoKey(account)]?.let {
+        runCatching { ProtocolJson.decodeFromString<ai.impo.client.EchoSchedule>(it) }.getOrNull()?.takeIf { it.isValid }
+    }
+    suspend fun saveEchoSchedule(account: String, value: ai.impo.client.EchoSchedule) { context.settingsDataStore.edit {
+        if (account !in it[deletedKey].orEmpty()) it[echoKey(account)] = ProtocolJson.encodeToString(value)
+    } }
     fun observe(account: String): Flow<UserSettings> = context.settingsDataStore.data.map { values ->
         decodeProfileCache(values[key(account)], values[legacyKey(account)]).settings
     }

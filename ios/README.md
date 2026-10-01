@@ -18,3 +18,13 @@ From the repository root, run `npm test` for host verification or
 `npm run test:ios` for Swift protocol tests on a temporary iOS Simulator.
 The Xcode scheme and Swift package retain their existing `Instant` and
 `InstantClient` identifiers; the product name is Impo.
+
+## Echo schedules
+
+Settings → Echo schedule and the Echo timeline clock button edit the account
+weekly plan shared with Android. Start reminders only open Echo. User action
+and microphone permission are still required to record. An optional native
+automatic stop uses the original session start across audio interruptions and
+checks the deadline before resuming or accepting a late microphone activation.
+The saved account plan works offline; other-device edits apply after the next
+foreground sync. See [the shared contract](../contracts/echo-schedule.md).
