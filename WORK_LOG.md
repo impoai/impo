@@ -114,3 +114,10 @@
 - Added iOS/Android Settings deletion with an irreversible warning and exact `DELETE` confirmation, persisted receipts, lost-response recovery, signout and account-scoped queued audio/message cleanup.
 - Added owned PostgreSQL deletion, old-session fencing, durable Temporal cleanup/retries, second sweep, and server-only Apple authorization revocation with the documented manual fallback. Added native AI-processing consent and an iOS privacy manifest; diagnostics transmit elapsed duration instead of raw boot time.
 - Validation: server typecheck; server unit suite (94 passed); account PostgreSQL/real Temporal integration suite (6 passed); Swift package suite (58 tests, 10 existing skips); iOS native/UI confirmation and isolation checks (6 passed); final iOS simulator build; Android app/client suites including deletion receipt and outbox ownership (one existing fixture-only test skipped). Physical Apple OAuth and Android device deletion remain unverified.
+
+## 2026-10-01 — App Store listing and screenshot preparation
+
+- Saved App Store Connect 1.0 English metadata, slogan, categories, privacy/support URLs, age answers and review notes using the Apple API. Published the App Privacy questionnaire with 16 disclosed data types, linked to the user and not used for tracking.
+- Captured real native screens with synthetic content and composed six 1320 × 2868 branded screenshots; all six uploaded assets reached COMPLETE. Added versioned artwork, renderer, metadata and review-readiness notes under `ios/AppStore`.
+- Published privacy, terms and support updates at impo.ai; verified the live deletion and AI-processing copy. Account deletion is committed separately as `9073c14`. Merged iOS build, Android app/client tests and server typecheck passed while preserving concurrent attachment work.
+- No App Store build was selected or submitted. Dedicated reviewer access and a final 1.0 candidate with physical-device Apple deletion validation remain pending.

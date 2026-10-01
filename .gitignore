@@ -58,3 +58,7 @@ google-services*.json
 
 # Wrangler local state
 .wrangler/
+
+# Reviewed App Store artwork is a versioned product asset.
+!ios/AppStore/screenshots/
+!ios/AppStore/screenshots/**

@@ -30,7 +30,7 @@
         <ul>
           <li>Every data connection (Health, Calendar, Gmail and other apps) is optional and off until you turn it on.</li>
           <li>Listening starts only when you tap Listen and grant microphone access. It continues in the background until you stop it or recording is interrupted.</li>
-          <li>Impo uses connected data and apps only to carry out a request you make, not in the background.</li>
+          <li>Impo accesses connected services when needed for a request you make. Saved conversation context, tasks and Echo transcripts may also be processed in background Brief and memory jobs.</li>
           <li>We never sell your data, never use it for advertising, and never use it to train AI models.</li>
           <li>Health data is used only to answer your questions. It is never used for advertising, marketing or data mining, and never shared with data brokers.</li>
           <li>You can ask us to delete your account and all associated data at any time.</li>
@@ -79,9 +79,12 @@
       <h3>Device and request information</h3>
       <p>To answer questions about "today" or "this week" correctly, each request includes your device's current date and time zone. We also register your device with our servers (a device identifier and which on-device features, such as Health or Calendar, are available and enabled) so the right device can answer tool requests.</p>
 
+      <h3>Notifications</h3>
+      <p>If you allow notifications, Impo registers an installation identifier, platform and push token with your signed-in account. We store your Chat, Task and Brief notification preferences, delivery status, and recent foreground activity so we can deliver relevant updates and avoid interrupting you while you are using the app. Google Firebase Cloud Messaging delivers notifications to Android and, through Apple Push Notification service, to iPhone. Notification text is generic and does not contain conversation or transcript excerpts. You can change each category in Impo Settings and revoke notification permission in your device settings. Signing out revokes that installation's account registration.</p>
+
       <h3>Brief, city and language</h3>
       <p>Brief uses recent saved messages, completed Echo transcripts and tasks to generate personal briefs in scheduled background runs. We store your device language and time zone to choose the language and local timing of these briefs.</p>
-      <p>After setup, Impo asks to use location while you use the app. If allowed, it periodically refreshes a city-level snapshot in the foreground. Only city, country and update time are sent to Impo and its AI service; precise coordinates are not sent to Impo, and this Brief city refresh runs only in the foreground. Echo has its own recording-time location setting described above. Device location snapshots older than 24 hours are not used as current context. If access is denied, you can choose a city manually; that choice remains until you change or remove it or enable automatic location. It does not prove your current physical location. Notification permission is controlled separately in iPhone Settings.</p>
+      <p>After setup, Impo asks to use location while you use the app. If allowed, it periodically refreshes a city-level snapshot in the foreground. Only city, country and update time are sent to Impo and its AI service; precise coordinates are not sent to Impo, and this Brief city refresh runs only in the foreground. Echo has its own recording-time location setting described above. Device location snapshots older than 24 hours are not used as current context. If access is denied, you can choose a city manually; that choice remains until you change or remove it or enable automatic location. It does not prove your current physical location. Notification categories are controlled separately in Impo Settings, alongside the system permission in your device settings.</p>
 
       <h3>Your assistant profile</h3>
       <p>We store your assistant's name, appearance selection and onboarding completion with your account, so setup can be restored after sign-in on another device. A custom assistant photo and preview notes and tasks stay on the device where you chose or created them.</p>
@@ -146,7 +149,9 @@
         <li><strong>Clerk</strong> — sign-in and account management.</li>
         <li><strong>Amazon Web Services</strong> — hosting of our servers and database.</li>
         <li><strong>Rebyte</strong> and the AI model providers it uses — generating answers to your requests.</li>
-        <li><strong>Google Gemini</strong> — converting audio you record with Listening into text.</li>
+        <li><strong>Google Gemini</strong> — transcribing voice input and Echo audio, and creating numerical representations of memory text for relevant retrieval.</li>
+        <li><strong>Google Firebase Cloud Messaging and Apple Push Notification service</strong> — delivering notifications to registered devices.</li>
+        <li><strong>Turso</strong> — storing account-scoped memories used by your assistant.</li>
         <li><strong>Composio</strong> — managing Gmail and other app connections, if you enable them.</li>
         <li><strong>Cloudflare</strong> — delivery and security of impo.ai.</li>
       </ul>
@@ -168,7 +173,11 @@
         <li><strong>Health and Calendar:</strong> turn off access in Impo or in your device's privacy settings.</li>
         <li><strong>Gmail and other apps:</strong> disconnect them in Impo or remove access in the service's account settings.</li>
       </ul>
-      <p><strong>To delete your account and data</strong>, email <a href="mailto:cj@impo.ai">cj@impo.ai</a> from the address on your account. We will delete your account, your conversation history (including any Health, Calendar and email data stored with it), your Listening audio and transcripts, your connected-account links, and the related records held by our service providers, within 30 days, and confirm when it is done. Data in backups is removed as those backups expire. Deletion is permanent and cannot be undone.</p>
+      <p><strong>To delete your account and data</strong>, open Settings → Delete account. In versions with in-app deletion, review the warning, tap Continue, then type DELETE and confirm. This is permanent and cannot be undone. Your account closes immediately after the server accepts the request, and the app signs you out and removes that account’s pending messages and Echo audio on the device making the request.</p>
+      <p>Deletion covers your conversations, tasks, Briefs, memories, Echo audio and transcripts, connected-account links, and related records held by our service providers. Background cleanup normally finishes within 24 hours. A second cleanup pass catches uploads already in progress; service outages may delay completion while we retry. The saved deletion receipt lets you check completion after signing out. Removing Impo data does not delete the original data in your connected apps.</p>
+      <p>We revoke available Sign in with Apple authorization as part of deletion. If Apple authorization cannot be removed automatically, the app explains how to remove Impo in your Apple Account’s Sign in with Apple settings; this does not delay deletion of your Impo account.</p>
+      <p>We retain a minimal deletion receipt, a hashed login identifier and technical identifiers to prevent old sessions from recreating deleted data and to confirm completion; these records contain no conversation or recording content. Operational logs expire after 30 days. Copies in backups are removed as those backups expire, and data required by law may be retained only for that purpose.</p>
+      <p>If your older app version opens an email request, or you cannot access your account, email <a href="mailto:cj@impo.ai">cj@impo.ai</a> from your account address. We verify ownership, process manual deletion requests within 30 days, and confirm when complete.</p>
 
       <h2 id="security">10. Security</h2>
       <p>We protect your information with measures including encryption in transit (TLS) between the app, our servers and our database, restricted access to production systems, and keeping third-party credentials on our servers rather than on your device. No method of transmission or storage is completely secure, but we work to protect your information and will notify you of a breach where required by law.</p>
