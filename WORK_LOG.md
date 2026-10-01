@@ -204,3 +204,8 @@
 - Verified archive/export signatures, production API/Clerk, Apple sign-in, production APNs/Firebase, privacy manifest and iOS 18 compatibility. IPA SHA-256: `a48d11af07389bc55fdcc0f94454ec43b0c833c3568a38fedb47a068d1c4059e`, 39,336,379 bytes.
 - Published Android **0.1.7 (8)** at `https://impo.ai/android.apk` with the original signing certificate. Both immutable and permanent downloads verified all 132,788,583 bytes and SHA-256 `6e7f8dfbe45b73ec0f588bed5bbaa7502d982f8f93c2ef112924c08e2d3a5b25`. The exact signed APK installed and cold-launched on the API 35 emulator; public upgrade metadata points to build 8.
 - No server release was needed. Physical-device microphone and haptic feel remain unverified. Private evidence: `.local/voice-haptics-20261001/`, `.local/release51/`, and `.local/android/releases/0.1.7-8/` (untracked).
+
+## 2026-10-01 — Temporal credential exposure audit
+
+- Verified the live API `instant-api:48` and Worker `instant-worker:47` inject Temporal address, namespace and API key through AWS Secrets Manager references; no Temporal values are configured as plaintext ECS environment entries. Application code reads environment variables and the public example leaves all three values empty.
+- Fetched remote refs and passed the public-file inventory and Gitleaks scan across all 57 reachable commits. Local environment files and release evidence remain ignored. The existing push/PR secret-scan workflow checks the complete reachable history. No credential values were retrieved from Secrets Manager or printed during the audit; no production changes were made.
