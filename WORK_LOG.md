@@ -121,3 +121,9 @@
 - Captured real native screens with synthetic content and composed six 1320 × 2868 branded screenshots; all six uploaded assets reached COMPLETE. Added versioned artwork, renderer, metadata and review-readiness notes under `ios/AppStore`.
 - Published privacy, terms and support updates at impo.ai; verified the live deletion and AI-processing copy. Account deletion is committed separately as `9073c14`. Merged iOS build, Android app/client tests and server typecheck passed while preserving concurrent attachment work.
 - No App Store build was selected or submitted. Dedicated reviewer access and a final 1.0 candidate with physical-device Apple deletion validation remain pending.
+
+## 2026-10-01 — Account deletion production release
+
+- Applied only the new Drizzle `account_deletions` table/index and deployed source `9073c14` to `instant-worker:44` and `instant-api:46`, image `sha256:d03bcc530c74f8342c036b8bb9921049790e22a6c4f56d4f2c633a6140a90451`. Both services reached COMPLETED with one running task each. The existing Apple sign-in key is injected into the API from Secrets Manager.
+- Production synthetic-account canary passed PostgreSQL deletion/session fencing, S3 ownership isolation, Turso and Rebyte removal, Temporal asynchronous-history cleanup/retry, and receipt completion with the manifest scrubbed. Public health/readiness and negative-auth checks passed. No personal account was deleted.
+- Made Android deletion disclosures scrollable when the keyboard or larger type reduces available space; Android tests passed. Native code awaits the next mobile build; no new TestFlight build was uploaded or selected for review.

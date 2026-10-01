@@ -1,6 +1,8 @@
 package ai.impo.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -23,7 +25,7 @@ import kotlinx.coroutines.launch
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = { if (!busy) dismiss() },
         title = { Text(if (challenge == null) "Delete your account?" else "One final confirmation") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("This permanently deletes your conversations, tasks, Briefs, memories and Echo recordings, including audio waiting to upload on this device. Your connected apps will be disconnected.")
             Text("You will be signed out immediately. Cloud cleanup normally finishes within 24 hours. This cannot be undone. Data in your connected apps stays in those apps.")
             if (challenge != null) OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Type DELETE to confirm") },
@@ -62,7 +64,7 @@ import kotlinx.coroutines.launch
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = { dismissedId = receipt.receipt.requestId },
         title = { Text(if (status == "deleted") "Your account is deleted." else "Your account is closed.") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (status == "deleted") "Your account and its cloud cleanup are complete."
                  else "You have been signed out. Your account data is unavailable, and cloud cleanup is running. It normally finishes within 24 hours. Check here for confirmation.")
             if (receipt.receipt.appleManualRevocationRequired) Text("Apple authorization could not be removed automatically. Remove Impo under Sign in with Apple in your Apple Account settings. This does not delay your Impo account deletion.")
