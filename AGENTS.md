@@ -1,6 +1,7 @@
 # Impo contributor instructions
 
 - Keep product copy and documentation in English.
+- Write every commit message and all code, pull request, and review comments entirely in English. Do not include Chinese or any other language.
 - Keep a short dated entry in `WORK_LOG.md` for completed work and validation.
 - Read `README.md`, `docs/architecture.md`, and the relevant platform guide.
 - Keep platform boundaries: `ios/`, `android/`, `server/`, `contracts/`, `docs/`, `scripts/`.

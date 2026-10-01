@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -42,6 +43,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.HapticFeedbackConstantsCompat
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -80,6 +83,7 @@ import ai.impo.nativebridge.*
     val latestCanRecord by rememberUpdatedState(allowVoice && !voicePending)
     val latestClip by rememberUpdatedState(onVoiceClip)
     val latestBusy by rememberUpdatedState(busy)
+    val latestHapticView by rememberUpdatedState(LocalView.current)
     val factory = recorderFactory ?: remember(context) { AndroidVoiceRecorderFactory(context.applicationContext) }
     val controller = remember(sessionKey, factory) {
         VoiceInputController(scope, factory, startBlocked = {
@@ -93,6 +97,11 @@ import ai.impo.nativebridge.*
             }
         }, onClip = { clip ->
             if (latestCurrent() && latestCanRecord && latestValue.isEmpty()) latestClip(clip)
+        }, onCancelBoundaryChanged = { armed ->
+            // Native compatibility mapping preserves the user's system haptic setting.
+            ViewCompat.performHapticFeedback(latestHapticView, if (armed)
+                HapticFeedbackConstantsCompat.GESTURE_THRESHOLD_ACTIVATE else
+                HapticFeedbackConstantsCompat.GESTURE_THRESHOLD_DEACTIVATE)
         })
     }
     val voice by controller.state.collectAsStateWithLifecycle()

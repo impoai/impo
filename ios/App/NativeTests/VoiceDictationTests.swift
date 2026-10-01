@@ -11,11 +11,14 @@ final class VoiceDictationTests: XCTestCase {
         }
         XCTAssertEqual(AVAudioApplication.shared.recordPermission, .granted)
         let dictation = VoiceDictation(fixture: nil)
+        let previousHaptics = AVAudioSession.sharedInstance().allowHapticsAndSystemSoundsDuringRecording
         defer { dictation.cancel() }
         for attempt in 0..<3 {
             dictation.begin()
             try await Task.sleep(for: .seconds(4))
             XCTAssertEqual(dictation.phase, .recording)
+            XCTAssertTrue(AVAudioSession.sharedInstance().allowHapticsAndSystemSoundsDuringRecording,
+                          "Slide-to-cancel haptics must remain available while recording")
             XCTAssertTrue(dictation.levels.contains { $0 > 0 }, "Real microphone samples must reach the UI")
             if attempt == 1 {
                 // The QA operator speaks during this hold; silence is reported as `.empty`.
@@ -27,6 +30,7 @@ final class VoiceDictationTests: XCTestCase {
                 dictation.cancel()
             }
             XCTAssertEqual(dictation.phase, .idle)
+            XCTAssertEqual(AVAudioSession.sharedInstance().allowHapticsAndSystemSoundsDuringRecording, previousHaptics)
         }
     }
 

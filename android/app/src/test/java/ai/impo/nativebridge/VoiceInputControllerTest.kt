@@ -77,6 +77,23 @@ class VoiceInputControllerTest {
         } finally { controller.close() }
     }
 
+    @Test fun cancellationFeedbackOnlyFollowsCrossingTheBoundaryDuringAHold() = runTest {
+        val factory = Factory(); val boundaries = mutableListOf<Boolean>()
+        val controller = VoiceInputController(this, factory, onClip = {}, onCancelBoundaryChanged = boundaries::add)
+        try {
+            controller.move(true)
+            val ticket = controller.permissionRequested()
+            controller.move(true); controller.permissionResult(ticket, true)
+            assertTrue(boundaries.isEmpty())
+            controller.begin(); runCurrent()
+            controller.move(false); controller.move(true); controller.move(true)
+            controller.move(false); controller.move(false); controller.move(true)
+            assertEquals(listOf(true, false, true), boundaries)
+            controller.finish(); controller.move(false); controller.cancel(); controller.close()
+            assertEquals(listOf(true, false, true), boundaries)
+        } finally { controller.close() }
+    }
+
     @Test fun cancellationDestroysCaptureAndRejectsAllLateEvents() = runTest {
         val factory = Factory(); val sent = mutableListOf<RecordedVoiceClip>()
         val controller = VoiceInputController(this, factory, onClip = sent::add)

@@ -68,6 +68,7 @@ class VoiceInputController(
     private val factory: VoiceRecorderFactory,
     private val startBlocked: () -> String? = { null },
     private val onClip: (RecordedVoiceClip) -> Unit,
+    private val onCancelBoundaryChanged: (Boolean) -> Unit = {},
 ) {
     private val mutable = MutableStateFlow(VoiceInputState())
     val state = mutable.asStateFlow()
@@ -108,8 +109,9 @@ class VoiceInputController(
     }
 
     fun move(cancelArmed: Boolean) {
-        if (state.value.phase in setOf(VoicePhase.Starting, VoicePhase.Recording))
-            mutable.value = state.value.copy(cancelArmed = cancelArmed)
+        if (state.value.phase !in setOf(VoicePhase.Starting, VoicePhase.Recording) || state.value.cancelArmed == cancelArmed) return
+        mutable.value = state.value.copy(cancelArmed = cancelArmed)
+        onCancelBoundaryChanged(cancelArmed)
     }
 
     fun finish() {

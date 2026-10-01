@@ -91,6 +91,9 @@ npm run test:ios
 node scripts/ios-app.mjs test --simulator <SIMULATOR_UDID>
 ```
 
+For a focused app regression, set `IMPO_IOS_TEST_CLASS` to a test target, class
+or method, for example `InstantUITests/VoiceComposerUITests`, on the test command.
+
 The first builds the app for a generic Simulator. `test:ios` exercises protocol
 boundaries on a temporary Simulator. App UI tests may require the documented
 local fixture on port 3009; start `node --env-file=.env scripts/echo-ui-fixture.mjs`

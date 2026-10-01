@@ -60,6 +60,7 @@ final class VoiceInput {
     private(set) var transcribing = false
     @ObservationIgnored private var blocked = false
     @ObservationIgnored private var completion: Task<Void, Never>?
+    @ObservationIgnored private let cancelFeedback = UISelectionFeedbackGenerator()
 
     static let didNotCatch = "Didn't catch that. Hold the input field while you speak, then release."
 
@@ -73,6 +74,7 @@ final class VoiceInput {
         }
         active = true
         cancelled = false
+        cancelFeedback.prepare()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         dictation.begin()
     }
@@ -80,7 +82,8 @@ final class VoiceInput {
     func move(cancel: Bool) {
         guard active, cancel != cancelled else { return }
         cancelled = cancel
-        UISelectionFeedbackGenerator().selectionChanged()
+        cancelFeedback.selectionChanged()
+        cancelFeedback.prepare()
     }
 
     func end(_ dictation: VoiceDictation, deliver: @escaping @MainActor (VoiceClip) async throws -> Void) {

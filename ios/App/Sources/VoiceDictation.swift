@@ -26,6 +26,7 @@ final class VoiceDictation {
     @ObservationIgnored private var recorder: AVAudioRecorder?
     @ObservationIgnored private var fileURL: URL?
     @ObservationIgnored private var sessionActive = false
+    @ObservationIgnored private var previousRecordingHaptics: Bool?
     @ObservationIgnored private var meterTask: Task<Void, Never>?
     @ObservationIgnored private var startTask: Task<Outcome?, Never>?
     @ObservationIgnored private var peak: Double = 0
@@ -122,6 +123,9 @@ final class VoiceDictation {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .default, options: [.duckOthers])
+            // Recording normally mutes UIKit haptics, including slide-to-cancel feedback.
+            previousRecordingHaptics = session.allowHapticsAndSystemSoundsDuringRecording
+            try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             sessionActive = true
             guard session.isInputAvailable else { return .unavailable("No microphone is available.") }
@@ -163,6 +167,10 @@ final class VoiceDictation {
         if sessionActive {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             sessionActive = false
+        }
+        if let previousRecordingHaptics {
+            try? AVAudioSession.sharedInstance().setAllowHapticsAndSystemSoundsDuringRecording(previousRecordingHaptics)
+            self.previousRecordingHaptics = nil
         }
         phase = .idle
     }

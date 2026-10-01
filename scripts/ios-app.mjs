@@ -66,6 +66,11 @@ async function main() {
   // produces a runnable app whose Health authorization always fails.
   else args.push('CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-');
   if (action === 'test') {
+    const testClass = process.env.IMPO_IOS_TEST_CLASS;
+    if (testClass) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*(\/[A-Za-z_][A-Za-z0-9_]*){0,2}$/.test(testClass)) throw new Error('Invalid IMPO_IOS_TEST_CLASS');
+      args.push(`-only-testing:${testClass}`);
+    }
     args.push(
       '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
       '-test-timeouts-enabled', 'YES', '-default-test-execution-time-allowance', '180',
