@@ -132,7 +132,8 @@ import java.util.UUID
                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                         else launch(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
                     }
-                    Text("Echo uses an ongoing notification for recording controls. Remote push notifications are not available yet.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    NotificationCategories(vm)
+                    Text("Chat and task alerts stay quiet while you're using Impo. Brief alerts do not change your generation plan. Echo recording controls remain available separately.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = { launch(appSettings(context)) }) { Text("Review Android permissions") }
                 }
             }

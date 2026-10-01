@@ -65,6 +65,21 @@ different email addresses also needs an explicit account-linking flow.
 
 ## Build and test
 
+Remote notifications use Firebase Messaging and APNs for bundle ID `ai.impo`.
+Place the Firebase client configuration at the ignored path
+`Resources/GoogleService-Info.plist`; keep APNs signing keys and the server FCM
+credential outside the repository and app. Enable Push Notifications on the
+Apple App ID and refresh automatic provisioning. Debug uses the development
+APNs environment; the signed distribution export must contain
+`aps-environment = production`. Upload the matching APNs keys in Firebase.
+
+Settings → Notifications provides Chat replies, Task updates and Brief switches
+backed by one server-side preference document. Registration follows the signed-in
+account and native permission; sign-out revokes it. Foreground banners stay
+silent and notification taps recheck account registration and expiry. See the
+[shared contract](../../contracts/notifications.md). A simulator test does not
+prove physical background or lock-screen delivery.
+
 ```sh
 node scripts/ios-app.mjs build
 npm run test:ios

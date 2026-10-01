@@ -72,6 +72,20 @@ class ImpoClient(
     private val boundAccount = java.util.concurrent.atomic.AtomicReference<String?>(null)
 
     suspend fun currentAccountId(): String = checkedSession().accountId
+    suspend fun notificationPreferences(): NotificationPreferences = get(listOf("notifications", "settings"))
+    suspend fun updateNotificationPreference(category: String, enabled: Boolean): NotificationPreferences {
+        require(category in setOf("chat", "tasks", "brief"))
+        return send("PATCH", listOf("notifications", "settings"), buildJsonObject { put(category, enabled) })
+    }
+    suspend fun registerPush(installationId: String, installationSecret: String, revision: Long, registrationId: String, token: String?, enabled: Boolean, foreground: Boolean): PushRegistrationReceipt =
+        send("PUT", listOf("notifications", "installations", identifier(installationId)), buildJsonObject {
+            put("installationSecret", installationSecret); put("revision", revision); put("registrationId", registrationId); put("platform", "android")
+            put("token", token?.let(::JsonPrimitive) ?: JsonNull); put("enabled", enabled); put("foreground", foreground)
+        })
+    suspend fun revokePush(installationId: String, installationSecret: String, revision: Long, registrationId: String): PushRevocationReceipt =
+        send("DELETE", listOf("notifications", "installations", identifier(installationId)), buildJsonObject {
+            put("installationSecret", installationSecret); put("revision", revision); put("registrationId", registrationId)
+        })
     fun cancelInFlight() { http.dispatcher.cancelAll(); uploadHttp.dispatcher.cancelAll() }
 
     suspend fun profile(): AccountProfile = get(listOf("profile"))
@@ -251,7 +265,7 @@ class ImpoClient(
             path.forEach { addPathSegment(it) }
             query.forEach { (key, value) -> addQueryParameter(key, value) }
         }.build()
-        return Request.Builder().url(url).method(method, if (method == "GET" || method == "DELETE") null else (body ?: JsonObject(emptyMap())).toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        return Request.Builder().url(url).method(method, if (method == "GET" || (method == "DELETE" && body == null)) null else (body ?: JsonObject(emptyMap())).toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
     }
     private data class AuthorizedResponse(val call: Call, val response: Response)
     private suspend fun authorizedResponse(request: Request, session: SessionToken): AuthorizedResponse {

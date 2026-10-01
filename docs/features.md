@@ -23,6 +23,13 @@ them. Existing accounts with chat history also skip onboarding.
 
 ## Brief
 
+Chat and Task completions and new Brief editions support remote notifications
+on iOS and Android through Firebase. Settings has an account-synced switch for
+each category. Chat and Task alerts stay quiet while Impo is active on an owned
+device; native foreground presentation is suppressed for every category. Brief
+notification preference is independent of its generation schedule. Delivery and
+account-binding rules are defined in [the notification contract](../contracts/notifications.md).
+
 An hourly Temporal workflow evaluates configured local briefing hours. A Rebyte
 Agent receives bounded source context and produces validated JSON. Editions are
 append-only. Source versions allow edited/deleted evidence to invalidate old

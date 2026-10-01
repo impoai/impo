@@ -540,8 +540,9 @@ an unadvertised alias. No `platform` field or negotiation endpoint is required.
   selection, export/sharing and permission explanations belong to the client.
   There is no general profile/assistant-preference sync API; Brief's display
   name is a narrower server setting.
-- Notification permission UI exists, but no APNs/FCM token registration or
-  remote notification delivery is defined here.
+- Notification preferences and owned installations use the
+  [shared notification contract](notifications.md). Chat, Task and Brief
+  delivery runs through Temporal and FCM/APNs.
 - Account deletion currently requests support by email; it is not an immediate
   account/data deletion command. Sign-out belongs to authentication.
 - Voice chat/hold-to-speak, attachments/camera uploads, billing/subscriptions,

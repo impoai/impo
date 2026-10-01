@@ -52,6 +52,7 @@ export function createAndroidFixture(
   const devices = new Map<string, Json>();
   const settings = new Map<string, Json>();
   const profiles = new Map<string, Json>();
+  const notificationPreferences = new Map<string, Json>();
   const briefs = new Map<string, Json>();
   const memories = new Map<string, Json>();
   const records = new Map<string, Json>();
@@ -530,6 +531,15 @@ export function createAndroidFixture(
     },
   };
   const apiOptions = {
+    notifications: {
+      settings: async (userId: string) => ({ chat: true, tasks: true, brief: true, ...notificationPreferences.get(userId) }),
+      updateSettings: async (userId: string, patch: Json) => {
+        const saved = { chat: true, tasks: true, brief: true, ...notificationPreferences.get(userId), ...patch };
+        notificationPreferences.set(userId, saved); return saved;
+      },
+      register: async (_userId: string, _id: string, input: { registrationId: string }) => ({ registrationId: input.registrationId }),
+      revoke: async () => ({ revoked: true }),
+    },
     auth: { mode: 'local-dev' },
     pollIntervalMs: 30,
     streamKeepAliveMs: 500,

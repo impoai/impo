@@ -6,6 +6,7 @@ import { users, actions, conversations, messages, agentConfigVersions, sessionBi
 import { ServiceError, LeaseLostError } from '../errors.js';
 import type { ToolResult, ToolRegistry } from '../tools/registry.js';
 import { DeviceRepository } from './device-repository.js';
+import { enqueueNotification } from '../notifications/repository.js';
 import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from '../tools/device-tools.js';
 import { CONNECTOR_TOOL_NAMES } from '../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
@@ -472,6 +473,11 @@ export class RuntimeRepository {
     await tx.update(toolInvocations).set({ status: 'cancelled', updatedAt: new Date() }).where(and(eq(toolInvocations.submissionId, submission.id), inArray(toolInvocations.status, ['received', 'running'])));
     await tx.update(runtimeSubmissions).set({ status, error: error ?? null, completedAt: new Date(), updatedAt: new Date() }).where(eq(runtimeSubmissions.id, submission.id));
     await tx.update(messages).set({ status, updatedAt: new Date() }).where(eq(messages.id, submission.assistantMessageId));
+    if (status === 'completed' || status === 'failed') {
+      const [conversation] = await tx.select().from(conversations).where(and(eq(conversations.userId, submission.userId), eq(conversations.id, submission.conversationId)));
+      if (conversation) await enqueueNotification(tx, { userId: submission.userId, sourceKey: `turn/${submission.id}`, category: conversation.kind === 'task' ? 'tasks' : 'chat',
+        targetId: conversation.actionId ?? conversation.id, failed: status === 'failed' });
+    }
     await this.appendEvents(tx, submission, [...chunks, this.statusChunk(submission, status), { type: 'finish', finishReason: status === 'completed' ? 'stop' : 'other' }]);
   }
 

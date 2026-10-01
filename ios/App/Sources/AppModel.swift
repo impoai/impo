@@ -61,6 +61,7 @@ final class AppModel {
     }
     nonisolated private static let debugModeKey = "instant.debugMode"
     var selectedTab = 0
+    var notificationBriefID: String?
     var transcriptNavigationID = UUID()
     var messages: [ChatMessage] = []
     var selectedScenario: String?
@@ -212,7 +213,13 @@ final class AppModel {
     /// End the Clerk session and clear this device's per-user state, then return to sign-in.
     /// Queued Echo audio stays on disk bound to its owner and resumes on that account's next sign-in.
     func signOut() async throws {
-        if ClerkConfig.isConfigured, Clerk.shared.session != nil { try await Clerk.shared.auth.signOut() }
+        try await PushNotifications.shared.revokeBeforeSignOut()
+        do {
+            if ClerkConfig.isConfigured, Clerk.shared.session != nil { try await Clerk.shared.auth.signOut() }
+        } catch {
+            PushNotifications.shared.configure(scope: listeningScope, client: listeningClient())
+            throw error
+        }
         usesRealAuth = false
         resetDemo()
         onboardingStep = 1

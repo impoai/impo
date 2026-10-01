@@ -323,6 +323,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         refreshJobs["profile"] = job
         job.invokeOnCompletion { if (refreshJobs["profile"] === job) refreshJobs.remove("profile") }
     }
-    fun signOut() { launch("account") { NativeBridge.stopEcho(app); auth.signOut() } }
+    fun signOut() { launch("account") {
+        NativeBridge.stopEcho(app)
+        try { app.push.revokeBeforeSignOut(); auth.signOut() }
+        catch (error: Exception) { app.push.configure(auth.state.value.account); throw error }
+    } }
+    fun openNotificationBrief(id: String) {
+        launch("briefs") { client ->
+            val brief = client.brief(id); ensureCurrentAccount()
+            mutable.update { it.copy(briefs = listOf(brief) + it.briefs.filter { old -> old.id != id }) }
+        }
+    }
     override fun onCleared() { devices.stop(); mutable.value.chat?.close(); mutable.value.taskSession?.close(); accountJob.cancel(); api?.cancelInFlight(); super.onCleared() }
 }

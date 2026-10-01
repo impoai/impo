@@ -35,6 +35,15 @@ final class TodayModel {
             recordFailure("today.context_failed", error)
         }
     }
+    func loadNotificationBrief(_ id: String) async {
+        guard let client else { return }
+        let captured = revision
+        do {
+            let brief = try await client.todayBrief(id)
+            guard captured == revision else { return }
+            if !briefs.contains(where: { $0.id == id }) { briefs.insert(brief, at: 0) }
+        } catch { if captured == revision { self.error = "This Brief is unavailable. It may have been removed." } }
+    }
     func refresh(more: Bool = false, preserveHistory: Bool = false) async {
         guard let client, !Task.isCancelled, !isLoading, !more || hasMore else { return }
         let token = revision; isLoading = true

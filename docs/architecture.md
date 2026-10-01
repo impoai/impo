@@ -55,6 +55,16 @@ workflows. The background registry runs Brief and Memory steps, with periodic
 Continue-As-New. A scheduled trigger and the execution model are separate
 concepts; recurring user-created tasks are not implemented yet.
 
+Chat/Task completion and the hourly Brief step both write notification events in
+their completion transaction. One per-user JSON preference document controls
+Chat, Tasks and Brief. A shared outbox starts Temporal delivery workflows; the
+Worker sends through FCM, which bridges to APNs on iOS. API handlers register
+owned installations and preferences but never call a push provider. Chat/Task
+events are suppressed while any owned installation has fresh foreground presence.
+Native clients also suppress foreground presentation. See the
+[notification contract](../contracts/notifications.md) for expiry, retries,
+account binding and the limits of in-flight OS delivery.
+
 | Store | Purpose |
 | --- | --- |
 | PostgreSQL | Ownership, conversation metadata, execution state, device receipts, connector bindings, Brief editions and recording metadata. |

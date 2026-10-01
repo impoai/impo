@@ -22,12 +22,15 @@ import type { ProfileRepository } from '../profile/repository.js';
 import { ListeningRepository, maxAudioBytes } from '../listening/repository.js';
 import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON, uuid } from './request.js';
 import { dictationAudio, maxDictationBytes, transcribeRequest, type Dictation } from '../voice/dictation.js';
+import type { NotificationRepository } from '../notifications/repository.js';
+import { registrationInput, settingsInput, type Registration, type Revocation } from '../notifications/contract.js';
 
 export type ApiRepository = Pick<RuntimeRepository,
   'health' | 'findUser' | 'findOrCreateUser' | 'acceptMessage' | 'getConversation' | 'getSubmission' | 'cancelSubmission' | 'readEvents'>
   & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
 
 export interface ApiOptions {
+  notifications?: Pick<NotificationRepository, 'settings' | 'updateSettings' | 'register' | 'revoke'>;
   today?: TodayRepository;
   /** Read and forget the user's long-term memories; the hourly pipeline is the only writer. */
   memories?: MemoryStore;
@@ -145,6 +148,21 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
     }
     const user = await authenticate(req);
     const path = url.pathname;
+    if (path.startsWith('/api/v1/notifications/')) {
+      if (!options.notifications) throw new ServiceError(503, 'notifications_unavailable', 'Notifications are not configured', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      if (path === '/api/v1/notifications/settings') {
+        if (method === 'GET') { sendJSON(res, 200, await options.notifications.settings(user.id)); return; }
+        if (method === 'PATCH') { sendJSON(res, 200, await options.notifications.updateSettings(user.id, settingsInput(await readJSON(req, requestTimeoutMs)))); return; }
+      }
+      const installation = /^\/api\/v1\/notifications\/installations\/([^/]+)$/.exec(path);
+      if (installation && (method === 'PUT' || method === 'DELETE')) {
+        const id = uuid(installation[1]);
+        const input = registrationInput(await readJSON(req, requestTimeoutMs), method === 'DELETE');
+        sendJSON(res, 200, method === 'PUT' ? await options.notifications.register(user.id, id, input as Registration) : await options.notifications.revoke(user.id, id, input as Revocation)); return;
+      }
+      throw new ServiceError(404, 'not_found', 'Notification route not found');
+    }
     if (path === '/api/v1/profile') {
       if (!options.profiles) throw new ServiceError(503, 'profile_unavailable', 'Profile is temporarily unavailable', true);
       if (url.search) throw new ServiceError(400, 'invalid_request', 'Profile does not accept query parameters');

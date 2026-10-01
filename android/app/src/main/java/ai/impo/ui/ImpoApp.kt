@@ -149,6 +149,17 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
     val route = backStack?.destination?.route ?: "chat"
     val recording by NativeBridge.recording.collectAsStateWithLifecycle()
     val go: (String) -> Unit = { target -> nav.navigate(target) { launchSingleTop = true } }
+    val pushRoute by vm.app.push.route.collectAsStateWithLifecycle()
+    LaunchedEffect(pushRoute) {
+        pushRoute?.let { route ->
+            when (route.category) {
+                "chat" -> go("chat")
+                "tasks" -> go("task/${route.targetId}")
+                "brief" -> { vm.openNotificationBrief(route.targetId); go("brief") }
+            }
+            vm.app.push.consumeRoute()
+        }
+    }
     val back: () -> Unit = { nav.popBackStack() }
     Scaffold(containerColor = Paper, contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = { if (tabs.any { it.route == route }) NavigationBar(containerColor = RaisedPaper, tonalElevation = 0.dp) {

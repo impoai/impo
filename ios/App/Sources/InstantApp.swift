@@ -1,5 +1,6 @@
 import SwiftUI
 import ClerkKit
+import InstantClient
 
 @main
 struct InstantApp: App {
@@ -10,9 +11,11 @@ struct InstantApp: App {
     @State private var today = TodayModel()
     @State private var memories = MemoriesModel()
     @State private var permissions = ClientPermissions.make()
+    @State private var push = PushNotifications.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        PushNotifications.shared.start()
         if ClerkConfig.isConfigured { Clerk.configure(publishableKey: ClerkConfig.publishableKey) }
     }
     @ViewBuilder private var appContent: some View {
@@ -35,16 +38,27 @@ struct InstantApp: App {
             .environment(today)
             .environment(memories)
             .environment(permissions)
+            .task(id: model.listeningScope) {
+                push.configure(scope: model.listeningScope, client: model.listeningClient())
+                push.setForeground(scenePhase == .active)
+                while !Task.isCancelled {
+                    if scenePhase == .active { await push.refresh(); routePush() }
+                    try? await Task.sleep(for: .seconds(20))
+                }
+            }
+            .onChange(of: push.pendingRoute) { _, _ in routePush() }
             .task(id: "\(model.listeningScope ?? "offline")|\(model.isOnboarded)") {
                 permissions.configure(scope: model.listeningScope)
                 tasks.configure(scope: model.listeningScope)
                 today.configure(scope: model.listeningScope, client: model.listeningClient())
                 memories.configure(scope: model.listeningScope, client: model.listeningClient())
+                routePush()
                 await today.syncContext(displayName: model.displayName)
                 await today.refresh()
                 if model.isOnboarded { await permissions.activate(context: today) }
             }
             .onChange(of: scenePhase) { _, phase in
+                push.setForeground(phase == .active)
                 if phase == .active { Task {
                     await permissions.refreshStatus()
                     await today.syncContext(displayName: model.displayName)
@@ -90,5 +104,17 @@ struct InstantApp: App {
                 }
             }
         }
+    }
+    private func routePush() {
+        guard model.isOnboarded, model.listeningScope != nil, let route = push.pendingRoute,
+              route.isCurrent(registration: push.registrationId) else { return }
+        switch route.category {
+        case .chat: model.selectedTab = 0
+        case .tasks:
+            tasks.configure(scope: model.listeningScope)
+            model.selectedTab = 2; tasks.route = .detail(route.targetId)
+        case .brief: model.selectedTab = 1; model.notificationBriefID = route.targetId
+        }
+        push.pendingRoute = nil
     }
 }

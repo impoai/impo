@@ -22,8 +22,12 @@ import { RebyteRepository } from './persistence/rebyte-repository.js';
 import { RebyteGateway } from './rebyte/gateway.js';
 import { RebyteWorker } from './worker/rebyte-worker.js';
 import { DevelopmentWorker } from './worker/worker.js';
+import { NotificationRepository } from './notifications/repository.js';
+import { FCMSender } from './notifications/fcm.js';
+import { notificationActivities, NotificationProvisioner } from './notifications/worker.js';
 
 const config = loadConfig('worker');
+if (config.notificationsEnabled && (!config.fcm || !config.temporal)) throw new Error('Notifications require FCM and Temporal configuration');
 const database = createDatabase(config.databaseUrl, { ssl: databaseRequiresSsl(config.databaseUrl) });
 const controller = new AbortController();
 let shuttingDown = false;
@@ -49,10 +53,12 @@ try {
   if (process.argv.includes('--once')) { await worker.tick(controller.signal); await listening?.tick(controller.signal); }
   else {
     let provisioner: BackgroundProvisioner | undefined;
+    let notificationProvisioner: NotificationProvisioner | undefined;
     if (config.temporal) {
       const users = new BackgroundUserRepository(database.db);
       background = await createBackgroundClient(config.temporal);
       temporal = await createTemporalWorker(config.temporal, {
+        ...(config.notificationsEnabled && config.fcm ? notificationActivities(new NotificationRepository(database.db), new FCMSender(config.fcm)) : {}),
         ...createBackgroundActivities(users, config.rebyte ? [
           todayStep(new TodayRepository(database.db, archive, new RebyteGateway(config.rebyte)), new RebyteGateway(config.rebyte), config.rebyte.model),
           ...(memoryStore ? [memoryStep(new MemoryRepository(database.db, archive, new RebyteGateway(config.rebyte)), memoryStore, new RebyteGateway(config.rebyte), { model: config.rebyte.model })] : []),
@@ -60,9 +66,11 @@ try {
         ...(transcriber ? createListeningActivities(new ListeningBatchRepository(database.db), transcriber, archive, audioObjects) : {}),
       });
       provisioner = new BackgroundProvisioner(users, background);
+      if (config.notificationsEnabled) notificationProvisioner = new NotificationProvisioner(new NotificationRepository(database.db), background.client, config.temporal.taskQueue);
     }
     const loops = [...(temporal ? [temporal.worker.run()] : []),
       ...(provisioner ? [provisioner.run(controller.signal)] : []),
+      ...(notificationProvisioner ? [notificationProvisioner.run(controller.signal)] : []),
       worker.run(controller.signal), ...(listening ? [listening.run(controller.signal)] : [])];
     try { await Promise.all(loops); }
     finally {

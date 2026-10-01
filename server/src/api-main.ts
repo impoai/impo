@@ -13,6 +13,7 @@ import { ConnectorService } from './composio/connector-service.js';
 import { S3TranscriptArchive } from './listening/transcript-archive.js';
 import { createMemoryStore } from './memory/index.js';
 import { ListeningUploadService, S3AudioObjectStore } from './listening/audio-upload.js';
+import { NotificationRepository } from './notifications/repository.js';
 
 async function main(): Promise<void> {
   const config = loadConfig('api');
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
   const uploads = config.transcriptArchive && batchService ? new ListeningUploadService(batches,
     new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
   const server = createApiServer(repository, { profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
+    notifications: new NotificationRepository(database.db),
     dictation: config.voice ? new GeminiDictation(config.voice) : config.runtime === 'development' ? new DevelopmentDictation() : undefined });
   let stopping = false;
   async function shutdown(): Promise<void> {

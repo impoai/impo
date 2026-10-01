@@ -357,4 +357,28 @@ with emulator silence; none of these proves physical speech recognition.
 
 The Android app does not yet include attachments/camera uploads,
 billing/subscriptions, recurring user-created tasks, diary generation,
-immediate account deletion or remote push registration. Web remains planned.
+immediate account deletion. Web remains planned.
+
+## Remote notifications
+
+FCM data messages use three native channels: Chat replies, Task updates and
+Brief. Settings category switches sync to the per-user server JSON; Android's
+notification permission and channel controls remain additional gates. The app
+reports foreground presence, suppresses foreground presentation, deduplicates
+events, rejects expired or old-account routes and revokes registration before
+sign-out. The same [notification policy](../contracts/notifications.md) applies
+to iOS. Echo reminders and recurring task schedules remain future work.
+
+Build configuration comes from ignored `local.properties` entries
+`impo.firebase.projectId`, `impo.firebase.senderId`, `impo.firebase.apiKey`,
+`impo.firebase.appId` (release) and `impo.firebase.debug.appId` (debug). Register
+the exact package IDs `ai.impo.android` and `ai.impo.android.debug` in Firebase.
+These are client identifiers, never the server service-account credential.
+Without this configuration, category preferences still sync; FCM registration
+stays disabled. Never put an FCM service-account JSON or APNs key in the app.
+
+Run `npm run test:android:client` for route/transport checks and
+`IMPO_ANDROID_TEST_CLASS=ai.impo.notifications.PushInstrumentedTest npm run test:android:ui`
+for category synchronization, native foreground/expiry/account suppression,
+deduplication and notification tap handling against the local fixture. Injected
+messages verify native behavior; they do not prove real FCM or physical delivery.

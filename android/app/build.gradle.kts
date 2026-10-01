@@ -30,6 +30,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", quoted(config("impo.apiUrl")))
         buildConfigField("String", "CLERK_PUBLISHABLE_KEY", quoted(config("impo.clerkKey")))
+        for (field in listOf("appId", "apiKey", "senderId", "projectId")) {
+            buildConfigField("String", "FIREBASE_" + field.uppercase(), quoted(config("impo.firebase.$field")))
+        }
     }
     signingConfigs {
         create("release") {
@@ -41,7 +44,10 @@ android {
         }
     }
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
+        debug {
+            applicationIdSuffix = ".debug"
+            buildConfigField("String", "FIREBASE_APPID", quoted(config("impo.firebase.debug.appId")))
+        }
         release {
             isDebuggable = false
             isMinifyEnabled = true
@@ -81,6 +87,9 @@ val validateReleaseConfiguration = tasks.register("validateReleaseConfiguration"
 tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleaseConfiguration) }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-messaging")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     implementation(project(":client"))
     implementation(platform("androidx.compose:compose-bom:2026.02.00"))
     implementation("androidx.activity:activity-compose:1.12.4")

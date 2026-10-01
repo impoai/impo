@@ -1,3 +1,5 @@
+import { parseFCMCredentials } from './notifications/fcm.js';
+
 function integer(name: string, fallback: number, minimum: number, maximum: number): number {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
@@ -97,6 +99,8 @@ export function loadConfig(role: 'api' | 'worker') {
       model: process.env.MEMORY_EMBEDDING_MODEL ?? 'gemini-embedding-001', dimensions: integer('MEMORY_EMBEDDING_DIMENSIONS', 768, 64, 3072), timeoutMs: 20_000 },
   } : runtime === 'development' || process.env.MEMORY_LOCAL_DIR ? { localDirectory: process.env.MEMORY_LOCAL_DIR ?? '.local/memory' } : undefined;
   return {
+    notificationsEnabled: process.env.NOTIFICATIONS_ENABLED === 'true',
+    fcm: role === 'worker' && process.env.FCM_SERVICE_ACCOUNT_JSON ? parseFCMCredentials(process.env.FCM_SERVICE_ACCOUNT_JSON) : undefined,
     temporal, transcriptArchive, memory,
     authMode: authMode as 'local-dev' | 'clerk', clerk,
     listening: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com', timeoutMs: 120_000 } : undefined,

@@ -489,7 +489,7 @@ public struct InstantClient: Sendable {
         }
     }
 
-    private func send<Response: Decodable>(_ method: String, _ path: [String], body: JSONValue? = nil, query: [URLQueryItem] = []) async throws -> Response {
+    func send<Response: Decodable>(_ method: String, _ path: [String], body: JSONValue? = nil, query: [URLQueryItem] = []) async throws -> Response {
         var request = try await makeRequest(method, path, query: query)
         if let body { request.httpBody = try JSONEncoder().encode(body) }
         let (data, response) = try await authorizedData(for: request)

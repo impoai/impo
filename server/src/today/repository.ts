@@ -8,6 +8,7 @@ import { echoLocationContext, type EchoLocationContext } from '../listening/loca
 import { hydrateMessages, taskTitles, type HistoryReader } from '../persistence/conversation-history.js';
 import { briefConfigVersion, currentBriefLocation, defaultBriefSlots, dueSlot, localClock, type BriefContent, type BriefInput, type BriefSlot, type BriefSource, type BriefLocation } from './contract.js';
 
+import { enqueueNotification } from '../notifications/repository.js';
 export type BriefRow = typeof todayBriefs.$inferSelect;
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const leaseMs = 120_000;
@@ -172,8 +173,12 @@ export class TodayRepository {
   }
   async complete(row: BriefRow, content: BriefContent, provenance: { providerAgentId: string | null; providerTurnId: string; providerItemId: string }) {
     if (!await this.sourcesValid(row)) { await this.patch(row, { status: 'withdrawn', input: null, content: null }); return; }
-    await this.patch(row, { status: 'completed', content, ...provenance, completedAt: new Date(), errorCode: null,
-      input: row.input ? { ...row.input, sources: row.input.sources.map(s => ({ ...s, text: '' })) } : null });
+    await this.db.transaction(async tx => {
+      const [saved] = await tx.update(todayBriefs).set({ status: 'completed', content, ...provenance, completedAt: new Date(), errorCode: null,
+        input: row.input ? { ...row.input, sources: row.input.sources.map(s => ({ ...s, text: '' })) } : null }).where(this.fence(row)).returning();
+      if (!saved) throw new Error('today_lease_lost');
+      await enqueueNotification(tx, { userId: row.userId, sourceKey: `brief/${row.id}`, category: 'brief', targetId: row.id });
+    });
   }
   async fail(row: BriefRow, code: string) { await this.patch(row, { status: 'failed', errorCode: code, input: row.input ? { ...row.input, sources: row.input.sources.map(s => ({ ...s, text: '' })) } : null }); }
   async owned(userId: string, id: string) {

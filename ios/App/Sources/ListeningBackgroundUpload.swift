@@ -192,6 +192,12 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
 }
 
 final class ListeningAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushNotifications.shared.receivedAPNSToken(deviceToken)
+    }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+        PushNotifications.shared.failedAPNSRegistration()
+    }
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         guard identifier == ListeningBackgroundUpload.identifier else { completionHandler(); return }
         // UIKit delivers this on main; hop back there after URLSession's delegate

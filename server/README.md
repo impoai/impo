@@ -250,6 +250,20 @@ See [background workflows](../docs/features.md) and
 
 ## Database and code layout
 
+Notifications share one [cross-platform policy](../contracts/notifications.md).
+`notification_settings.preferences` is the per-user JSON document. Completion
+transactions enqueue Chat/Task/Brief events and snapshot eligible installations;
+Temporal handles delivery retries and the Worker rechecks preferences, presence,
+ownership and expiry immediately before FCM. No historical notification backfill
+is performed when a user enables a category or registers a device.
+
+Set `NOTIFICATIONS_ENABLED=true` and inject `FCM_SERVICE_ACCOUNT_JSON` into the
+Worker from the deployment secret store. A configured Temporal connection is
+required. The API needs neither the FCM credential nor a direct provider call.
+In production, `rebyte/prod/impo-fcm` holds the dedicated `impo-push` sender key;
+APNs keys are configured in Firebase, with separate secret-store backups. No
+private push key belongs in Git, a Docker build context, or a native app.
+
 | Area | Implementation |
 | --- | --- |
 | Drizzle entities | `src/db/entities/`, exported by `src/db/schema.ts`. |

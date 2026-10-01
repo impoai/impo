@@ -46,6 +46,7 @@
     "test:background": "node scripts/test-db.mjs --background",
     "test:today": "node scripts/test-db.mjs --today",
     "test:memory": "node scripts/test-db.mjs --memory",
+    "test:notifications": "node scripts/test-db.mjs --notifications",
     "check:secrets": "node scripts/check-secrets.mjs"
   }
 }

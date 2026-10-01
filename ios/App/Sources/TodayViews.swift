@@ -52,6 +52,7 @@ struct TodayView: View {
         return (preceding ?? following ?? today.briefs.first { $0.content != nil })?.localDate
     }
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 30) {
                 HStack {
@@ -88,6 +89,7 @@ struct TodayView: View {
                         }
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("todayFeed")).minY } action: { positions[brief.id] = $0 }
                         .accessibilityIdentifier("today.brief.\(brief.id)")
+                        .id(brief.id)
                     }
                     if today.hasMore {
                         Button { Task { await today.refresh(more: true) } } label: {
@@ -98,6 +100,12 @@ struct TodayView: View {
             }.padding(22).padding(.bottom, 28)
         }
         .coordinateSpace(name: "todayFeed").scrollIndicators(.hidden).foregroundStyle(InstantStyle.ink)
+        .task(id: app.notificationBriefID) {
+            guard let id = app.notificationBriefID else { return }
+            await today.loadNotificationBrief(id)
+            guard app.notificationBriefID == id else { return }
+            proxy.scrollTo(id, anchor: .top); app.notificationBriefID = nil
+        }
         .refreshable { await today.refresh() }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
@@ -146,6 +154,7 @@ struct TodayView: View {
         } message: { Text("This removes the brief from your timeline. Your original conversations and transcripts stay saved.") }
         .alert("Couldn't complete that", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) { Button("OK") { actionError = nil } } message: { Text(actionError ?? "") }
     }
+        }
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack { Image(systemName: "sun.horizon").font(.system(size: 36, weight: .light)); Spacer(); Image("JournalRobin").resizable().scaledToFit().frame(width: 100, height: 95) }

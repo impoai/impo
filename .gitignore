@@ -50,6 +50,8 @@ android/.kotlin/
 *.aab
 *credentials*.json
 *service-account*.json
+GoogleService-Info.plist
+google-services*.json
 *.xcconfig
 !*.example.xcconfig
 !ios/App/Config.xcconfig

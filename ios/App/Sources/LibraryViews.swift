@@ -49,8 +49,8 @@ struct SettingsView: View {
                                 settingsRow("Connections", detail: "Calendar, Health, Gmail and 100+ apps") { sheet = .connections }
                                     .accessibilityIdentifier("settings.connections")
                                 divider
-                                settingsRow("Notifications", detail: "Manage in iPhone Settings", symbol: "arrow.up.right") {
-                                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                                settingsRow("Notifications", detail: "Chat, tasks and Brief") {
+                                    sheet = .notifications
                                 }.accessibilityIdentifier("settings.notifications")
                             }.padding(.horizontal, 18)
                         }
@@ -100,6 +100,7 @@ struct SettingsView: View {
                 switch route {
                 case .debug: ListeningDebugView()
                 case .connections: LibraryConnectionsView()
+                case .notifications: NotificationSettingsView()
                 case .profile: ProfileDetailView()
                 case .plan: LibraryInfoSheet(title: "Your Impo preview", symbol: "sparkles", text: "Explore your assistant, conversations, and personal space. Plans and billing are not available in this preview.")
                 case .usage: LibraryInfoSheet(title: "Monthly usage", symbol: "chart.bar.xaxis", text: "Usage information will appear here when plans are available. There is no subscription or allowance attached to this preview.")
@@ -333,7 +334,7 @@ struct SettingsView: View {
     }
 
     private enum SettingsSheet: String, Identifiable {
-        case connections, profile, plan, usage, debug
+        case connections, profile, plan, usage, debug, notifications
         var id: String { rawValue }
     }
 }

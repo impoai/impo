@@ -37,10 +37,11 @@ class MainActivity : ComponentActivity() {
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); handleIntent(intent) }
     private fun handleIntent(intent: Intent) {
+        (application as ImpoApplication).push.opened(intent)
         if (intent.action in setOf("androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE", "android.intent.action.VIEW_PERMISSION_USAGE")) showHealthPrivacy = true
         if (BuildConfig.CLERK_PUBLISHABLE_KEY.isNotBlank()) Clerk.auth.handle(intent.data)
         if (BuildConfig.DEBUG) intent.getStringExtra("impo.test.api")?.let { endpoint -> lifecycleScope.launch { model.auth.connectDevelopment(endpoint) } }
     }
-    override fun onResume() { super.onResume(); model.resumed() }
-    override fun onStop() { model.paused(); super.onStop() }
+    override fun onResume() { super.onResume(); (application as ImpoApplication).push.foreground(true); model.resumed() }
+    override fun onStop() { (application as ImpoApplication).push.foreground(false); model.paused(); super.onStop() }
 }
