@@ -6,6 +6,14 @@ Each user has one main conversation and current main Agent Session. One-shot
 tasks use isolated conversations and Sessions. Work survives a client disconnect;
 task rows show relative last-modified time. User-defined recurring tasks are planned.
 
+Chat and tasks run in a Rebyte Sandbox, so a reply can deliver files such as a PDF,
+spreadsheet or image. The Agent saves them in `/workspace/outputs/`; Rebyte keeps
+each one as an immutable Session artifact after the Sandbox expires. The reply
+shows a card per file. Tapping it downloads the file through the API (with an
+ownership check) into the signed-in account's cache. iOS opens it in Quick Look,
+which can also share it or save it to Files. Android opens it in a viewer app.
+Impo stores neither the bytes nor the file names.
+
 iOS and Android support hold-to-talk across the empty input field: tap to type,
 hold to record, release to send, or swipe up to cancel. The app records a short
 AAC clip (up to two minutes) and uploads it on release. A "…" bubble holds its

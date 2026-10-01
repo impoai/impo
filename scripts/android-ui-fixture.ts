@@ -39,10 +39,27 @@ export function createAndroidFixture(
     publicHost?: string;
     delayMs?: number;
     voiceDelayMs?: number;
+    files?: boolean;
   } = {},
 ) {
   if (process.env.NODE_ENV === 'production') throw new Error('Android fixtures are local development only');
   let port = 3011;
+  const pdfObjects = [
+    '<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  const pdfText = 'BT /F1 20 Tf 40 230 Td (Impo file download verified) Tj ET';
+  pdfObjects.push(`<< /Length ${pdfText.length} >>\nstream\n${pdfText}\nendstream`);
+  let pdf = '%PDF-1.4\n'; const offsets = [0];
+  for (const [index, object] of pdfObjects.entries()) { offsets.push(pdf.length); pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; }
+  const xref = pdf.length;
+  pdf += `xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map(offset => String(offset).padStart(10, '0') + ' 00000 n \n').join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  const fileBytes = Buffer.from(pdf);
+  const filePart = (userId: string) => {
+    const fileId = `${id(`${userId}:file-binding`)}_artifact_ui`;
+    return { type: 'data-instant-file', id: fileId, data: { schemaVersion: 1, fileId, name: 'Impo download test.pdf', mediaType: 'application/pdf', sizeBytes: fileBytes.length } };
+  };
   const publicBase = () => `http://${options.publicHost ?? '127.0.0.1'}:${port}`;
   let serial = 0;
   const users = new Map(['alice', 'bob'].map((subject) => [subject, { id: id(subject), subject }]));
@@ -207,7 +224,7 @@ export function createAndroidFixture(
           role: 'assistant',
           sequence: 2,
           text: richText,
-          parts: [{ type: 'text', text: richText }],
+          parts: [{ type: 'text', text: richText }, ...(options.files ? [filePart(user.id)] : [])],
           status: 'completed',
           createdAt: stamp,
         },
@@ -240,6 +257,7 @@ export function createAndroidFixture(
               type: 'text',
               text: 'Start with the bookshop, then take the riverside walk. Leave the afternoon free.',
             },
+            ...(options.files ? [filePart(user.id)] : []),
           ],
           status: 'completed',
           createdAt: stamp,
@@ -534,6 +552,11 @@ export function createAndroidFixture(
   const deletionChallenges = new Map<string, { challengeId: string; token: string; expiresAt: string }>();
   const deletionReceipts = new Map<string, Json>();
   const apiOptions = {
+    files: options.files ? { open: async (userId: string, fileId: string) => {
+      const file = filePart(userId).data;
+      if (fileId !== file.fileId) throw new ServiceError(404, 'not_found', 'File not found');
+      return { name: file.name, mediaType: file.mediaType, sizeBytes: file.sizeBytes, body: new Response(fileBytes).body! };
+    } } : undefined,
     accountDeletionEnabled: true,
     accounts: {
       closedIdentity: async (_provider: string, subject: string) => {
@@ -898,7 +921,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     !['127.0.0.1', 'localhost', '10.0.2.2'].includes(publicHost)
   )
     throw new Error('Use a local port and loopback/emulator public host');
-  const server = createAndroidFixture({ publicHost });
+  const server = createAndroidFixture({ publicHost, files: process.argv.includes('--files') });
   server.listen(port, '127.0.0.1');
   await once(server, 'listening');
   console.log(

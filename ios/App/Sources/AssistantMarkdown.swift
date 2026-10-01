@@ -119,8 +119,22 @@ struct ResponseInline: View {
             Text(verbatim: value.plain)
         } else {
             Text((try? AttributedString(markdown: value.markdown,
-                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(value.plain))
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))?.webLinksOnly() ?? AttributedString(value.plain))
         }
+    }
+}
+
+extension AttributedString {
+    /// A link to a Sandbox path or another non-web destination cannot open on the device
+    /// (delivered files appear as cards instead), so it keeps only its text.
+    func webLinksOnly() -> AttributedString {
+        var copy = self
+        let local = copy.runs.compactMap { run -> Range<AttributedString.Index>? in
+            guard let url = run.link else { return nil }
+            return ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") ? nil : run.range
+        }
+        for range in local { copy[range].link = nil }
+        return copy
     }
 }
 

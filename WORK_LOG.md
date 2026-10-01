@@ -127,3 +127,9 @@
 - Applied only the new Drizzle `account_deletions` table/index and deployed source `9073c14` to `instant-worker:44` and `instant-api:46`, image `sha256:d03bcc530c74f8342c036b8bb9921049790e22a6c4f56d4f2c633a6140a90451`. Both services reached COMPLETED with one running task each. The existing Apple sign-in key is injected into the API from Secrets Manager.
 - Production synthetic-account canary passed PostgreSQL deletion/session fencing, S3 ownership isolation, Turso and Rebyte removal, Temporal asynchronous-history cleanup/retry, and receipt completion with the manifest scrubbed. Public health/readiness and negative-auth checks passed. No personal account was deleted.
 - Made Android deletion disclosures scrollable when the keyboard or larger type reduces available space; Android tests passed. Native code awaits the next mobile build; no new TestFlight build was uploaded or selected for review.
+
+## 2026-10-01 — Delivered files on iOS and Android
+
+- Completed the interrupted Claude attachment work: Rebyte output artifacts appear in live replies and restored Chat/Task history, with authenticated, ownership-checked downloads. Both native apps render file cards and open/share account-scoped cached files. Invalid identifiers, partial transfers, excessive sizes and account changes are rejected.
+- Validation: server typecheck and 100 unit tests; 15 PostgreSQL/Rebyte protocol cases; Swift package suite (63 tests, 10 existing fixture skips); Android app/client tests (one existing fixture-only skip); iOS PDF preview/relaunch UI test and Android FileProvider/open-intent instrumentation passed. A real Rebyte PDF downloaded all 21,450 bytes with ownership isolation. Physical-device viewer behavior remains unverified.
+- Prepared iOS 1.0 (48), including two-step account deletion and explicit AI-processing consent, for the user-authorized TestFlight release. Production rollout and upload are recorded separately after completion.

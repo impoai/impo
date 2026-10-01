@@ -27,7 +27,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.io.File
 import java.io.IOException
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
 
@@ -167,6 +169,51 @@ class ImpoClient(
             }
         }
     }.flowOn(Dispatchers.IO)
+
+    /**
+     * Downloads a delivered file once into `directory/<fileId>/<name>`. The caller owns the
+     * directory and clears it when the account changes.
+     */
+    suspend fun downloadFile(file: DeliveredFile, directory: File): File = withContext(Dispatchers.IO) {
+        require(file.fileId.matches(Regex("[A-Za-z0-9_-]{1,256}"))) { "Invalid file identifier" }
+        require(file.sizeBytes in 0..104_857_600L) { "File is too large to download" }
+        val session = checkedSession()
+        val folder = File(directory, identifier(file.fileId))
+        val destination = File(folder, file.localName)
+        if (destination.isFile && destination.length() == file.sizeBytes) { assertAccount(session); return@withContext destination }
+        if (destination.exists() && !destination.delete()) throw IOException("Cannot replace an incomplete file")
+        val exchange = authorizedResponse(request("GET", listOf("files", identifier(file.fileId)), null, emptyMap()), session)
+        check(folder.isDirectory || folder.mkdirs()) { "Cannot prepare the file directory" }
+        val staged = File(folder, ".${UUID.randomUUID()}.part")
+        try {
+            exchange.response.use {
+                if (it.code != 200) throw decodeError(it)
+                val body = it.body ?: throw ProtocolException("Response has no body")
+                coroutineScope {
+                    val readingJob = currentCoroutineContext().job
+                    val closeOnCancel = launch(start = CoroutineStart.UNDISPATCHED) {
+                        try { awaitCancellation() } finally { if (readingJob.isCancelled) exchange.call.cancel() }
+                    }
+                    try { staged.outputStream().use { output ->
+                        val input = body.byteStream(); val buffer = ByteArray(8192); var size = 0L
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer); if (read < 0) break
+                            size += read
+                            if (size > file.sizeBytes) throw ProtocolException("File size exceeded its metadata")
+                            output.write(buffer, 0, read)
+                        }
+                        if (size != file.sizeBytes) throw ProtocolException("File download was incomplete")
+                    } }
+                    catch (error: IOException) { currentCoroutineContext().ensureActive(); throw error }
+                    finally { closeOnCancel.cancel() }
+                }
+            }
+            assertAccount(session)
+            if (!destination.isFile && !staged.renameTo(destination)) throw IOException("Cannot store the downloaded file")
+            destination
+        } finally { staged.delete() }
+    }
 
     suspend fun briefSettings(): BriefSettings? = get<SettingsResponse>(listOf("today", "settings")).settings
     /** Full replacement of editable fields; null location explicitly clears it. */

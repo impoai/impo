@@ -76,7 +76,7 @@ account binding and the limits of in-flight OS delivery.
 | Store | Purpose |
 | --- | --- |
 | PostgreSQL | Ownership, conversation metadata, execution state, device receipts, connector bindings, Brief editions and recording metadata. |
-| Rebyte | Agent Sessions, Turns, Items and live conversation text in the managed runtime. |
+| Rebyte | Agent Sessions, Turns, Items, live conversation text and delivered files (Session artifacts) in the managed runtime. |
 | S3 | Private direct audio uploads and per-user Echo transcript records. |
 | Turso | A separate database per user for consolidated long-term memory. |
 | Android local storage | Account-scoped preferences, immutable Echo batches, durable device receipts and retry state. WorkManager owns upload retry; microphone capture uses a separate foreground service. |

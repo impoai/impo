@@ -72,6 +72,26 @@ public struct ConversationMessage: Decodable, Sendable {
     public let text: String
     public let status: String
     public let createdAt: String
+    /// Files delivered with an assistant reply, from its `data-instant-file` parts.
+    public let files: [DeliveredFile]
+
+    private enum CodingKeys: String, CodingKey { case id, role, sequence, text, status, createdAt, parts }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        role = try container.decode(String.self, forKey: .role)
+        sequence = try container.decode(Int.self, forKey: .sequence)
+        text = try container.decode(String.self, forKey: .text)
+        status = try container.decode(String.self, forKey: .status)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        let parts = try container.decodeIfPresent([JSONValue].self, forKey: .parts) ?? []
+        var files: [DeliveredFile] = []
+        for part in parts where part["type"]?.string == "data-instant-file" {
+            if let file = DeliveredFile(part["data"]), !files.contains(where: { $0.fileId == file.fileId }) { files.append(file) }
+        }
+        self.files = files
+    }
 }
 public struct ActiveSubmission: Decodable, Sendable {
     public let submissionId: String
@@ -529,6 +549,51 @@ public struct InstantClient: Sendable {
             }
             return (data, response)
         }
+    }
+
+    /// Downloads a delivered file once into `directory/<fileId>/<name>` and returns its local URL.
+    /// The caller owns the directory and clears it when the account changes.
+    public func downloadFile(_ file: DeliveredFile, into directory: URL, validateAccount: @Sendable () async throws -> Void = {}) async throws -> URL {
+        guard file.fileId.range(of: "^[A-Za-z0-9_-]{1,256}$", options: .regularExpression) != nil else { throw InstantClientError.invalidIdentifier }
+        guard (0...104_857_600).contains(file.sizeBytes) else { throw InstantClientError.invalidResponse }
+        try Task.checkCancellation()
+        try await validateAccount()
+        let folder = directory.appendingPathComponent(file.fileId, isDirectory: true)
+        let destination = folder.appendingPathComponent(file.localName)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            let bytes = try FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? NSNumber
+            if bytes?.intValue == file.sizeBytes { return destination }
+            try FileManager.default.removeItem(at: destination)
+        }
+        var request = try await makeRequest("GET", ["files", file.fileId])
+        request.timeoutInterval = 120
+        request.setValue(nil, forHTTPHeaderField: "Content-Type")
+        let downloaded = try await retryingAuthorization(for: request) { request in
+            let (location, response) = try await session.download(for: request)
+            guard let http = response as? HTTPURLResponse else { throw InstantClientError.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else {
+                let body = (try? Data(contentsOf: location)) ?? Data()
+                try? FileManager.default.removeItem(at: location)
+                throw decodeError(data: body, statusCode: http.statusCode)
+            }
+            // The system deletes its temporary file when this closure returns.
+            let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.moveItem(at: location, to: staged)
+            return staged
+        }
+        do {
+            try Task.checkCancellation()
+            try await validateAccount()
+            let bytes = try FileManager.default.attributesOfItem(atPath: downloaded.path)[.size] as? NSNumber
+            guard bytes?.intValue == file.sizeBytes else { throw InstantClientError.invalidResponse }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: destination.path) { try? FileManager.default.removeItem(at: downloaded); return destination }
+            try FileManager.default.moveItem(at: downloaded, to: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: downloaded)
+            throw error
+        }
+        return destination
     }
 
     private func makeRequest(_ method: String, _ path: [String], query: [URLQueryItem] = []) async throws -> URLRequest {

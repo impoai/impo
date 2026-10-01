@@ -61,7 +61,7 @@ class SseParser(private val maximumEventBytes: Int = 1_048_576) {
 data class StreamState(
     val messageId: String? = null, val submissionId: String? = null, val status: String? = null,
     val text: String = "", val tools: List<ToolState> = emptyList(), val deviceRequests: List<DeviceRequest> = emptyList(),
-    val steps: List<StreamStep> = emptyList(), val errors: List<String> = emptyList(),
+    val steps: List<StreamStep> = emptyList(), val files: List<DeliveredFile> = emptyList(), val errors: List<String> = emptyList(),
     val aborted: Boolean = false, val finished: Boolean = false, val done: Boolean = false,
 )
 class UIMessageReducer {
@@ -71,6 +71,7 @@ class UIMessageReducer {
     private val tools = linkedMapOf<String, ToolState>()
     private val requests = linkedMapOf<String, DeviceRequest>()
     private val steps = linkedMapOf<String, StreamStep>()
+    private val files = linkedMapOf<String, DeliveredFile>()
     fun consume(event: String): StreamState {
         valid(!state.done, "Event after DONE")
         if (event == "[DONE]") {
@@ -120,12 +121,14 @@ class UIMessageReducer {
                 val step = StreamStep(chunk.string("id"), data.string("kind"), data.string("title"), data.string("status"), data.optionalString("detail"), data.optionalString("result"))
                 steps[step.id] = step
             }.getOrNull()
+            // Optional: a malformed file part is ignored rather than failing the reply.
+            "data-instant-file" -> DeliveredFile.from(chunk["data"])?.let { files.putIfAbsent(it.fileId, it) }
             "error" -> state = state.copy(errors = state.errors + chunk.string("errorText"))
             "abort" -> state = state.copy(aborted = true)
             "finish" -> { valid(openText.isEmpty() || state.aborted, "Finish with open text block"); state = state.copy(finished = true) }
             else -> valid(type.startsWith("data-"), "Unsupported core stream chunk")
         }
-        state = state.copy(text = textParts.values.joinToString(""), tools = tools.values.toList(), deviceRequests = requests.values.toList(), steps = steps.values.toList())
+        state = state.copy(text = textParts.values.joinToString(""), tools = tools.values.toList(), deviceRequests = requests.values.toList(), steps = steps.values.toList(), files = files.values.toList())
         return state
     }
     fun validateEOF() { valid(state.finished && state.done, "Incomplete message stream") }

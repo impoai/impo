@@ -6,6 +6,7 @@ import { RebyteRepository } from '../db/repositories/rebyte-repository.js';
 import type { ClaimedJob } from '../db/repositories/runtime-repository.js';
 import { RebyteGateway, type AgentToolParam, type EnvironmentParam, type InputParts } from '../rebyte/gateway.js';
 import { appendDynamicContext } from '../prompts/index.js';
+import { turnFiles } from '../rebyte/files.js';
 
 type Context = Awaited<ReturnType<RebyteRepository['context']>>;
 /** Captured at admission; retries must not change the input JSON or device identity. */
@@ -188,7 +189,9 @@ export class RebyteWorker {
             await this.gateway.submitToolResult(sessionId, result, `instant-tool-result-${result.id}`, signal);
             await this.repository.acknowledgeToolResult(job, result.id);
           }
-          if (await this.repository.reconcile(job, turn, items, session.agent)) return;
+          // Files are published when a Turn completes; list them only then.
+          const files = turn.status === 'completed' ? turnFiles(await this.gateway.artifacts(sessionId, signal), turn.id, context.binding.id) : [];
+          if (await this.repository.reconcile(job, turn, items, session.agent, files)) return;
         } else {
           const session = await this.gateway.retrieve(sessionId, signal);
           if (session.status === 'failed') { await this.repository.failSession(job); return; }

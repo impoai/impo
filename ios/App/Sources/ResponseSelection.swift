@@ -191,7 +191,7 @@ struct InlineResponseText: UIViewRepresentable {
 
     static func attributed(_ value: ResponseDocument.Inline, size: CGFloat, semibold: Bool, lineSpacing: CGFloat) -> NSAttributedString {
         let markdown = (try? AttributedString(markdown: value.markdown,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(value.plain)
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))?.webLinksOnly() ?? AttributedString(value.plain)
         let source = value.markdown.isEmpty ? AttributedString(value.plain) : markdown
         let result = NSMutableAttributedString(string: "")
         let paragraph = NSMutableParagraphStyle(); paragraph.lineSpacing = lineSpacing

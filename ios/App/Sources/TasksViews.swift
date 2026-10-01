@@ -1,4 +1,5 @@
 import SwiftUI
+import InstantClient
 
 // in Impo's own paper palette. Template wording is provisional; prompts come later.
 
@@ -340,7 +341,11 @@ private struct TaskDetailView: View {
                                     .frame(maxWidth: .infinity).padding(.vertical, 6)
                             }
                             ForEach(thread.messages) { message in
-                                if message.role == "user" { userBubble(message.text) } else { assistantText(message.text) }
+                                if message.role == "user" { userBubble(message.text) }
+                                else {
+                                    if !message.text.isEmpty { assistantText(message.text) }
+                                    if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
+                                }
                             }
                             // Same as Chat: "…" holds the message's place until its text arrives.
                             if voice.transcribing { TranscribingBubble() }
@@ -356,7 +361,7 @@ private struct TaskDetailView: View {
                         }.padding(.horizontal, 18).padding(.bottom, 12)
                     }
                     .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
-                    .followsBottom(proxy, content: [AnyHashable(thread.messages.count), AnyHashable(thread.messages.last?.text.count ?? 0), AnyHashable(thread.isRunning), AnyHashable(thread.error), AnyHashable(thread.steps.count), AnyHashable(voice.transcribing)],
+                    .followsBottom(proxy, content: [AnyHashable(thread.messages.count), AnyHashable(thread.messages.last?.text.count ?? 0), AnyHashable(thread.messages.last?.files.count ?? 0), AnyHashable(thread.isRunning), AnyHashable(thread.error), AnyHashable(thread.steps.count), AnyHashable(voice.transcribing)],
                                    identifier: "task.scrollToBottom")
                 }
                 ChatComposer(text: $text, focused: $focused, placeholder: "Chat or hold to speak…", identifier: "task.detail",

@@ -32,6 +32,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ai.impo.client.ConversationState
+import ai.impo.client.DeliveredFile
+import java.io.File
 import ai.impo.data.AppState
 import ai.impo.data.AppViewModel
 
@@ -51,7 +53,7 @@ import ai.impo.data.AppViewModel
             IconButton(onClick = { go("settings") }, modifier = Modifier.testTag("settings.open")) { Icon(Icons.Outlined.Settings, "Settings") }
         }
         if (searchOpen) OutlinedTextField(search, { search = it }, label = { Text("Search this conversation") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-        ConversationBody(conversation, search, Modifier.weight(1f), state.profile.assistantName, { vm.retryChat() })
+        ConversationBody(conversation, search, Modifier.weight(1f), state.profile.assistantName, { vm.retryChat() }, vm::downloadFile)
         ErrorNotice(state.errors["chat"], { vm.retryChat() })
         MessageComposer(vm, conversation, { vm.send(it) }, { vm.cancelChat() }, "chat", session != null,
             owner to session, { vm.state.value.account?.requestScope == owner && vm.state.value.chat === session })
@@ -63,13 +65,14 @@ import ai.impo.data.AppViewModel
     val session = state.taskSession
     Column(Modifier.fillMaxSize()) {
         PageHeader("Task", conversation.title, back)
-        ConversationBody(conversation, "", Modifier.weight(1f), state.profile.assistantName, { vm.retryChat(true) })
+        ConversationBody(conversation, "", Modifier.weight(1f), state.profile.assistantName, { vm.retryChat(true) }, vm::downloadFile)
         ErrorNotice(state.errors["task"], { vm.retryChat(true) })
         MessageComposer(vm, conversation, { vm.send(it, true) }, { vm.cancelChat(true) }, "task", session != null,
             owner to session, { vm.state.value.account?.requestScope == owner && vm.state.value.taskSession === session })
     }
 }
-@Composable private fun ConversationBody(conversation: ConversationState, search: String, modifier: Modifier, assistant: String, retry: () -> Unit) {
+@Composable private fun ConversationBody(conversation: ConversationState, search: String, modifier: Modifier, assistant: String, retry: () -> Unit,
+    download: suspend (DeliveredFile) -> File) {
     val list = rememberLazyListState()
     var follow by remember { mutableStateOf(true) }
     var selecting by remember { mutableStateOf(emptySet<String>()) }
@@ -104,7 +107,8 @@ import ai.impo.data.AppViewModel
                         SelectionContainer { Text(message.text, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge) }
                     } else {
                         if (message.text.isNotBlank()) RichResponse(message.text, Modifier.fillMaxWidth(), message.status in setOf("queued", "running", "waiting_device"), onSelectionChanged = { active -> selecting = if (active) selecting + message.id else selecting - message.id })
-                        else if (conversation.busy && conversation.pendingVoice == null) Text("Thinking…", color = Muted)
+                        else if (conversation.busy && conversation.pendingVoice == null && message.files.isEmpty()) Text("Thinking…", color = Muted)
+                        if (message.files.isNotEmpty()) DeliveredFiles(message.files, download)
                         if (message.status in setOf("failed", "cancelled")) Text(humanStatus(message.status), style = MaterialTheme.typography.labelSmall, color = Muted)
                     }
                 }

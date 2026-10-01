@@ -6,6 +6,7 @@ import { actions, agentConfigVersions, agentCreationAttempts, conversations, mes
 import { RuntimeRepository, type ClaimedJob, type Submission, type Transaction } from './runtime-repository.js';
 import { historyContext, hydrateMessages } from './conversation-history.js';
 import { normalizeAnswerText } from '../../rebyte/citations.js';
+import type { FilePart } from '../../rebyte/files.js';
 import { estimateContextTokens, mainHistoryContext, mainSessionPolicy, mainSessionRotation } from '../../persistence/main-session-policy.js';
 import { turnSteps } from '../../rebyte/steps.js';
 import type { AgentItem, AgentSession, RebyteAgent, Turn } from '../../rebyte/gateway.js';
@@ -311,7 +312,7 @@ export class RebyteRepository extends RuntimeRepository {
   }
 
   /** Re-read active Items by ID: an existing in-progress Item can grow in place. */
-  async reconcile(job: ClaimedJob, turn: Turn, items: AgentItem[], agent: AgentSession['agent']): Promise<boolean> {
+  async reconcile(job: ClaimedJob, turn: Turn, items: AgentItem[], agent: AgentSession['agent'], files: FilePart[] = []): Promise<boolean> {
     return this.withLease(job, async (tx, submission) => {
       if (submission.providerTurnId && submission.providerTurnId !== turn.id) throw new Error('Remote Turn identity changed');
       const selected = items.filter(item => item.turn_id === turn.id && item.type === 'message');
@@ -364,6 +365,8 @@ export class RebyteRepository extends RuntimeRepository {
         await tx.update(sessionBindings).set({ contextTokenEstimate: estimateContextTokens({ instructions: agent.instructions, tools: agent.tools, items }), updatedAt: new Date() })
           .where(eq(sessionBindings.id, submission.bindingId));
         if (answer.length || hadText) chunks.push({ type: 'text-end', id: partId });
+        // Delivered files follow the answer; history rebuilds the same parts from Rebyte.
+        if (turn.status === 'completed' && !submission.cancelRequested) chunks.push(...files);
         const status = submission.cancelRequested || turn.status === 'cancelled' ? 'cancelled' : turn.status === 'failed' ? 'failed' : 'completed';
         if (status === 'cancelled') chunks.push({ type: 'abort' });
         if (status === 'failed') chunks.push({ type: 'error', errorText: 'rebyte_turn_failed' });

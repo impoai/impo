@@ -355,9 +355,13 @@ inject a recorder, and server-flow tests use deterministic synthetic clips.
 Separate instrumentation checks native AAC recording and temporary-file cleanup
 with emulator silence; none of these proves physical speech recognition.
 
+Replies can deliver files. A file card downloads an account-scoped copy through
+the authenticated API and opens a native viewer, with sharing as a fallback.
+Downloads validate the complete byte count before becoming available. Settings
+also supports account deletion with two confirmations and durable cloud cleanup.
 The Android app does not yet include attachments/camera uploads,
-billing/subscriptions, recurring user-created tasks, diary generation,
-immediate account deletion. Web remains planned.
+billing/subscriptions, recurring user-created tasks or diary generation.
+Web remains planned.
 
 ## Remote notifications
 

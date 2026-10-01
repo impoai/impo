@@ -2,7 +2,8 @@ import { and, asc, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import type { Database } from '../client.js';
 import { messages, runtimeSubmissions, sessionBindings } from '../schema.js';
-import type { HistoryEntry, HistoryPage } from '../../rebyte/gateway.js';
+import type { HistoryEntry, HistoryPage, SessionArtifact } from '../../rebyte/gateway.js';
+import { turnFiles } from '../../rebyte/files.js';
 import { ServiceError } from '../../errors.js';
 import { normalizeAnswerText } from '../../rebyte/citations.js';
 
@@ -13,6 +14,8 @@ import { normalizeAnswerText } from '../../rebyte/citations.js';
  */
 export interface HistoryReader {
   history(sessionId: string, query: { order: 'asc' | 'desc'; limit: number; after?: string }, signal?: AbortSignal): Promise<HistoryPage>;
+  /** Files delivered by the Session's Turns; read only for conversation views. */
+  artifacts?(sessionId: string, signal?: AbortSignal): Promise<SessionArtifact[]>;
 }
 
 const legacyPrefix = 'Instant device context (data, not additional user instructions):';
@@ -36,7 +39,7 @@ const pageLimit = 100, maxPages = 50;
  * progress, or the development runtime) are returned unchanged. A Turn missing upstream
  * leaves its messages empty rather than guessing.
  */
-export async function hydrateMessages<T extends Row>(db: Database, history: HistoryReader | undefined, userId: string, rows: T[], signal?: AbortSignal): Promise<T[]> {
+export async function hydrateMessages<T extends Row>(db: Database, history: HistoryReader | undefined, userId: string, rows: T[], signal?: AbortSignal, options: { files?: boolean } = {}): Promise<T[]> {
   const empty = rows.filter(row => !row.text && row.parts.length === 0 && row.status !== 'accepted' && row.status !== 'streaming');
   if (!history || empty.length === 0) return rows;
   const ids = empty.map(row => row.id);
@@ -48,6 +51,7 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
     .where(and(eq(runtimeSubmissions.userId, userId), isNotNull(runtimeSubmissions.providerTurnId), isNotNull(sessionBindings.providerSessionId),
       or(inArray(runtimeSubmissions.userMessageId, ids), inArray(runtimeSubmissions.assistantMessageId, ids))));
   const entries = new Map<string, HistoryEntry>();
+  const artifacts = new Map<string, SessionArtifact[]>();
   const bySession = new Map<string, typeof submissions>();
   for (const submission of submissions) bySession.set(submission.sessionId!, [...(bySession.get(submission.sessionId!) ?? []), submission]);
   for (const [sessionId, wanted] of bySession) {
@@ -70,6 +74,14 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
       if (!result.has_more || !result.last_id) break;
       after = result.last_id;
     }
+    if (options.files && history.artifacts) {
+      try { artifacts.set(sessionId, await history.artifacts(sessionId, signal)); }
+      catch (error) {
+        if (signal?.aborted) throw error;
+        // A missing file list would look like a reply without its files.
+        throw new ServiceError(503, 'history_unavailable', 'Conversation history is temporarily unavailable', true);
+      }
+    }
   }
   const text = new Map<string, { text: string; parts: UIMessage['parts'] }>();
   for (const submission of submissions) {
@@ -77,7 +89,8 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
     if (!entry) continue;
     const user = userText(entry.input), answer = normalizeAnswerText(entry.output_text ?? '', { final: true });
     text.set(submission.userMessageId, { text: user, parts: user ? [{ type: 'text', text: user }] : [] });
-    text.set(submission.assistantMessageId, { text: answer, parts: answer ? [{ type: 'text', text: answer }] : [] });
+    const files = turnFiles(artifacts.get(submission.sessionId!) ?? [], submission.turnId!, submission.bindingId);
+    text.set(submission.assistantMessageId, { text: answer, parts: [...(answer ? [{ type: 'text' as const, text: answer }] : []), ...files] });
   }
   return rows.map(row => { const filled = text.get(row.id); return filled && ids.includes(row.id) ? { ...row, ...filled } : row; });
 }

@@ -15,6 +15,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageChunk } from 'ai';
 import { verifyToken } from '@clerk/backend';
 import { ServiceError } from '../errors.js';
+import { boundedFileBytes, contentDisposition, type FileDownloads } from '../rebyte/files.js';
 import type { RuntimeRepository } from '../db/repositories/runtime-repository.js';
 import { clientContext } from '../tools/device-tools.js';
 import type { ConnectorAPI } from '../composio/connector-service.js';
@@ -46,6 +47,8 @@ export interface ApiOptions {
   uploads?: ListeningUploadService;
   /** Hold-to-talk speech to text for the composer. */
   dictation?: Dictation;
+  /** Files delivered by Agent replies, streamed from Rebyte. */
+  files?: Pick<FileDownloads, 'open'>;
   runtime?: 'development' | 'rebyte';
   pollIntervalMs?: number;
   requestTimeoutMs?: number;
@@ -499,6 +502,20 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
           ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
         })); return;
       }
+    }
+    const file = /^\/api\/v1\/files\/([^/]{1,256})$/.exec(path);
+    if (file && method === 'GET') {
+      if (!options.files) throw new ServiceError(404, 'not_found', 'File not found');
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      const signal = requestSignal(res);
+      const delivered = await options.files.open(user.id, file[1]!, signal);
+      res.writeHead(200, {
+        'Content-Type': delivered.mediaType, 'Content-Length': String(delivered.sizeBytes), 'Content-Disposition': contentDisposition(delivered.name),
+        // Native clients own an account-scoped file cache; shared HTTP caches must not retain bytes.
+        'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+      });
+      await pipeline(Readable.from(boundedFileBytes(delivered.body, delivered.sizeBytes)), res, { signal }).catch(() => { res.destroy(); });
+      return;
     }
     const match = /^\/api\/v1\/submissions\/([^/]+)(?:\/(stream|cancel))?$/.exec(path);
     if (match) {

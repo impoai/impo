@@ -19,6 +19,7 @@ for reads, writes, streams, device requests, uploads and artifact access.
 | Stream parsing and UI projection | `SSEParser.swift`, `UIMessageReducer.swift`, `server/src/rebyte/` |
 | Device pending/claim/result flow | `server/src/tools/device-tools.ts`, `DeviceTools.swift` |
 | Task conversations | `server/src/tools/task-tools.ts`, `Tasks.swift` |
+| Delivered files | `server/src/rebyte/files.ts`, `DeliveredFilesView.swift`, `DeliveredFiles.kt` |
 | Echo batches, receipts and history | `server/src/listening/`, `Listening.swift` |
 | Brief configuration and editions | `server/src/today/`, `Today.swift` |
 | Memory summary, list and forgetting | `server/src/memory/`, `Memories.swift` |

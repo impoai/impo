@@ -44,6 +44,7 @@ an alternative persistent API specification.
 - Standard chunks: start, text-start/delta/end, tool-input-available,
   tool-output-available/error, finish, error, abort; terminal `[DONE]` marker.
 - `data-instant-submission`: data `{schemaVersion:1,submissionId,status}`.
+- `data-instant-file`: data `{schemaVersion:1,fileId,name,mediaType,sizeBytes}`; a file the reply delivered, downloaded from `GET /api/v1/files/{fileId}`.
 - `data-instant-device-request`: data `{schemaVersion:1,invocationId,toolCallId,deviceId,expiresAt}`; tool name/input comes from matching standard tool-input-available.
 - Text and tool scenarios intentionally use Mandarin text and emoji to exercise
   Unicode streaming. Exact payloads are defined in the

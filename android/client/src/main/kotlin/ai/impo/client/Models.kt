@@ -2,6 +2,13 @@ package ai.impo.client
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatterBuilder
@@ -57,7 +64,34 @@ fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
 @Serializable data class ConversationMessage(
     val id: String, val role: String, val sequence: Int, val text: String,
     val status: String, val createdAt: String, val parts: List<JsonElement> = emptyList(),
-)
+) {
+    /** Files delivered with an assistant reply, from its `data-instant-file` parts. */
+    val files: List<DeliveredFile> get() = parts.mapNotNull { part ->
+        val value = part as? JsonObject ?: return@mapNotNull null
+        if ((value["type"] as? JsonPrimitive)?.contentOrNull != "data-instant-file") null else DeliveredFile.from(value["data"])
+    }.distinctBy { it.fileId }
+}
+/** A file an assistant reply delivered; download it with [ImpoClient.downloadFile]. */
+@Serializable data class DeliveredFile(val fileId: String, val name: String, val mediaType: String, val sizeBytes: Long) {
+    /** One safe path component: the server name without separators or a leading dot. */
+    val localName: String get() = name.filterNot { it.isISOControl() }.replace('/', '_').replace('\\', '_').replace(':', '_').trim { it == '.' || it.isWhitespace() }.ifEmpty { "file" }
+    fun part(): JsonObject = buildJsonObject {
+        put("type", "data-instant-file"); put("id", fileId)
+        put("data", buildJsonObject { put("schemaVersion", 1); put("fileId", fileId); put("name", name); put("mediaType", mediaType); put("sizeBytes", sizeBytes) })
+    }
+    companion object {
+        /** Schema version 1 data, or null for anything that is not a usable file. */
+        fun from(data: JsonElement?): DeliveredFile? {
+            val value = data as? JsonObject ?: return null
+            fun text(key: String) = (value[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if ((value["schemaVersion"] as? JsonPrimitive)?.intOrNull != 1) return null
+            val fileId = text("fileId")?.takeIf { it.isNotEmpty() } ?: return null
+            val name = text("name")?.takeIf { it.isNotEmpty() } ?: return null
+            val size = (value["sizeBytes"] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull?.takeIf { it >= 0 } ?: return null
+            return DeliveredFile(fileId, name, text("mediaType") ?: return null, size)
+        }
+    }
+}
 @Serializable data class ActiveSubmission(val submissionId: String, val messageId: String, val status: String)
 @Serializable data class ConversationPage(
     val conversationId: String, val messages: List<ConversationMessage>,

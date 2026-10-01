@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 export type JSONRecord = Record<string, any>;
 export type FakeTurn = JSONRecord & { id: string; status: string; text: string; answer: string; assistant: JSONRecord; emitted: number };
-export type FakeSession = JSONRecord & { id: string; turns: FakeTurn[]; items: JSONRecord[]; streams: Set<ServerResponse> };
+export type FakeSession = JSONRecord & { id: string; turns: FakeTurn[]; items: JSONRecord[]; artifacts: Array<JSONRecord & { content: Buffer }>; streams: Set<ServerResponse> };
 export type PlannedTool = { name: string; arguments: JSONRecord };
 
 /** A live-only Agents API double. It owns durable remote state independently of
@@ -22,6 +22,8 @@ export class FakeRebyte {
   /** Intermediate Items (commands, commentary...) added to the next Turn before its answer. */
   nextSteps: JSONRecord[] = [];
   answers: string[] = [];
+  /** Files the next Turn publishes as Session artifacts when it completes. */
+  nextFiles: Array<{ path: string; content: string | Buffer }> = [];
   historyReads = 0;
   failHistory = false;
   holdNextToolResult = false;
@@ -62,11 +64,11 @@ export class FakeRebyte {
     response.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
   }
   private sessionView(session: FakeSession) {
-    const { turns: _turns, items: _items, streams: _streams, ...view } = session;
+    const { turns: _turns, items: _items, artifacts: _artifacts, streams: _streams, ...view } = session;
     return view;
   }
   private turnView(turn: FakeTurn) {
-    const { text: _text, answer: _answer, assistant: _assistant, emitted: _emitted, ...view } = turn;
+    const { text: _text, answer: _answer, assistant: _assistant, emitted: _emitted, files: _files, ...view } = turn;
     return view;
   }
   private emit(session: FakeSession, payload: JSONRecord, duplicate = false) {
@@ -101,7 +103,7 @@ export class FakeRebyte {
     const answer = this.answers.shift() ?? `Context: ${[...session.turns.map(turn => turn.text), text].join(' | ')}`;
     const assistant = { id: `item_assistant_${id}`, type: 'message', role: 'assistant', phase: 'final_answer', status: 'in_progress', content: [], turn_id: id };
     const now = Math.floor(Date.now() / 1000);
-    const turn: FakeTurn = { id, object: 'agent.session.turn', session_id: session.id, agent_id: 'agent_fake', status: 'in_progress', created_at: now, started_at: now, completed_at: null, subagent_id: null, error: null, usage: null, text, answer, assistant, emitted: 0 };
+    const turn: FakeTurn = { id, object: 'agent.session.turn', session_id: session.id, agent_id: 'agent_fake', status: 'in_progress', created_at: now, started_at: now, completed_at: null, subagent_id: null, error: null, usage: null, text, answer, assistant, emitted: 0, files: this.nextFiles.splice(0) };
     session.turns.push(turn);
     session.items.push({ id: `item_user_${id}`, type: 'message', role: 'user', phase: null, status: 'completed', content: parts, turn_id: id }, assistant);
     session.status = 'in_progress';
@@ -160,6 +162,10 @@ export class FakeRebyte {
     turn.status = 'completed';
     turn.completed_at = Math.floor(Date.now() / 1000);
     session.status = 'idle';
+    for (const file of turn.files as Array<{ path: string; content: string | Buffer }>) {
+      const content = Buffer.from(file.content);
+      session.artifacts.push({ id: `artifact_fake${session.artifacts.length + 1}_${session.id.replace(/\W/g, '')}`, object: 'agent.session.artifact', created_at: turn.completed_at, environment_id: 'env_fake', path: file.path, session_id: session.id, size_bytes: content.length, turn_id: turn.id, content });
+    }
     this.emit(session, { type: 'agent.session.turn.output_text.done', turn_id: turn.id, item_id: turn.assistant.id, output_index: 0, content_index: 0, text: turn.answer });
     this.emit(session, { type: 'agent.session.turn.item.done', turn_id: turn.id, output_index: 0, item: turn.assistant });
     this.emit(session, { type: 'agent.session.turn.completed', turn_id: turn.id, turn: this.turnView(turn), usage: null });
@@ -221,7 +227,7 @@ export class FakeRebyte {
       const session: FakeSession = {
         id: `sess_fake_${this.sessions.length + 1}`, object: 'agent.session', created_at: now, last_active_at: now,
         agent: agentView, environment: body.environment, metadata: body.metadata,
-        error: null, required_actions: [], status: 'idle', usage: null, vault_ids: [], turns: [], items: [], streams: new Set(),
+        error: null, required_actions: [], status: 'idle', usage: null, vault_ids: [], turns: [], items: [], artifacts: [], streams: new Set(),
       };
       this.sessions.push(session);
       assert.ok(Array.isArray(body.input) && body.input.length === 1 && body.input[0].role === 'user', 'the creation request carries the first message');
@@ -237,11 +243,19 @@ export class FakeRebyte {
     if (path === '/agents/sessions' && request.method === 'GET') {
       this.page(response, url, this.sessions.map(session => this.sessionView(session))); return;
     }
-    const route = /^\/agents\/sessions\/([^/]+)(?:\/(events|items|turns|history)(?:\/([^/]+))?)?$/.exec(path);
+    const route = /^\/agents\/sessions\/([^/]+)(?:\/(events|items|turns|history|artifacts)(?:\/([^/]+)(?:\/(content))?)?)?$/.exec(path);
     const session = this.sessions.find(value => value.id === route?.[1]);
     if (!route || !session) { this.json(response, 404, { error: { message: 'Missing fake resource', type: 'not_found' } }); return; }
     if (!route[2] && request.method === 'GET') { this.json(response, 200, this.sessionView(session)); return; }
     if (route[2] === 'items' && request.method === 'GET') { this.page(response, url, session.items); return; }
+    if (route[2] === 'artifacts' && request.method === 'GET') {
+      if (!route[3]) { this.page(response, url, session.artifacts.map(({ content: _content, ...view }) => view)); return; }
+      const artifact = session.artifacts.find(value => value.id === route[3]);
+      if (!artifact) { this.json(response, 404, { error: { message: 'Missing artifact', type: 'not_found' } }); return; }
+      if (route[4]) { response.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': String(artifact.content.length) }).end(artifact.content); return; }
+      const { content: _content, ...view } = artifact;
+      this.json(response, 200, view); return;
+    }
     if (route[2] === 'history' && request.method === 'GET') {
       // Rebyte history: per Turn, the user input parts and the final answer only.
       this.historyReads++;

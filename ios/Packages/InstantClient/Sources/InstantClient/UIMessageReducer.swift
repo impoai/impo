@@ -16,6 +16,35 @@ public struct DeviceRequest: Codable, Equatable, Sendable {
     public let expiresAt: String
 }
 
+/// A file an assistant reply delivered. Download it with `InstantClient.downloadFile`.
+public struct DeliveredFile: Codable, Equatable, Hashable, Sendable, Identifiable {
+    public let fileId: String
+    public let name: String
+    public let mediaType: String
+    public let sizeBytes: Int
+    public var id: String { fileId }
+
+    public init(fileId: String, name: String, mediaType: String, sizeBytes: Int) {
+        self.fileId = fileId; self.name = name; self.mediaType = mediaType; self.sizeBytes = sizeBytes
+    }
+
+    /// Accepts schema version 1 `data-instant-file` data; anything else is not a file.
+    init?(_ data: JSONValue?) {
+        guard let data, data["schemaVersion"] == .number(1), let fileId = data["fileId"]?.string, !fileId.isEmpty,
+              let name = data["name"]?.string, !name.isEmpty, let mediaType = data["mediaType"]?.string,
+              case .number(let size)? = data["sizeBytes"], size.isFinite, size >= 0, size <= 9_007_199_254_740_991, size == size.rounded() else { return nil }
+        self.init(fileId: fileId, name: name, mediaType: mediaType, sizeBytes: Int(size))
+    }
+
+    /// A single path component: the server name without separators or a leading dot.
+    public var localName: String {
+        let cleaned = name.components(separatedBy: .controlCharacters).joined()
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "\\", with: "_").replacingOccurrences(of: ":", with: "_")
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". ").union(.whitespacesAndNewlines))
+        return cleaned.isEmpty ? "file" : cleaned
+    }
+}
+
 /// Live progress of a running reply (a command, web search, tool, reasoning summary or note).
 /// Streamed only while the reply runs and never part of the stored message.
 public struct StreamStep: Equatable, Sendable, Identifiable {
@@ -39,6 +68,8 @@ public struct UIMessageState: Equatable, Sendable {
     public var deviceRequests: [String: DeviceRequest] = [:]
     /// Intermediate steps in first-seen order; updated in place by ID.
     public var steps: [StreamStep] = []
+    /// Files delivered with the reply, in stream order.
+    public var files: [DeliveredFile] = []
     public var errors: [String] = []
     public var aborted = false
     public var finished = false
@@ -123,6 +154,10 @@ public struct UIMessageReducer: Sendable {
                   let kind = data["kind"]?.string, let title = data["title"]?.string, let status = data["status"]?.string else { break }
             let step = StreamStep(id: id, kind: kind, title: title, detail: data["detail"]?.string, result: data["result"]?.string, status: status)
             if let index = state.steps.firstIndex(where: { $0.id == id }) { state.steps[index] = step } else { state.steps.append(step) }
+        case "data-instant-file":
+            // Optional: a malformed file part is ignored rather than failing the reply.
+            guard let file = DeliveredFile(chunk["data"]), !state.files.contains(where: { $0.fileId == file.fileId }) else { break }
+            state.files.append(file)
         case "data-instant-device-request":
             guard let data = chunk["data"] else { throw StreamProtocolError.malformedChunk("missing request") }
             let request: DeviceRequest

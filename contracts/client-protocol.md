@@ -134,6 +134,7 @@ to the originating login session, including when the same user signs in again.
 | `GET /submissions/{submissionId}` | No query | 200 `Submission` |
 | `GET /submissions/{submissionId}/stream` | `Accept: text/event-stream`; no query | 200 SSE |
 | `POST /submissions/{submissionId}/cancel` | `{}` | 200 `Submission` |
+| `GET /files/{fileId}` | No query | 200 file bytes |
 
 ```text
 ClientContext = { timeZone: string, currentDate: timestamp }
@@ -199,6 +200,30 @@ it does not refresh an earlier running assistant message. Do not rely solely on
 incremental history to recover its final contents. Recover the accepted run
 instead of submitting its prompt again.
 
+### Delivered files
+
+An Agent delivers a file by saving it in `/workspace/outputs/` of its Sandbox.
+When the Turn completes, each such file follows the answer text as a
+`data-instant-file` chunk, and history repeats it as a part of the assistant
+message with the same `id` and `data`:
+
+```text
+DeliveredFile = { schemaVersion: 1, fileId: string, name: string,
+                  mediaType: string, sizeBytes: integer }
+```
+
+`fileId` is opaque and path-safe (`[A-Za-z0-9_-]`). `GET /files/{fileId}` streams
+the bytes with `Content-Type`, `Content-Length` and an RFC 6266 attachment
+`Content-Disposition` carrying the UTF-8 name. A file owned by another account,
+a Sandbox file outside the outputs directory, or an unknown ID returns 404;
+files over 100 MiB return 413 `file_too_large`; provider outages return 503
+`file_unavailable` (retryable). Responses use `Cache-Control: private, no-store`;
+clients explicitly manage an account-scoped cache, recheck the active account,
+and reject incomplete or oversized transfers. Files are immutable, so a client may keep a
+downloaded copy, scoped to the signed-in account and cleared when it changes.
+Answer text names files but does not link to them; render links that are not
+http(s) as plain text.
+
 History exposes text/status, not the full transient tool/progress UI. Markdown,
 tables, code and LaTeX are client rendering concerns. Search is currently local.
 
@@ -227,6 +252,7 @@ buffer (iOS uses 1 MiB per event), reject invalid UTF-8 and detect truncated EOF
 | `data-instant-submission` | `data: {schemaVersion: 1, submissionId, status}` | Update run state |
 | `data-instant-device-request` | `data: {schemaVersion: 1, invocationId, toolCallId, deviceId, expiresAt}` | Signal device work; claim separately |
 | `data-instant-step` | `id`, `data: {schemaVersion: 1, kind, title, status, detail?, result?}` | Upsert transient progress by ID |
+| `data-instant-file` | `id`, `data: DeliveredFile` | Show a file card once per `fileId`; ignore a malformed one |
 | `error` | `errorText` | Record error; reconcile run state |
 | `abort` | No required additional fields | Mark aborted |
 | `finish` | No required additional fields | Close the message |

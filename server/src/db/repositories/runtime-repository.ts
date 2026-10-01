@@ -255,6 +255,13 @@ export class RuntimeRepository {
     return { messageId, submissionId };
   }
 
+  /** The provider Session of an owned binding; undefined for another user's or an unbound one. */
+  async ownedProviderSession(userId: string, bindingId: string): Promise<string | undefined> {
+    const [binding] = await this.db.select({ sessionId: sessionBindings.providerSessionId }).from(sessionBindings)
+      .where(and(eq(sessionBindings.userId, userId), eq(sessionBindings.id, bindingId), eq(sessionBindings.provider, 'rebyte'), isNotNull(sessionBindings.providerSessionId)));
+    return binding?.sessionId ?? undefined;
+  }
+
   async getConversation(userId: string, afterSequence = 0, limit = 50) {
     // Initialize separately: the read snapshot must not mix message/worker commits.
     const identity = await this.db.transaction(tx => this.conversation(tx, userId));
@@ -304,7 +311,7 @@ export class RuntimeRepository {
   private async readConversation(userId: string, conversationId: string, afterSequence: number, limit: number) {
     // Read ordering/status in one snapshot, then fill finished text from Rebyte outside the transaction.
     const view = await this.readConversationRows(userId, conversationId, afterSequence, limit);
-    return { ...view, messages: await hydrateMessages(this.db, this.runtime.history, userId, view.messages) };
+    return { ...view, messages: await hydrateMessages(this.db, this.runtime.history, userId, view.messages, undefined, { files: true }) };
   }
 
   private async readConversationRows(userId: string, conversationId: string, afterSequence: number, limit: number) {

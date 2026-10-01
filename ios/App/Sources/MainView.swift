@@ -224,7 +224,12 @@ private struct ChatView: View {
                     ForEach(model.messages.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) }) { message in
                         // A voice message shows "…" until the server returns its transcript.
                         if message.role == "user" && message.text.isEmpty { TranscribingBubble().id(message.id) }
-                        else { bubble(message.text, user: message.role == "user").id(message.id) }
+                        else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if !message.text.isEmpty { bubble(message.text, user: message.role == "user") }
+                                if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
+                            }.id(message.id)
+                        }
                     }
                     if !search.isEmpty && !model.messages.contains(where: { $0.text.localizedCaseInsensitiveContains(search) }) {
                         Text("No messages found").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 50)
@@ -244,7 +249,7 @@ private struct ChatView: View {
                 }.padding(.horizontal, 19).padding(.top, 2).padding(.bottom, 10)
             }
             .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
-            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.awaitingTranscript)],
+            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.messages.last?.files.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.awaitingTranscript)],
                            enabled: search.isEmpty, identifier: "chat.scrollToBottom")
         }
     }

@@ -1,9 +1,10 @@
 import { Rebyte } from '@rebyteai/agent-sdk';
 import type { Agent, AgentSession, AgentSessionEvent, AgentSessionItem, AgentToolParam, EnvironmentParam } from '@rebyteai/agent-sdk/resources/beta/agents';
 import type { Turn } from '@rebyteai/agent-sdk/resources/beta/agents/sessions/turns';
+import type { SessionArtifact } from '@rebyteai/agent-sdk/resources/beta/agents/sessions/artifacts';
 import { mainInstructions } from '../prompts/index.js';
 
-export type { AgentSession, AgentSessionEvent, Turn };
+export type { AgentSession, AgentSessionEvent, SessionArtifact, Turn };
 export type AgentItem = AgentSessionItem;
 export type RebyteAgent = Agent;
 export type { AgentToolParam, EnvironmentParam };
@@ -167,6 +168,25 @@ export class RebyteGateway {
       'Idempotency-Key': idempotencyKey,
       events: [{ type: 'agent.session.input.tool_result', turn_id: input.turnId, call_id: input.callId, ...toolResultPayload(input.result) }],
     }, { signal });
+  }
+
+  /** Immutable files published by completed Turns; they outlive the Sandbox. */
+  async artifacts(sessionId: string, signal?: AbortSignal): Promise<SessionArtifact[]> {
+    const scan = signal ?? new AbortController().signal;
+    scan.throwIfAborted();
+    return collect(this.client.beta.agents.sessions.artifacts.list(sessionId, { order: 'asc', limit: 100 }, { signal: scan }), scan);
+  }
+
+  /** Rebyte checks that the artifact belongs to the Session. */
+  async artifact(sessionId: string, artifactId: string, signal: AbortSignal): Promise<SessionArtifact> {
+    signal.throwIfAborted();
+    return this.client.beta.agents.sessions.artifacts.retrieve(artifactId, { session_id: sessionId }, { signal });
+  }
+
+  /** The artifact's bytes as a stream; Rebyte labels every artifact application/octet-stream. */
+  async artifactContent(sessionId: string, artifactId: string, signal: AbortSignal): Promise<Response> {
+    signal.throwIfAborted();
+    return this.client.beta.agents.sessions.artifacts.content(artifactId, { session_id: sessionId }, { signal });
   }
 
   /** Cancels the currently active Turn; the worker must serialize this with new inputs. */

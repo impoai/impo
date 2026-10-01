@@ -344,6 +344,38 @@ test('Rebyte SDK integration recovers remote side effects across local process f
       } finally { await stop(worker); }
     });
 
+    await t.test('a task delivers its output files through the stream, history and an owned download', async () => {
+      const pdf = Buffer.from('%PDF-1.4 fixture bytes');
+      fake.nextFiles = [{ path: '/workspace/outputs/语言模型 指南.pdf', content: pdf }, { path: '/workspace/scratch/draft.txt', content: 'scratch' }];
+      const created = await request('/tasks', { clientMessageId: randomUUID(), text: `file-task-${randomUUID()}` });
+      assert.equal(created.status, 202, JSON.stringify(created.body));
+      const worker = start('src/worker-main.ts');
+      try {
+        const view = await state(created.body.submissionId as string, 'completed');
+        const replay = await fetch(`${baseURL}/api/v1/submissions/${created.body.submissionId}/stream`, { headers: { Authorization: 'Bearer instant-dev-alice' }, signal: AbortSignal.timeout(10000) });
+        const chunks = (await replay.text()).split('\n').filter(line => line.startsWith('data: ') && line !== 'data: [DONE]').map(line => JSON.parse(line.slice(6)));
+        const streamed = chunks.filter(chunk => chunk.type === 'data-instant-file');
+        assert.equal(streamed.length, 1, 'only files under /workspace/outputs/ are delivered');
+        assert.deepEqual({ ...streamed[0].data, fileId: undefined }, { schemaVersion: 1, fileId: undefined, name: '语言模型 指南.pdf', mediaType: 'application/pdf', sizeBytes: pdf.length });
+        assert.ok(chunks.findIndex(chunk => chunk.type === 'data-instant-file') < chunks.findIndex(chunk => chunk.type === 'finish'));
+        const conversation = await request(`/tasks/${created.body.taskId}/conversation?limit=100`);
+        const answer = (conversation.body.messages as Array<{ id: string; parts: JSONRecord[] }>).find(message => message.id === view.messageId)!;
+        assert.deepEqual(answer.parts.filter(part => part.type === 'data-instant-file'), [{ type: 'data-instant-file', id: streamed[0].id, data: streamed[0].data }], 'history rebuilds the same file part');
+        const fileId = streamed[0].data.fileId as string;
+        const download = await fetch(`${baseURL}/api/v1/files/${fileId}`, { headers: { Authorization: 'Bearer instant-dev-alice' }, signal: AbortSignal.timeout(10000) });
+        assert.equal(download.status, 200);
+        assert.equal(download.headers.get('content-type'), 'application/pdf');
+        assert.match(download.headers.get('content-disposition')!, /filename\*=UTF-8''%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B%20%E6%8C%87%E5%8D%97\.pdf$/);
+        assert.deepEqual(Buffer.from(await download.arrayBuffer()), pdf);
+        const foreign = await fetch(`${baseURL}/api/v1/files/${fileId}`, { headers: { Authorization: 'Bearer instant-dev-bob' }, signal: AbortSignal.timeout(10000) });
+        assert.equal(foreign.status, 404, 'another user cannot download the file');
+        const scratch = fake.sessions.flatMap(candidate => candidate.artifacts).find(artifact => artifact.path.startsWith('/workspace/scratch/'))!;
+        const hidden = await fetch(`${baseURL}/api/v1/files/${fileId.slice(0, 36)}_${scratch.id}`, { headers: { Authorization: 'Bearer instant-dev-alice' }, signal: AbortSignal.timeout(10000) });
+        assert.equal(hidden.status, 404, 'Sandbox files outside outputs are not downloadable');
+        assert.equal((await fetch(`${baseURL}/api/v1/files/not-a-file`, { headers: { Authorization: 'Bearer instant-dev-alice' } })).status, 404);
+      } finally { fake.nextFiles = []; await stop(worker); }
+    });
+
     await t.test('a task conversation cannot create another task', async () => {
       // The real Agent config never advertises instant_create_task to a task's own
       // Session (see runtime.ts), so this exercises Instant's own defense-in-depth

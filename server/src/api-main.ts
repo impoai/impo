@@ -8,6 +8,7 @@ import { createApiServer } from './http/api-server.js';
 import { DevelopmentDictation, GeminiDictation } from './voice/dictation.js';
 import { createRuntimeRepository } from './runtime.js';
 import { RebyteGateway } from './rebyte/gateway.js';
+import { FileDownloads } from './rebyte/files.js';
 import { ProfileRepository } from './db/repositories/profile-repository.js';
 import { ConnectorService } from './composio/connector-service.js';
 import { ConnectorRepository } from './db/repositories/connector-repository.js';
@@ -34,7 +35,8 @@ async function main(): Promise<void> {
   const archive = config.transcriptArchive ? new S3TranscriptArchive(config.transcriptArchive.bucket, config.transcriptArchive.region) : undefined;
   const uploads = config.transcriptArchive && batchService ? new ListeningUploadService(batches,
     new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
-  const server = createApiServer(repository, { profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
+  const files = config.rebyte ? new FileDownloads(repository, new RebyteGateway(config.rebyte)) : undefined;
+  const server = createApiServer(repository, { files, profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
     notifications: new NotificationRepository(database.db),
     accounts: new AccountDeletionService(new AccountDeletionRepository(database.db), config.clerk?.secretKey, config.appleSignIn ? new AppleGrantRevoker(config.appleSignIn) : undefined), accountDeletionEnabled: Boolean(config.temporal),
     dictation: config.voice ? new GeminiDictation(config.voice) : config.runtime === 'development' ? new DevelopmentDictation() : undefined });

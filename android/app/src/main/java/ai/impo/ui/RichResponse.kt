@@ -8,6 +8,10 @@ import android.net.Uri
 import android.view.View
 import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.LinkResolver
+import io.noties.markwon.MarkwonSpansFactory
+import io.noties.markwon.core.CoreProps
+import io.noties.markwon.core.spans.LinkSpan
+import org.commonmark.node.Link
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
@@ -291,6 +295,14 @@ private class ResponseNativeView(context: Context) : LinearLayout(context) {
                         runCatching { view.context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }
                 })
+            }
+            // A link to a Sandbox path or another non-web destination cannot open on the device
+            // (delivered files appear as cards instead), so it renders as its text only.
+            override fun configureSpansFactory(builder: MarkwonSpansFactory.Builder) {
+                builder.setFactory(Link::class.java) { configuration, props ->
+                    val destination = CoreProps.LINK_DESTINATION.require(props)
+                    if (isSafeResponseLink(destination)) LinkSpan(configuration.theme(), destination, configuration.linkResolver()) else null
+                }
             }
             override fun configureTheme(builder: MarkwonTheme.Builder) {
                 builder.linkColor(responseForest).headingTypeface(Typeface.create("serif", Typeface.NORMAL))

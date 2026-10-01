@@ -7,6 +7,10 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var id: String = UUID().uuidString
     var role: String
     var text: String
+    /// Files delivered with an assistant reply; never saved with the offline Demo chat.
+    var files: [DeliveredFile] = []
+
+    private enum CodingKeys: String, CodingKey { case id, role, text }
 }
 
 @MainActor @Observable
@@ -206,6 +210,7 @@ final class AppModel {
         isOnboarded = false; selectedTab = 0
         assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; mode = "Balanced"
         messages = []; liveSteps = []; selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil
+        DeliveredFileCache.clear()
         calendarEnabled = false; healthEnabled = false; remindersEnabled = false; contactsEnabled = false
     }
 
@@ -469,6 +474,20 @@ final class AppModel {
         return InstantClient(baseURL: url, tokenProvider: activeTokenProvider, session: session)
     }
 
+    func downloadFile(_ file: DeliveredFile) async throws -> URL {
+        guard let scope = listeningScope, let api = listeningClient() else { throw CancellationError() }
+        let hash = SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
+        let directory = DeliveredFileCache.directory.appendingPathComponent(hash, isDirectory: true)
+        let downloaded = try await api.downloadFile(file, into: directory) { @MainActor in
+            guard self.listeningScope == scope else { throw CancellationError() }
+        }
+        guard listeningScope == scope else {
+            try? FileManager.default.removeItem(at: downloaded)
+            throw CancellationError()
+        }
+        return downloaded
+    }
+
     /// Audio queues are isolated by endpoint AND the actual signed-in account.
     var listeningScope: String? {
         guard useLiveBackend, let url = try? endpoint() else { return nil }
@@ -722,8 +741,8 @@ final class AppModel {
             guard finishedPages else { throw InstantClientError.invalidResponse }
             let ordered = all.sorted { $0.sequence < $1.sequence }
             var seen = Set<String>()
-            messages = ordered.filter { !$0.text.isEmpty && seen.insert($0.id).inserted }
-                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text) }
+            messages = ordered.filter { (!$0.text.isEmpty || !$0.files.isEmpty) && seen.insert($0.id).inserted }
+                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files) }
             chatError = nil
             failedReplyInput = nil
             if active.isEmpty, let lastReply = ordered.last, lastReply.role == "assistant" {
@@ -755,9 +774,9 @@ final class AppModel {
             try check(context)
             deviceToolStatus = state.status == "waiting_device" ? "Waiting for your iPhone to read the requested data…" : nil
             liveSteps = state.done ? [] : state.steps
-            if let id = state.messageId, !state.text.isEmpty {
-                if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text }
-                else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text)) }
+            if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty {
+                if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files }
+                else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files)) }
             }
             if !state.errors.isEmpty || state.status == "failed" { chatError = "This reply couldn't be completed. You can send a new message." }
             if state.aborted || state.status == "cancelled" { chatError = "This reply was cancelled." }

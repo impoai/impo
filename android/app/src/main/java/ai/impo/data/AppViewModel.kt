@@ -72,6 +72,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 accountJob.cancel(); accountJob = SupervisorJob(viewModelScope.coroutineContext[Job])
                 accountScope = CoroutineScope(viewModelScope.coroutineContext + accountJob)
                 bodyCache.clear(); hydrating.clear(); taskCreator = null; profileSession = null; memoryRequest++
+                // Downloaded reply files belong to one account.
+                withContext(Dispatchers.IO) { deliveredDirectory().deleteRecursively() }
                 val account = accountState.account
                 api = account?.let { ImpoClient(it.baseUrl, auth.tokenProvider(it), allowInsecureLocalhost = it.development) }
                 val chat = account?.let { ConversationSession(api!!, it.id, store = outbox, scope = accountScope, deviceId = { devices.deviceIdFor(it.id) }) }
@@ -337,6 +339,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         refreshJobs["profile"] = job
         job.invokeOnCompletion { if (refreshJobs["profile"] === job) refreshJobs.remove("profile") }
     }
+    /** Downloads a reply's file into the current account's cache; throws if the account changes. */
+    suspend fun downloadFile(file: DeliveredFile): File {
+        val account = auth.state.value.account ?: throw AccountChangedException()
+        val client = api ?: throw AccountChangedException()
+        val directory = File(deliveredDirectory(), ai.impo.data.accountScope(account.id))
+        val stored = client.downloadFile(file, directory)
+        if (auth.state.value.account?.requestScope != account.requestScope) {
+            withContext(Dispatchers.IO) { stored.delete() }
+            throw AccountChangedException()
+        }
+        return stored
+    }
+    private fun deliveredDirectory() = File(app.cacheDir, "delivered")
+
     fun signOut() { launch("account") {
         NativeBridge.stopEcho(app)
         try { app.push.revokeBeforeSignOut(); auth.signOut() }
