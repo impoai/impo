@@ -757,6 +757,8 @@ final class AppModel {
         if healthEnabled && deviceData.healthAccessRequested { tools.append("ios_get_health_summary") }
         if remindersEnabled && deviceData.canUseReminders { tools += ["impo_list_reminders", "impo_create_reminder"] }
         if contactsEnabled && deviceData.canReadContacts { tools.append("impo_search_contacts") }
+        // Location access is granted for the Brief city or Echo places; precise "near me" answers reuse it.
+        if CurrentLocationReader.authorized { tools.append("impo_get_current_location") }
         return tools
     }
 
@@ -855,6 +857,7 @@ final class AppModel {
         case "impo_list_reminders": "Reading your reminders…"
         case "impo_create_reminder": "Adding a reminder…"
         case "impo_search_contacts": "Looking up your contacts…"
+        case "impo_get_current_location": "Finding where you are…"
         default: "Reading the Health data you selected…"
         }
         let result = await deviceData.execute(toolName: invocation.toolName, input: invocation.input)

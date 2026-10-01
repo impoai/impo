@@ -518,8 +518,9 @@ sets are valid, and core features work without `deviceId`.
 | `impo_list_calendar_events` | `ios_list_calendar_events` | `start`, `end`, `time_zone`, `limit` (1–100) |
 | `impo_get_health_summary` | `ios_get_health_summary` | `start`, `end`, `time_zone`, `metrics` |
 | `impo_search_contacts` | — | See the [native tool contract](native-device-tools.md) for bounded contact search input. |
+| `impo_get_current_location` | — | `{}` (no fields). |
 
-All three are read-only. Calendar and Health ranges are `[start,end)`, positive and at most 31 days.
+All four are read-only. Calendar and Health ranges are `[start,end)`, positive and at most 31 days.
 Health metrics are 1–4 distinct entries from `steps`, `active_energy`,
 `heart_rate`, `sleep`. The [native tool output contract](native-device-tools.md)
 defines units, provenance, permission/unknown states, source identifiers and

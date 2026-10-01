@@ -11,7 +11,7 @@ import {
 const range = { start: '2026-09-29T00:00:00Z', end: '2026-09-30T00:00:00Z', time_zone: 'Asia/Shanghai' };
 
 test('neutral device names and installed iOS aliases share strict input validation', () => {
-  assert.equal(deviceToolNames.length, 7);
+  assert.equal(deviceToolNames.length, 8);
   const rangeTools = deviceToolNames.filter(name => name.endsWith('calendar_events') || name.endsWith('health_summary'));
   assert.equal(rangeTools.length, 4);
   for (const name of rangeTools) {

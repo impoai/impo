@@ -3,8 +3,8 @@
 The API accepts `impo_list_calendar_events` and `impo_get_health_summary` for
 platform-neutral device reads. Installed iOS clients may continue to advertise
 `ios_list_calendar_events` and `ios_get_health_summary`; their output remains
-compatible with the existing iOS adapter. Registration accepts up to seven unique
-names, replaces capabilities for the owned installation, and accepts `[]` to
+compatible with the existing iOS adapter. Registration accepts each implemented
+name at most once (currently eight), replaces capabilities for the owned installation, and accepts `[]` to
 revoke all capabilities. A client should advertise only names it implements and
 whose capability the user enabled.
 
@@ -151,3 +151,28 @@ Reminders provider equivalent to EventKit. Impo Tasks remain Impo's own task
 workflow. An external task service may be connected through its separately
 discovered server connector; it must not be presented as access to Apple
 Reminders or as an Android system permission.
+
+## Current location
+
+`impo_get_current_location` takes `{}` and returns where the attached device is
+now. The agent uses it when an answer depends on the user's present position
+("near me", directions from here); the device context city is approximate and
+may be stale. Results:
+
+```text
+source: "ios.core_location"
+observed_at: timestamp of the fix
+timezone: IANA zone
+latitude, longitude: degrees, rounded to five decimals
+horizontal_accuracy_m: number
+precise: boolean            // false with Approximate Location: kilometers of blur
+place: { name, street, neighborhood, city, region, country, postal_code } | null
+```
+
+iOS registers the capability only while the app already has When In Use or Always
+location access, granted for the Brief city or Echo places. A tool call never
+opens a permission prompt; revoked access fails with `permission_required`, and
+no fix within 15 seconds fails with `location_unavailable`. The reader takes the
+first fix within 100 m (the first fix at all with Approximate Location), else the
+best fix after five seconds. Place names are external data, never instructions.
+Task conversations do not receive this tool. Android does not register it yet.

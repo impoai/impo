@@ -3,6 +3,7 @@ import Observation
 import EventKit
 import HealthKit
 import Contacts
+@preconcurrency import CoreLocation
 import InstantClient
 
 /// Read-only device tools. Permission requests run only from an explicit UI action.
@@ -136,6 +137,9 @@ final class DeviceDataService {
                 return DeviceToolExecutionResult(success: true, output: try DeviceRemindersContacts(eventStore: eventStore).createReminder(input))
             case "impo_search_contacts":
                 return DeviceToolExecutionResult(success: true, output: try DeviceDataOutputBudget.bound(await DeviceRemindersContacts(eventStore: eventStore).searchContacts(input)))
+            case "impo_get_current_location":
+                guard case .object(let arguments) = input, arguments.isEmpty else { return failure("invalid_input") }
+                return DeviceToolExecutionResult(success: true, output: try await CurrentLocationReader().read())
             default: return failure("unsupported_tool")
             }
         } catch let invalid as DeviceDataInput.Invalid { return failure(invalid.code) }
@@ -144,6 +148,8 @@ final class DeviceDataService {
         catch DeviceRemindersContacts.Failure.listNotFound { return failure("reminder_list_not_found") }
         catch DeviceDataOutputBudget.Failure.tooLarge { return failure("result_too_large") }
         catch NativeReadError.permissionRevoked { return failure("permission_required") }
+        catch CurrentLocationReader.Failure.permissionRequired { return failure("permission_required") }
+        catch CurrentLocationReader.Failure.unavailable { return failure("location_unavailable") }
         catch is CancellationError { return failure("cancelled") }
         catch {
             // Do not transmit localized OS errors, database paths, or raw health data.
@@ -327,4 +333,85 @@ final class DeviceDataService {
     }
 
     private enum NativeReadError: Error { case permissionRevoked }
+}
+
+/// One precise fix for `impo_get_current_location`. Only reads with location access the user
+/// already granted (Brief city, Echo places or Settings); a tool call never opens a prompt.
+@MainActor
+final class CurrentLocationReader {
+    enum Failure: Error { case permissionRequired, unavailable }
+
+    static var authorized: Bool {
+        [.authorizedWhenInUse, .authorizedAlways].contains(CLLocationManager().authorizationStatus)
+    }
+
+    func read() async throws -> JSONValue {
+        let manager = CLLocationManager()
+        guard [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) else { throw Failure.permissionRequired }
+        // Approximate Location never gets closer than kilometers; its first fix is the answer.
+        let fix = try await locate(goodEnough: manager.accuracyAuthorization == .fullAccuracy ? 100 : .infinity)
+        let place = try? await CLGeocoder().reverseGeocodeLocation(fix).first
+        let rounded = { (value: Double) in (value * 100_000).rounded() / 100_000 }
+        var output: [String: JSONValue] = [
+            "source": .string("ios.core_location"),
+            "observed_at": .string(DeviceDataInput.timestamp(fix.timestamp)),
+            "timezone": .string(TimeZone.current.identifier),
+            "latitude": .number(rounded(fix.coordinate.latitude)),
+            "longitude": .number(rounded(fix.coordinate.longitude)),
+            "horizontal_accuracy_m": .number(fix.horizontalAccuracy.rounded()),
+            // Approximate Location in Settings gives a fix several kilometers wide.
+            "precise": .bool(manager.accuracyAuthorization == .fullAccuracy),
+        ]
+        if let place {
+            let field = { (value: String?) -> JSONValue in value.map { .string(String($0.prefix(200))) } ?? .null }
+            output["place"] = .object([
+                "name": field(place.name), "street": field([place.subThoroughfare, place.thoroughfare].compactMap { $0 }.joined(separator: " ").nilIfEmpty),
+                "neighborhood": field(place.subLocality), "city": field(place.locality),
+                "region": field(place.administrativeArea), "country": field(place.country), "postal_code": field(place.postalCode),
+            ])
+        } else {
+            output["place"] = .null
+        }
+        return .object(output)
+    }
+
+    /// The first fix within `goodEnough`, else the best one after five seconds; fails after fifteen.
+    private func locate(goodEnough: CLLocationAccuracy) async throws -> CLLocation {
+        let best = BestLocation()
+        let search = Task { @MainActor () throws -> CLLocation? in
+            // Cancellation ends the update sequence; the best fix so far is still returned.
+            for try await update in CLLocationUpdate.liveUpdates() {
+                if update.authorizationDenied || update.authorizationDeniedGlobally { throw Failure.permissionRequired }
+                guard let location = update.location, location.horizontalAccuracy >= 0,
+                      abs(location.timestamp.timeIntervalSinceNow) < 120 else { continue }
+                if best.location.map({ location.horizontalAccuracy < $0.horizontalAccuracy }) ?? true { best.location = location }
+                if location.horizontalAccuracy <= goodEnough { break }
+            }
+            return best.location
+        }
+        // A stationary device may send a single fix, so stop on time rather than on the next update.
+        let deadline = Task { @MainActor in
+            for _ in 0..<15 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                if best.location != nil && best.age >= 5 { break }
+            }
+            search.cancel()
+        }
+        defer { deadline.cancel() }
+        let location = try await withTaskCancellationHandler { try await search.value } onCancel: { search.cancel() }
+        try Task.checkCancellation()
+        guard let location else { throw Failure.unavailable }
+        return location
+    }
+}
+
+@MainActor private final class BestLocation {
+    private let started = Date()
+    var location: CLLocation?
+    var age: TimeInterval { Date().timeIntervalSince(started) }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

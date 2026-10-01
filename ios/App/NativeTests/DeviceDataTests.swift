@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 import EventKit
 import HealthKit
 import InstantClient
@@ -98,5 +99,32 @@ final class DeviceDataTests: XCTestCase {
         let result = await task.value
         XCTAssertFalse(result.success)
         XCTAssertEqual(result.error, "cancelled")
+    }
+}
+
+@MainActor
+final class CurrentLocationReaderTests: XCTestCase {
+    /// Needs location access granted to the host app and a simulated position, e.g.
+    /// `xcrun simctl privacy <device> grant location <bundle>` and `xcrun simctl location <device> set 31.2397,121.4998`.
+    func testReadsFixAndPlaceWithGrantedAccess() async throws {
+        guard CurrentLocationReader.authorized else { throw XCTSkip("Location access is not granted to the test host") }
+        let started = Date()
+        guard case .object(let output) = try await CurrentLocationReader().read() else { return XCTFail("Expected an object") }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10, "A fix settles within five seconds plus geocoding")
+        XCTAssertEqual(output["source"], .string("ios.core_location"))
+        guard case .number(let latitude) = output["latitude"], case .number(let longitude) = output["longitude"],
+              case .number(let accuracy) = output["horizontal_accuracy_m"], case .bool(let precise) = output["precise"] else { return XCTFail("Missing coordinates") }
+        // Approximate Location deliberately blurs the fix by kilometers and must say so.
+        let tolerance = precise ? 0.01 : 0.1
+        XCTAssertEqual(latitude, 31.2397, accuracy: tolerance)
+        XCTAssertEqual(longitude, 121.4998, accuracy: tolerance)
+        if !precise { XCTAssertGreaterThan(accuracy, 500) }
+        if case .object(let place) = output["place"] { XCTAssertNotEqual(place["country"], .null) }
+    }
+
+    func testDispatcherRejectsArgumentsForCurrentLocation() async {
+        let result = await DeviceDataService().execute(toolName: "impo_get_current_location", input: .object(["precise": .bool(true)]))
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.error, "invalid_input")
     }
 }

@@ -82,7 +82,8 @@ provide remote durability. See [features](features.md) for each data lifecycle.
 
 Android advertises `impo_list_calendar_events`, `impo_get_health_summary` and
 `impo_search_contacts` when enabled;
-installed iOS clients keep their `ios_*` aliases. The API captures the attached,
+installed iOS clients keep their `ios_*` aliases and also advertise
+`impo_get_current_location` while location access is granted. The API captures the attached,
 owned device's capabilities at admission. Agent tools are selected from that
 specific device, not the union of all devices owned by the user. Dispatch also
 rechecks current capabilities and never substitutes an alias or another device.
