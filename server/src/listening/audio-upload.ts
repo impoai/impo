@@ -5,7 +5,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ServiceError } from '../errors.js';
 import { parseListeningBatch } from './batch-input.js';
 import { maxBatchAudioBytes, maxBatchBytes, batchReceipt, type AcceptedBatch, type BatchAudioSource } from './batch-contract.js';
-import type { ListeningBatchRepository } from './batch-repository.js';
+import type { ListeningBatchRepository } from '../db/repositories/listening-batch-repository.js';
 import type { ListeningBatchService } from './temporal/client.js';
 
 export interface AudioUploadTicket { url: string; headers: Record<string,string>; expiresAt: string }

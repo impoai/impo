@@ -1,8 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { messages, todaySettings, userProfiles } from '../db/schema.js';
-import { ServiceError } from '../errors.js';
-import type { JsonObject } from '../http/request.js';
+import type { Database } from '../client.js';
+import { messages, todaySettings, userProfiles } from '../schema.js';
+import { ServiceError } from '../../errors.js';
+import type { JsonObject } from '../../http/request.js';
 
 export interface Profile { onboarded: boolean; displayName?: string; assistantName?: string; avatarIndex?: number }
 const invalid = (message: string) => new ServiceError(400, 'invalid_request', message);

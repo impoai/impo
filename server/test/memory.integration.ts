@@ -1,3 +1,4 @@
+import { MemoryDatabaseRepository } from '../src/db/repositories/memory-database-repository.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -12,7 +13,7 @@ import { DEVELOPMENT_AGENT_CONFIG_ID } from '../src/db/seed.js';
 import { MemoryTranscriptArchive } from '../src/listening/transcript-archive.js';
 import { DevelopmentEmbedder } from '../src/memory/embedder.js';
 import { LocalFileProvider } from '../src/memory/provider.js';
-import { MemoryRepository } from '../src/memory/repository.js';
+import { MemoryRepository } from '../src/db/repositories/memory-repository.js';
 import { MemoryStore } from '../src/memory/store.js';
 import { memoryStep } from '../src/memory/worker.js';
 import { RebyteGateway } from '../src/rebyte/gateway.js';
@@ -34,7 +35,8 @@ async function fixture(t: TestContext) {
   await db.db.insert(sessionBindings).values({ id: bindingId, userId, conversationId, agentConfigVersionId: DEVELOPMENT_AGENT_CONFIG_ID, status: 'failed', isCurrent: false });
   const archive = new MemoryTranscriptArchive();
   const repository = new MemoryRepository(db.db, archive);
-  const store = new MemoryStore(db.db, new LocalFileProvider(directory), new DevelopmentEmbedder());
+  const embedder = new DevelopmentEmbedder();
+  const store = new MemoryStore(new MemoryDatabaseRepository(db.db, new LocalFileProvider(directory), embedder), embedder);
   const fake = new FakeRebyte(); const baseURL = await fake.listen();
   const gateway = new RebyteGateway({ apiKey: 'instant-fake-rebyte-key', baseURL, model: 'test-model', timeoutMs: 2000 });
   let sequence = 0;

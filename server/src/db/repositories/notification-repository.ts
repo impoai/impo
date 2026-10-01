@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { notificationSettings, notificationEvents, notificationDeliveries, pushInstallations, todayBriefs } from '../db/schema.js';
-import type { Transaction } from '../persistence/runtime-repository.js';
-import { ServiceError } from '../errors.js';
-import { defaultNotificationSettings, notificationLifetimeMs, presenceWindowMs, type NotificationCategory, type NotificationSettings, type Registration, type Revocation } from './contract.js';
+import { and, asc, eq, inArray, isNull, lt, or, sql, gt, isNotNull } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { notificationSettings, notificationEvents, notificationDeliveries, pushInstallations, todayBriefs } from '../schema.js';
+import type { Transaction } from './runtime-repository.js';
+import { ServiceError } from '../../errors.js';
+import { defaultNotificationSettings, notificationLifetimeMs, presenceWindowMs, type NotificationCategory, type NotificationSettings, type Registration, type Revocation } from '../../notifications/contract.js';
 
 type Query = Database | Transaction;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -16,7 +16,7 @@ async function allowed(db: Query, userId: string, category: NotificationCategory
   if (!settingsView(preferences)[category]) return false;
   if (category === 'brief') return true;
   const [active] = await db.select({ id: pushInstallations.id }).from(pushInstallations).where(and(eq(pushInstallations.userId, userId), eq(pushInstallations.revoked, false),
-    eq(pushInstallations.foreground, true), sql`${pushInstallations.presenceAt} > ${new Date(now.getTime() - presenceWindowMs)}`)).limit(1);
+    eq(pushInstallations.foreground, true), gt(pushInstallations.presenceAt, new Date(now.getTime() - presenceWindowMs)))).limit(1);
   return !active;
 }
 
@@ -25,14 +25,14 @@ export async function enqueueNotification(tx: Transaction, input: { userId: stri
   const now = new Date();
   const eligible = await allowed(tx, input.userId, input.category, now);
   const targets = eligible ? await tx.select().from(pushInstallations).where(and(eq(pushInstallations.userId, input.userId), eq(pushInstallations.enabled, true),
-    eq(pushInstallations.revoked, false), sql`${pushInstallations.token} IS NOT NULL`, sql`${pushInstallations.updatedAt} > ${new Date(now.getTime() - 30 * 86400_000)}`)) : [];
+    eq(pushInstallations.revoked, false), isNotNull(pushInstallations.token), gt(pushInstallations.updatedAt, new Date(now.getTime() - 30 * 86400_000)))) : [];
   const [event] = await tx.insert(notificationEvents).values({ ...input, createdAt: now, expiresAt: new Date(now.getTime() + notificationLifetimeMs), status: targets.length ? 'pending' : 'suppressed' })
     .onConflictDoNothing({ target: [notificationEvents.userId, notificationEvents.sourceKey] }).returning();
   if (event && targets.length) await tx.insert(notificationDeliveries).values(targets.map(t => ({ eventId: event.id, installationId: t.id, registrationId: t.registrationId, tokenHash: t.tokenHash! })));
 }
 
 export class NotificationRepository {
-  constructor(readonly db: Database) {}
+  constructor(private readonly db: Database) {}
   async settings(userId: string) {
     const [row] = await this.db.select().from(notificationSettings).where(eq(notificationSettings.userId, userId));
     return settingsView(row);

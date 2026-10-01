@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { LeaseLostError } from '../errors.js';
-import { RuntimeRepository } from '../persistence/runtime-repository.js';
+import { RuntimeRepository } from '../db/repositories/runtime-repository.js';
 import { dispatchTool } from '../tools/dispatcher.js';
 import { developmentToolRegistry, type ToolRegistry } from '../tools/registry.js';
 

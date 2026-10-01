@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy, type Client } from '@temporalio/client';
 import { temporalTaskQueue } from '../temporal/config.js';
-import { NotificationRepository } from './repository.js';
+import { NotificationRepository } from '../db/repositories/notification-repository.js';
 import type { PushSender } from './fcm.js';
 
 export function notificationActivities(repository: NotificationRepository, sender: PushSender) {

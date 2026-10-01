@@ -266,9 +266,11 @@ private push key belongs in Git, a Docker build context, or a native app.
 
 | Area | Implementation |
 | --- | --- |
-| Drizzle entities | `src/db/entities/`, exported by `src/db/schema.ts`. |
-| Database access and schema synchronization | `src/db/client.ts`, `drizzle.config.ts`, `npm run db:push`. |
-| Durable conversations and commands | `src/persistence/`. |
+| PostgreSQL Drizzle entities | `src/db/entities/`, exported by `src/db/schema.ts`. |
+| Per-user Turso Drizzle entities | `src/db/memory-schema.ts`: memories, history, metadata and vector indexes. |
+| Database access | `src/db/repositories/`: domain operations, ownership, transactions, leases and typed CRUD. |
+| Connections and schema synchronization | `src/db/client.ts`, `src/db/memory-client.ts`, `drizzle.config.ts`, `npm run db:push`. |
+| Durable conversations and commands | `src/db/repositories/runtime-repository.ts` and `rebyte-repository.ts`; Session policy remains in `src/persistence/`. |
 | HTTP API and authentication | `src/http/`, `src/api-main.ts`. |
 | Execution and tool dispatch | `src/worker/`, `src/worker-main.ts`, `src/tools/`. |
 | Rebyte SDK boundary | `src/rebyte/`. |
@@ -282,6 +284,32 @@ and enqueueing happen in one transaction. During development, edit the Drizzle
 entities and run `npm run db:push`; do not generate SQL migrations, histories,
 or Drizzle snapshots/journals. Integration tests initialize their databases through
 the same schema synchronization path.
+
+API handlers, workers and application services call domain repositories; they do
+not import query builders, drivers or table values. Only composition entry points
+open database connections and inject repositories. Repository methods own complete
+operations (for example, accepting a message and enqueueing work in one transaction)
+and return records or receipts, without exposing a query builder or connection.
+`test/database-boundary.test.ts` enforces this boundary in `npm run test:server`.
+
+The PostgreSQL entities cover users/profiles, conversations/messages/tasks,
+Agent/Session creation and bindings, submissions, tools/devices, connectors,
+recordings/batches, Brief, memory coordination and notifications. Turso entities
+cover the memory content, source/category JSON, embeddings, operation history and
+embedding metadata in each user's separate database. `MemoryStore` handles
+embedding and application validation; its repositories handle both database stores.
+Each memory change and its history receipt commit together, including forgetting
+and expiration. Existing v1 databases retain their layout and contents. New
+per-user databases are initialized from the Drizzle definitions, without a SQL
+migration history.
+
+Use Drizzle selects, joins, unions, inserts, updates and deletes for CRUD. Small
+parameterized SQL expressions remain inside the database layer for PostgreSQL
+advisory locks, database clocks, JSON operations and date formatting, and for
+Turso vector/JSON functions. Schema bootstrap DDL is confined to the database
+adapter. Cross-user administrative scans and purges belong exclusively to
+`MaintenanceRepository`, used by the explicit maintenance scripts; request
+handlers must use the owned domain repositories.
 
 ## Verification
 

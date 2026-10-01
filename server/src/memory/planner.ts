@@ -1,4 +1,4 @@
-import type { PendingEvidence } from './repository.js';
+import type { PendingEvidence } from '../db/repositories/memory-repository.js';
 
 /**
  * Decides what memory work an hourly tick does. Pure: it sees only counts and times, so the

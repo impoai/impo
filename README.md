@@ -81,17 +81,18 @@ flowchart TB
     end
     subgraph Backend["Impo backend"]
         API["TypeScript HTTP API"]
+        Repositories["Domain repositories / typed Drizzle CRUD"]
         DB[("PostgreSQL / Drizzle")]
         Worker["Durable workers + tool dispatcher"]
         Temporal["Temporal workflows: Echo + hourly background work"]
         S3[("S3: private audio + transcripts")]
         Turso[("Turso: per-user memory")]
         Worker --> S3
-        Worker --> Turso
         API --> S3
-        API --> Turso
-        API <--> DB
-        Worker <--> DB
+        API <--> Repositories
+        Worker <--> Repositories
+        Repositories <--> DB
+        Repositories <--> Turso
         API --> Temporal
         Worker <--> Temporal
     end
@@ -115,6 +116,7 @@ flowchart TB
 | **API server** | Authentication, resource ownership, command acceptance, history queries, and stream subscriptions. |
 | **Workers** | Agent input submission, runtime reconciliation, tool dispatch, output projection, retries, and recovery after process restarts. |
 | **PostgreSQL + Drizzle** | Application identity, conversations, ownership, execution records, tool receipts, connector bindings, and Brief editions. |
+| **Database repositories** | Typed Drizzle CRUD for PostgreSQL and per-user Turso memories; ownership checks, transactions, queue ordering and leases behind domain operations. |
 | **Rebyte** | Managed agent execution and stateful Sessions, Turns, and Items. Impo uses the pinned `@rebyteai/agent-sdk` through `client.beta.agents`. |
 | **Temporal** | Durable audio-batch coordination and per-user hourly background workflows. It schedules application work that can invoke Rebyte Agents. |
 | **Tool integration layer** | Service discovery, account authorization, and tool execution through Composio, plus native-device adapters and internal application services. Every app on Rebyte's Composio shelf is available. |

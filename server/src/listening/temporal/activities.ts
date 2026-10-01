@@ -1,7 +1,7 @@
 import { ApplicationFailure } from '@temporalio/common';
 import { Context, heartbeat } from '@temporalio/activity';
 import type { AcceptedBatch } from '../batch-contract.js';
-import { ListeningBatchRepository } from '../batch-repository.js';
+import { ListeningBatchRepository } from '../../db/repositories/listening-batch-repository.js';
 import { TranscriptionError, type BatchTranscriber } from '../transcriber.js';
 import type { TranscriptArchive } from '../transcript-archive.js';
 import { loadUploadedBatch, type AudioObjectStore } from '../audio-upload.js';

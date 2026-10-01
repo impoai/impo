@@ -2,7 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { BackgroundStep } from '../background/registry.js';
 import { RebyteGateway } from '../rebyte/gateway.js';
 import { briefConfigVersion, briefInstructions, parseBriefContent } from './contract.js';
-import { TodayRepository } from './repository.js';
+import { TodayRepository } from '../db/repositories/today-repository.js';
 import { appendDynamicContext } from '../prompts/index.js';
 import { todayRepairPrompt } from '../prompts/today.js';
 

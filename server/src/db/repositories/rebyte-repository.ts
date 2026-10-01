@@ -1,18 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { UIMessage, UIMessageChunk } from 'ai';
-import { currentBriefLocation } from '../today/contract.js';
-import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, deviceDispatches, toolInvocations, productEvents, todaySettings } from '../db/schema.js';
+import { currentBriefLocation } from '../../today/contract.js';
+import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, deviceDispatches, toolInvocations, productEvents, todaySettings } from '../schema.js';
 import { RuntimeRepository, type ClaimedJob, type Submission, type Transaction } from './runtime-repository.js';
 import { historyContext, hydrateMessages } from './conversation-history.js';
-import { normalizeAnswerText } from '../rebyte/citations.js';
-import { estimateContextTokens, mainHistoryContext, mainSessionPolicy, mainSessionRotation } from './main-session-policy.js';
-import { turnSteps } from '../rebyte/steps.js';
-import type { AgentItem, AgentSession, RebyteAgent, Turn } from '../rebyte/gateway.js';
-import { toolResultPayload } from '../rebyte/gateway.js';
-import { canonicalJSON, deviceHash, isDeviceTool, jsonValue, validateDeviceInput } from '../tools/device-tools.js';
-import type { ToolResult } from '../tools/registry.js';
-import { ServiceError } from '../errors.js';
+import { normalizeAnswerText } from '../../rebyte/citations.js';
+import { estimateContextTokens, mainHistoryContext, mainSessionPolicy, mainSessionRotation } from '../../persistence/main-session-policy.js';
+import { turnSteps } from '../../rebyte/steps.js';
+import type { AgentItem, AgentSession, RebyteAgent, Turn } from '../../rebyte/gateway.js';
+import { toolResultPayload } from '../../rebyte/gateway.js';
+import { canonicalJSON, deviceHash, isDeviceTool, jsonValue, validateDeviceInput } from '../../tools/device-tools.js';
+import type { ToolResult } from '../../tools/registry.js';
+import { ServiceError } from '../../errors.js';
 
 /** Title kept for a task once its text is gone; the real title is the task's first message in Rebyte. */
 export const taskTitlePlaceholder = '…';

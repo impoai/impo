@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { dispatchTool } from '../tools/dispatcher.js';
 import { LeaseLostError } from '../errors.js';
-import { RebyteRepository } from '../persistence/rebyte-repository.js';
-import type { ClaimedJob } from '../persistence/runtime-repository.js';
+import { RebyteRepository } from '../db/repositories/rebyte-repository.js';
+import type { ClaimedJob } from '../db/repositories/runtime-repository.js';
 import { RebyteGateway, type AgentToolParam, type EnvironmentParam, type InputParts } from '../rebyte/gateway.js';
 import { appendDynamicContext } from '../prompts/index.js';
 

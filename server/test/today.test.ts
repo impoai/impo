@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { currentBriefLocation, defaultBriefSlots, dueSlot, localClock, parseBriefContent, type BriefSource } from '../src/today/contract.js';
-import { validateTodaySettings } from '../src/today/repository.js';
+import { validateTodaySettings } from '../src/db/repositories/today-repository.js';
 
 test('brief schedule uses the stored local date across midnight, DST and non-hour offsets', () => {
   assert.deepEqual(localClock(new Date('2026-09-27T17:00:00Z'), 'Asia/Shanghai'), { date: '2026-09-28', hour: 1 });

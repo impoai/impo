@@ -1,10 +1,10 @@
 import { and, asc, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
-import type { Database } from '../db/client.js';
-import { messages, runtimeSubmissions, sessionBindings } from '../db/schema.js';
-import type { HistoryEntry, HistoryPage } from '../rebyte/gateway.js';
-import { ServiceError } from '../errors.js';
-import { normalizeAnswerText } from '../rebyte/citations.js';
+import type { Database } from '../client.js';
+import { messages, runtimeSubmissions, sessionBindings } from '../schema.js';
+import type { HistoryEntry, HistoryPage } from '../../rebyte/gateway.js';
+import { ServiceError } from '../../errors.js';
+import { normalizeAnswerText } from '../../rebyte/citations.js';
 
 /**
  * Rebyte Sessions hold the only copy of chat text. PostgreSQL keeps message IDs, order and

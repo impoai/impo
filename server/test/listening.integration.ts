@@ -1,3 +1,4 @@
+import { MaintenanceRepository } from '../src/db/repositories/maintenance-repository.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -6,8 +7,8 @@ import { eq, sql } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
 import { listeningSegments, listeningBatches } from '../src/db/schema.js';
 import { createApiServer } from '../src/http/api-server.js';
-import { RuntimeRepository } from '../src/persistence/runtime-repository.js';
-import { ListeningRepository } from '../src/listening/repository.js';
+import { RuntimeRepository } from '../src/db/repositories/runtime-repository.js';
+import { ListeningRepository } from '../src/db/repositories/listening-repository.js';
 import { ListeningWorker } from '../src/listening/worker.js';
 import { DevelopmentTranscriber, TranscriptionError } from '../src/listening/transcriber.js';
 import { MemoryTranscriptArchive, transcriptKey } from '../src/listening/transcript-archive.js';
@@ -222,4 +223,22 @@ test('legacy segments are archived per user on transcription and removed with th
   assert.match(listed.find(x => x.id === done.id)?.transcript ?? '', /Development transcript/);
   await archived.delete(done.userId, done.id);
   assert.equal(archive.objects.has(key), false);
+});
+
+
+test('archive maintenance clears only the verified, still-owned transcript', async () => {
+  const maintenance = new MaintenanceRepository(database.db);
+  const accepted = await upload();
+  await new ListeningWorker(repository, new DevelopmentTranscriber()).tick(signal);
+  const verified = await row(accepted.body.id);
+  assert.equal(verified.status, 'transcribed');
+  await database.db.update(listeningSegments).set({ transcript: 'Changed after archive verification' }).where(eq(listeningSegments.id, verified.id));
+  assert.equal(await maintenance.clearSegmentTranscript(verified), false);
+  const current = await row(verified.id);
+  assert.equal(await maintenance.clearSegmentTranscript({ ...current, userId: '00000000-0000-4000-8000-000000000002' }), false);
+  assert.equal(await maintenance.clearSegmentTranscript(current), true);
+  const cleared = await row(verified.id);
+  assert.equal(cleared.transcript, '');
+  assert.deepEqual(cleared.utterances, []);
+  assert.equal(cleared.status, 'transcribed');
 });

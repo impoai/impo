@@ -1,6 +1,6 @@
 import { createTemporalWorker } from '../../temporal/worker.js';
 import { createListeningActivities } from './activities.js';
-import type { ListeningBatchRepository } from '../batch-repository.js';
+import type { ListeningBatchRepository } from '../../db/repositories/listening-batch-repository.js';
 import type { BatchTranscriber } from '../transcriber.js';
 import type { TemporalOptions } from './client.js';
 import type { TranscriptArchive } from '../transcript-archive.js';

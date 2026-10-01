@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { Database } from '../db/client.js';
 import { ServiceError } from '../errors.js';
-import { ConnectorRepository, type ConnectorConnection } from '../persistence/connector-repository.js';
+import type { ConnectorRepository, ConnectorConnection } from '../db/repositories/connector-repository.js';
 import { jsonValue } from '../tools/device-tools.js';
 import { ConnectorCatalog, TOOLKIT_PATTERN, type CatalogConnector } from './catalog.js';
 import { ComposioProvider, type ComposioConfig, type ConnectedAccount } from './provider.js';
@@ -50,11 +49,9 @@ function toolkitName(toolkit: string): string {
  * agent reaches all of them through the same fixed search/schema/execute meta-tools.
  */
 export class ConnectorService implements ConnectorAPI, ConnectorExecutor {
-  private readonly repository: ConnectorRepository;
   private readonly provider: ComposioProvider;
   private readonly catalog: ConnectorCatalog;
-  constructor(db: Database, config: ComposioConfig) {
-    this.repository = new ConnectorRepository(db);
+  constructor(private readonly repository: ConnectorRepository, config: ComposioConfig) {
     this.provider = new ComposioProvider(config);
     this.catalog = new ConnectorCatalog(this.provider);
   }

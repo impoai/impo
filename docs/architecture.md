@@ -23,6 +23,14 @@ without cancelling a run; reconnecting clients recover persisted history.
 accepts durable work. The API and worker run as separate processes.
 PostgreSQL holds identity, ownership, execution state, leases and tool receipts.
 Drizzle entities under `server/src/db/` are the schema source of truth.
+The `db/repositories/` layer owns every database query: API handlers, workers,
+application services and maintenance scripts call its domain operations. The
+layer preserves transaction boundaries, user ownership, queue ordering and lease
+fencing; it does not expose connections or query builders to application services.
+PostgreSQL tables are exported by `db/schema.ts`; `db/memory-schema.ts` maps the
+per-user Turso memory content, embeddings, history and metadata. Database-specific
+SQL functions stay inside this layer. A source-boundary test prevents direct
+ORM/driver access from application code.
 
 The Rebyte worker keeps one main Saved Agent per user and rotates its current
 Session before unsent input after six idle hours, eight turns, or an estimated

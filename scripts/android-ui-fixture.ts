@@ -13,7 +13,7 @@ import { ServiceError } from '../server/src/errors.js';
 import { parseUploadManifest } from '../server/src/listening/audio-upload.js';
 import { parseListeningBatch } from '../server/src/listening/batch-input.js';
 import { TranscriptionError } from '../server/src/listening/transcriber.js';
-import { validateTodaySettings } from '../server/src/today/repository.js';
+import { validateTodaySettings } from '../server/src/db/repositories/today-repository.js';
 import { isDeviceTool, deviceHash, deviceToolNames } from '../server/src/tools/device-tools.js';
 import type { Dictation } from '../server/src/voice/dictation.js';
 type Json = Record<string, any>;

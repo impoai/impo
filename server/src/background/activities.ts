@@ -2,7 +2,7 @@ import { Context, heartbeat } from '@temporalio/activity';
 import { ApplicationFailure } from '@temporalio/common';
 import type { BackgroundTick, BackgroundTickResult } from './contract.js';
 import { backgroundSteps, type BackgroundStep } from './registry.js';
-import type { BackgroundUsers } from './repository.js';
+import type { BackgroundUsers } from '../db/repositories/background-repository.js';
 
 export const backgroundLog = (event: string, fields: Record<string, unknown> = {}) =>
   console.log(JSON.stringify({ event: `background.${event}`, at: new Date().toISOString(), ...fields }));

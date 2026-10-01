@@ -1,14 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, exists, gt, inArray, isNotNull, lt, lte, notExists, notInArray, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { UIMessage, UIMessageChunk } from 'ai';
-import type { Database } from '../db/client.js';
-import { users, actions, conversations, messages, agentConfigVersions, sessionBindings, sessionCreationAttempts, runtimeSubmissions, toolInvocations, outboxJobs, productEvents, devices, deviceCapabilities, deviceDispatches, connectorConnections, todaySettings } from '../db/schema.js';
-import { ServiceError, LeaseLostError } from '../errors.js';
-import type { ToolResult, ToolRegistry } from '../tools/registry.js';
+import type { Database } from '../client.js';
+import { users, actions, conversations, messages, agentConfigVersions, sessionBindings, sessionCreationAttempts, runtimeSubmissions, toolInvocations, outboxJobs, productEvents, devices, deviceCapabilities, deviceDispatches, connectorConnections, todaySettings } from '../schema.js';
+import { ServiceError, LeaseLostError } from '../../errors.js';
+import type { ToolResult, ToolRegistry } from '../../tools/registry.js';
 import { DeviceRepository } from './device-repository.js';
-import { enqueueNotification } from '../notifications/repository.js';
-import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from '../tools/device-tools.js';
-import { CONNECTOR_TOOL_NAMES } from '../tools/connector-tools.js';
+import { enqueueNotification } from './notification-repository.js';
+import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from '../../tools/device-tools.js';
+import { CONNECTOR_TOOL_NAMES } from '../../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
 
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -31,7 +32,16 @@ const ownedSubmission = (userId: string, id: string) => and(eq(runtimeSubmission
 /** Durable commands, projections, leases and receipts, all scoped by user ownership. */
 export class RuntimeRepository {
   readonly devices: DeviceRepository;
-  constructor(readonly db: Database, readonly runtime: RuntimeOptions = { provider: 'development' }) { this.devices = new DeviceRepository(db); }
+  constructor(protected readonly db: Database, readonly runtime: RuntimeOptions = { provider: 'development' }) { this.devices = new DeviceRepository(db); }
+
+  /** Memory tools are available only to an invocation in this user's main conversation. */
+  async isMainConversationInvocation(userId: string, invocationId: string): Promise<boolean> {
+    const [caller] = await this.db.select({ kind: conversations.kind }).from(toolInvocations)
+      .innerJoin(runtimeSubmissions, and(eq(runtimeSubmissions.id, toolInvocations.submissionId), eq(runtimeSubmissions.userId, userId)))
+      .innerJoin(conversations, eq(conversations.id, runtimeSubmissions.conversationId))
+      .where(and(eq(toolInvocations.id, invocationId), eq(toolInvocations.userId, userId), eq(conversations.userId, userId)));
+    return caller?.kind === 'main';
+  }
 
   async health(): Promise<void> {
     // Also detect an uninitialized schema instead of reporting a usable API.
@@ -302,7 +312,7 @@ export class RuntimeRepository {
   }
 
   private async view(query: Query, submission: Submission): Promise<SubmissionView> {
-    const [row] = await query.select({ count: sql<number>`count(*)::int` }).from(toolInvocations).where(and(eq(toolInvocations.userId, submission.userId), eq(toolInvocations.submissionId, submission.id), sql`${toolInvocations.result} IS NOT NULL`));
+    const [row] = await query.select({ count: count() }).from(toolInvocations).where(and(eq(toolInvocations.userId, submission.userId), eq(toolInvocations.submissionId, submission.id), isNotNull(toolInvocations.result)));
     return { submissionId: submission.id, messageId: submission.assistantMessageId, status: submission.status, version: submission.nextEventSequence - 1, error: submission.error, resultCount: row!.count, cancelRequested: submission.cancelRequested };
   }
 
@@ -348,22 +358,17 @@ export class RuntimeRepository {
   /** Claim one job atomically, preserving conversation order across workers. */
   async claimJob(_workerId: string, leaseMs: number): Promise<ClaimedJob | undefined> {
     return this.db.transaction(async tx => {
-      const [job] = await tx.select().from(outboxJobs).where(sql`
-        ((${outboxJobs.status} = 'pending' AND ${outboxJobs.availableAt} <= now())
-          OR (${outboxJobs.status} = 'running' AND ${outboxJobs.leaseUntil} < now()))
-        AND EXISTS (
-          SELECT 1 FROM runtime_submissions current_run JOIN messages current_message ON current_message.id = current_run.user_message_id
-          WHERE current_run.id = ${outboxJobs.submissionId}
-            AND EXISTS (SELECT 1 FROM session_bindings runtime_binding WHERE runtime_binding.id = current_run.binding_id AND runtime_binding.provider = ${this.runtime.provider})
-            AND current_run.status NOT IN ('completed','failed','cancelled')
-            AND NOT EXISTS (
-              SELECT 1 FROM runtime_submissions previous_run JOIN messages previous_message ON previous_message.id = previous_run.user_message_id
-              WHERE previous_run.conversation_id = current_run.conversation_id
-                AND previous_run.status NOT IN ('completed','failed','cancelled')
-                AND previous_message.sequence < current_message.sequence
-            )
-        )
-      `).orderBy(asc(outboxJobs.createdAt), asc(outboxJobs.id)).limit(1).for('update', { skipLocked: true });
+      const currentRun = alias(runtimeSubmissions, 'current_run'), previousRun = alias(runtimeSubmissions, 'previous_run');
+      const currentMessage = alias(messages, 'current_message'), previousMessage = alias(messages, 'previous_message');
+      const previous = tx.select({ id: previousRun.id }).from(previousRun).innerJoin(previousMessage, eq(previousMessage.id, previousRun.userMessageId))
+        .where(and(eq(previousRun.conversationId, currentRun.conversationId), notInArray(previousRun.status, [...terminalStates]), lt(previousMessage.sequence, currentMessage.sequence)));
+      const binding = tx.select({ id: sessionBindings.id }).from(sessionBindings).where(and(eq(sessionBindings.id, currentRun.bindingId), eq(sessionBindings.provider, this.runtime.provider)));
+      const eligible = tx.select({ id: currentRun.id }).from(currentRun).innerJoin(currentMessage, eq(currentMessage.id, currentRun.userMessageId))
+        .where(and(eq(currentRun.id, outboxJobs.submissionId), exists(binding), notInArray(currentRun.status, [...terminalStates]), notExists(previous)));
+      const [job] = await tx.select().from(outboxJobs).where(and(
+        or(and(eq(outboxJobs.status, 'pending'), lte(outboxJobs.availableAt, sql`now()`)),
+          and(eq(outboxJobs.status, 'running'), lt(outboxJobs.leaseUntil, sql`now()`))), exists(eligible),
+      )).orderBy(asc(outboxJobs.createdAt), asc(outboxJobs.id)).limit(1).for('update', { skipLocked: true });
       if (!job) return undefined;
       const [claimed] = await tx.update(outboxJobs).set({ status: 'running', leaseToken: randomUUID(), leaseUntil: sql`now() + ${leaseMs} * interval '1 millisecond'`, attempts: job.attempts + 1, updatedAt: new Date() }).where(eq(outboxJobs.id, job.id)).returning();
       return claimed;

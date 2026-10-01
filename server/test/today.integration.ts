@@ -6,7 +6,7 @@ import test, { type TestContext } from 'node:test';
 import { and, eq } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
 import { conversations, messages, todayBriefs, todaySettings, users, notificationEvents } from '../src/db/schema.js';
-import { TodayRepository } from '../src/today/repository.js';
+import { TodayRepository } from '../src/db/repositories/today-repository.js';
 import { todayStep } from '../src/today/worker.js';
 import { RebyteGateway } from '../src/rebyte/gateway.js';
 import { createApiServer, type ApiRepository } from '../src/http/api-server.js';

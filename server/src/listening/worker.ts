@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { ListeningRepository } from './repository.js';
+import { ListeningRepository } from '../db/repositories/listening-repository.js';
 import { TranscriptionError, type Transcriber } from './transcriber.js';
 
 export class ListeningWorker {

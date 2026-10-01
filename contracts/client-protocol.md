@@ -583,7 +583,7 @@ if documentation drifts. Sources:
 [Kotlin client](../android/client/src/main/kotlin/ai/impo/client/ImpoClient.kt),
 [stream reducer](../ios/Packages/InstantClient/Sources/InstantClient/UIMessageReducer.swift),
 [upload service](../server/src/listening/audio-upload.ts),
-[device ownership](../server/src/persistence/device-repository.ts).
+[device ownership](../server/src/db/repositories/device-repository.ts).
 
 Run existing checks from the root: `npm test` for host/Swift/fixture verification;
 `npm run test:db`, `npm run test:devices`, `npm run test:connectors`,

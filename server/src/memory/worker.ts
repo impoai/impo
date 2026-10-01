@@ -1,3 +1,4 @@
+import type { MemoryChange } from './contract.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BackgroundStep } from '../background/registry.js';
 import { appendDynamicContext } from '../prompts/index.js';
@@ -5,8 +6,8 @@ import { memoryInstructions } from '../prompts/memory.js';
 import type { RebyteGateway } from '../rebyte/gateway.js';
 import { memoryConfigVersion, memoryLimits, parseFacts, parseOperations, type MemoryFact } from './contract.js';
 import { defaultMemoryPolicy, planMemoryTick, type MemoryPolicy } from './planner.js';
-import type { MemoryRepository, MemoryRunRow } from './repository.js';
-import { memoryId, type MemoryChange, type MemoryStore } from './store.js';
+import type { MemoryRepository, MemoryRunRow } from '../db/repositories/memory-repository.js';
+import { memoryId, type MemoryStore } from './store.js';
 
 export const memoryLog = (event: string, fields: Record<string, unknown>) => console.log(JSON.stringify({ event: `memory.${event}`, at: new Date().toISOString(), ...fields }));
 /** Neighbours further than this are unrelated for the decide phase. */

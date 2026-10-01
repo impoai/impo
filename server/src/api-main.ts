@@ -1,19 +1,20 @@
-import { ListeningBatchRepository } from './listening/batch-repository.js';
-import { TodayRepository } from './today/repository.js';
+import { ListeningBatchRepository } from './db/repositories/listening-batch-repository.js';
+import { TodayRepository } from './db/repositories/today-repository.js';
 import { createListeningBatchService } from './listening/temporal/client.js';
-import { ListeningRepository } from './listening/repository.js';
+import { ListeningRepository } from './db/repositories/listening-repository.js';
 import { createDatabase } from './db/client.js';
 import { loadConfig, databaseRequiresSsl } from './config.js';
 import { createApiServer } from './http/api-server.js';
 import { DevelopmentDictation, GeminiDictation } from './voice/dictation.js';
 import { createRuntimeRepository } from './runtime.js';
 import { RebyteGateway } from './rebyte/gateway.js';
-import { ProfileRepository } from './profile/repository.js';
+import { ProfileRepository } from './db/repositories/profile-repository.js';
 import { ConnectorService } from './composio/connector-service.js';
+import { ConnectorRepository } from './db/repositories/connector-repository.js';
 import { S3TranscriptArchive } from './listening/transcript-archive.js';
 import { createMemoryStore } from './memory/index.js';
 import { ListeningUploadService, S3AudioObjectStore } from './listening/audio-upload.js';
-import { NotificationRepository } from './notifications/repository.js';
+import { NotificationRepository } from './db/repositories/notification-repository.js';
 
 async function main(): Promise<void> {
   const config = loadConfig('api');
@@ -22,7 +23,7 @@ async function main(): Promise<void> {
   const repository = createRuntimeRepository(database.db, config, { memories });
   try { await repository.health(); }
   catch (error) { memories?.close(); await database.close(); throw error; }
-  const connectors = config.composio ? new ConnectorService(database.db, config.composio) : undefined;
+  const connectors = config.composio ? new ConnectorService(new ConnectorRepository(database.db), config.composio) : undefined;
   connectors?.warm();
   const auth = config.authMode === 'clerk' ? { mode: 'clerk' as const, secretKey: config.clerk!.secretKey } : { mode: 'local-dev' as const };
   const batches = new ListeningBatchRepository(database.db);

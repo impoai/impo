@@ -1,6 +1,6 @@
 import { Client, Connection, WorkflowExecutionAlreadyStartedError, WorkflowIdReusePolicy, WorkflowNotFoundError } from '@temporalio/client';
 import { ServiceError } from '../../errors.js';
-import { ListeningBatchRepository } from '../batch-repository.js';
+import { ListeningBatchRepository } from '../../db/repositories/listening-batch-repository.js';
 import { batchReceipt, batchWorkflowId, listeningTaskQueue, listeningWorkflowId, type AcceptedBatch, type BatchDecision, type BatchReceipt } from '../batch-contract.js';
 import type { TemporalOptions } from '../../temporal/config.js';
 export type { TemporalOptions } from '../../temporal/config.js';

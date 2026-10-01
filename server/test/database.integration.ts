@@ -5,9 +5,12 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { eq } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
+import { actions, messages, productEvents, runtimeSubmissions, toolInvocations } from '../src/db/schema.js';
+import { MaintenanceRepository } from '../src/db/repositories/maintenance-repository.js';
 import { LeaseLostError } from '../src/errors.js';
-import { RuntimeRepository, type ClaimedJob } from '../src/persistence/runtime-repository.js';
+import { RuntimeRepository, type ClaimedJob } from '../src/db/repositories/runtime-repository.js';
 
 const serverDirectory = fileURLToPath(new URL('../', import.meta.url));
 const databaseURL = process.env.DATABASE_URL;
@@ -113,7 +116,7 @@ async function claimInIndependentProcess(): Promise<{ claimant: ManagedProcess; 
   // crash boundary. This does not require a timing/pause hook in production code.
   const claimant = start('--input-type=module', ['--eval', `
     import { createDatabase } from './src/db/client.ts';
-    import { RuntimeRepository } from './src/persistence/runtime-repository.ts';
+    import { RuntimeRepository } from './src/db/repositories/runtime-repository.ts';
     const connection = createDatabase(process.env.DATABASE_URL);
     const job = await new RuntimeRepository(connection.db).claimJob('integration-claimant', 60000);
     if (!job) throw new Error('No job to claim');
@@ -432,6 +435,47 @@ test('persistent server and independent Worker survive real process boundaries',
         assert.equal(rows.rows[0].id, id);
         const other = await repository.findOrCreateUser('clerk', `user_${randomUUID()}`, 'Instant user');
         assert.notEqual(other.id, id, 'a different subject must never resolve to the same user');
+      } finally { await connection.close(); }
+    });
+    await t.test('maintenance dry runs roll back and committed cleanup preserves active work', async () => {
+      const connection = createDatabase(databaseURL!);
+      try {
+        const repository = new RuntimeRepository(connection.db);
+        const maintenance = new MaintenanceRepository(connection.db);
+        const { id: userId } = await repository.findOrCreateUser('maintenance-test', randomUUID(), 'Maintenance user');
+        const active = await repository.createUserTask(userId, { clientMessageId: randomUUID(), text: 'Keep active input' });
+        const finished = await repository.createUserTask(userId, { clientMessageId: randomUUID(), text: 'Clear completed input' });
+        await connection.db.update(runtimeSubmissions).set({ status: 'completed', completedAt: new Date() }).where(eq(runtimeSubmissions.id, finished.submissionId));
+        const [submission] = await connection.db.select().from(runtimeSubmissions).where(eq(runtimeSubmissions.id, finished.submissionId));
+        const invocationId = randomUUID();
+        await connection.db.insert(toolInvocations).values({ id: invocationId, userId, submissionId: finished.submissionId, bindingId: submission!.bindingId,
+          turnId: 'maintenance', callId: randomUUID(), toolName: 'test', arguments: { private: 'input' }, argumentsHash: 'test', executionLocation: 'server',
+          result: { ok: false, data: 'private output', error: { code: 'failure', message: 'private error' } } });
+        await connection.db.insert(productEvents).values([
+          { userId, submissionId: finished.submissionId, sequence: 900, chunk: { type: 'start' } },
+          { userId, submissionId: active.submissionId, sequence: 900, chunk: { type: 'start' } },
+        ]);
+        const snapshot = async () => ({
+          messages: await connection.db.select().from(messages).where(eq(messages.userId, userId)),
+          actions: await connection.db.select().from(actions).where(eq(actions.userId, userId)),
+          events: await connection.db.select().from(productEvents).where(eq(productEvents.userId, userId)),
+          tools: await connection.db.select().from(toolInvocations).where(eq(toolInvocations.userId, userId)),
+        });
+        const before = await snapshot();
+        const preview = await maintenance.purgeChatText(true);
+        assert.ok(preview.messages! > 0 && preview.toolInvocations! > 0 && preview.taskGoals! > 0);
+        assert.deepEqual(await snapshot(), before, 'dry run must not change rows or timestamps');
+        const applied = await maintenance.purgeChatText(false);
+        assert.deepEqual(applied, preview);
+        const after = await snapshot();
+        assert.equal(after.messages.find(row => row.id === active.messageId)!.text, 'Keep active input');
+        assert.equal(after.messages.find(row => row.id === finished.messageId)!.text, '');
+        assert.equal(after.actions.find(row => row.id === active.taskId)!.goal, 'Keep active input');
+        assert.equal(after.actions.find(row => row.id === finished.taskId)!.goal, '…');
+        assert.deepEqual(after.events, before.events.filter(row => row.submissionId === active.submissionId));
+        assert.deepEqual(after.tools[0]!.arguments, {});
+        assert.deepEqual(after.tools[0]!.result, { ok: false, error: { code: 'failure' } });
+        assert.ok(Object.values(await maintenance.purgeChatText(false)).every(value => value === 0), 'cleanup is idempotent');
       } finally { await connection.close(); }
     });
   } finally {

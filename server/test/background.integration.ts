@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
 import { createDatabase } from '../src/db/client.js';
 import { users } from '../src/db/schema.js';
-import { BackgroundUserRepository } from '../src/background/repository.js';
+import { BackgroundUserRepository } from '../src/db/repositories/background-repository.js';
 import { createBackgroundClient } from '../src/background/client.js';
 import { createBackgroundActivities } from '../src/background/activities.js';
 import { BackgroundProvisioner } from '../src/background/provisioner.js';

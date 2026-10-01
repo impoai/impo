@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { connectorConnections, users } from '../db/schema.js';
-import { ServiceError } from '../errors.js';
+import type { Database } from '../client.js';
+import { connectorConnections, users } from '../schema.js';
+import { ServiceError } from '../../errors.js';
 
 export type ConnectorConnection = typeof connectorConnections.$inferSelect;
 type ConnectionChanges = Partial<Omit<typeof connectorConnections.$inferInsert, 'id' | 'userId' | 'toolkit' | 'createdAt'>>;

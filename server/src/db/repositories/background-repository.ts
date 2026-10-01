@@ -1,6 +1,6 @@
 import { asc, eq, gt } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { users } from '../db/schema.js';
+import type { Database } from '../client.js';
+import { users } from '../schema.js';
 
 export interface BackgroundUsers {
   list(after?: string, limit?: number): Promise<Array<{ id: string }>>;
@@ -8,7 +8,7 @@ export interface BackgroundUsers {
 }
 export class BackgroundUserRepository implements BackgroundUsers {
   constructor(private readonly db: Database) {}
-  list(after?: string, limit = 100) {
+  async list(after?: string, limit = 100) {
     return this.db.select({ id: users.id }).from(users).where(after ? gt(users.id, after) : undefined)
       .orderBy(asc(users.id)).limit(limit);
   }

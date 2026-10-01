@@ -1,14 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { actions, conversations, listeningBatches, listeningSegments, messages, todayBriefs, todaySettings } from '../db/schema.js';
-import { ServiceError } from '../errors.js';
-import { hydrateTranscripts, type TranscriptArchive } from '../listening/transcript-archive.js';
-import { echoLocationContext, type EchoLocationContext } from '../listening/location.js';
-import { hydrateMessages, taskTitles, type HistoryReader } from '../persistence/conversation-history.js';
-import { briefConfigVersion, currentBriefLocation, defaultBriefSlots, dueSlot, localClock, type BriefContent, type BriefInput, type BriefSlot, type BriefSource, type BriefLocation } from './contract.js';
+import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql, ne } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { actions, conversations, listeningBatches, listeningSegments, messages, todayBriefs, todaySettings } from '../schema.js';
+import { ServiceError } from '../../errors.js';
+import { hydrateTranscripts, type TranscriptArchive } from '../../listening/transcript-archive.js';
+import { echoLocationContext, type EchoLocationContext } from '../../listening/location.js';
+import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
+import { briefConfigVersion, currentBriefLocation, defaultBriefSlots, dueSlot, localClock, type BriefContent, type BriefInput, type BriefSlot, type BriefSource, type BriefLocation } from '../../today/contract.js';
 
-import { enqueueNotification } from '../notifications/repository.js';
+import { enqueueNotification } from './notification-repository.js';
 export type BriefRow = typeof todayBriefs.$inferSelect;
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const leaseMs = 120_000;
@@ -48,7 +48,7 @@ export function validateTodaySettings(raw: Record<string, unknown>) {
 }
 
 export class TodayRepository {
-  constructor(readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
+  constructor(private readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
   async settings(userId: string) {
     const [settings] = await this.db.select().from(todaySettings).where(eq(todaySettings.userId, userId));
     return settings ?? null;
@@ -182,7 +182,7 @@ export class TodayRepository {
   }
   async fail(row: BriefRow, code: string) { await this.patch(row, { status: 'failed', errorCode: code, input: row.input ? { ...row.input, sources: row.input.sources.map(s => ({ ...s, text: '' })) } : null }); }
   async owned(userId: string, id: string) {
-    const [row] = await this.db.select().from(todayBriefs).where(and(eq(todayBriefs.userId, userId), eq(todayBriefs.id, id), sql`${todayBriefs.status} <> 'deleted'`));
+    const [row] = await this.db.select().from(todayBriefs).where(and(eq(todayBriefs.userId, userId), eq(todayBriefs.id, id), ne(todayBriefs.status, 'deleted')));
     if (!row) throw new ServiceError(404, 'not_found', 'Brief not found');
     return row;
   }
@@ -204,7 +204,7 @@ export class TodayRepository {
       catch { throw new ServiceError(400, 'invalid_cursor', 'Invalid page cursor'); }
       if (!before || !Number.isFinite(Date.parse(before.at)) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(before.id)) throw new ServiceError(400, 'invalid_cursor', 'Invalid page cursor');
     }
-    const rows = await this.db.select().from(todayBriefs).where(and(eq(todayBriefs.userId, userId), sql`${todayBriefs.status} <> 'deleted'`,
+    const rows = await this.db.select().from(todayBriefs).where(and(eq(todayBriefs.userId, userId), ne(todayBriefs.status, 'deleted'),
       date ? eq(todayBriefs.localDate, date) : undefined,
       before ? or(lt(todayBriefs.scheduledAt, new Date(before.at)), and(eq(todayBriefs.scheduledAt, new Date(before.at)), lt(todayBriefs.id, before.id))) : undefined))
       .orderBy(desc(todayBriefs.scheduledAt), desc(todayBriefs.id)).limit(limit + 1);

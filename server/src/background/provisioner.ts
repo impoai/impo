@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { backgroundLog } from './activities.js';
-import type { BackgroundUsers } from './repository.js';
+import type { BackgroundUsers } from '../db/repositories/background-repository.js';
 
 /** Discovery only: Temporal, not this polling loop, owns the hourly schedule. */
 export class BackgroundProvisioner {

@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { devices, deviceCapabilities, deviceDispatches, runtimeSubmissions, toolInvocations, users } from '../db/schema.js';
-import { ServiceError } from '../errors.js';
-import { deviceHash, deviceToolNames, isDeviceTool, jsonValue } from '../tools/device-tools.js';
+import { and, asc, eq, inArray, sql, isNull } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { devices, deviceCapabilities, deviceDispatches, runtimeSubmissions, toolInvocations, users } from '../schema.js';
+import { ServiceError } from '../../errors.js';
+import { deviceHash, deviceToolNames, isDeviceTool, jsonValue } from '../../tools/device-tools.js';
 import type { Transaction } from './runtime-repository.js';
 
 const missing = () => new ServiceError(404, 'not_found', 'Resource not found');
@@ -38,7 +38,7 @@ export class DeviceRepository {
       .innerJoin(deviceCapabilities, and(eq(deviceCapabilities.deviceId, deviceDispatches.deviceId), eq(deviceCapabilities.userId, deviceDispatches.userId), eq(deviceCapabilities.toolName, toolInvocations.toolName)))
       .innerJoin(runtimeSubmissions, eq(runtimeSubmissions.id, deviceDispatches.submissionId))
       .where(and(eq(deviceDispatches.userId, userId), eq(deviceDispatches.deviceId, deviceId), inArray(deviceDispatches.status, ['pending', 'claimed']),
-        sql`${deviceDispatches.expiresAt} > now()`, eq(runtimeSubmissions.cancelRequested, false), inArray(runtimeSubmissions.status, ['running', 'waiting_device']), sql`${toolInvocations.result} IS NULL`))
+        sql`${deviceDispatches.expiresAt} > now()`, eq(runtimeSubmissions.cancelRequested, false), inArray(runtimeSubmissions.status, ['running', 'waiting_device']), isNull(toolInvocations.result)))
       .orderBy(asc(deviceDispatches.createdAt)).limit(100);
     return { invocations: rows.map(({ dispatch, tool }) => ({ invocationId: tool.id, toolCallId: tool.callId, deviceId, expiresAt: dispatch.expiresAt.toISOString(), toolName: tool.toolName, input: tool.arguments })) };
   }

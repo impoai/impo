@@ -1,3 +1,4 @@
+import { MemoryDatabaseRepository } from '../src/db/repositories/memory-database-repository.js';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -13,7 +14,7 @@ import { DevelopmentEmbedder } from '../src/memory/embedder.js';
 import pg from 'pg';
 import { FakeRebyte, type FakeSession, type JSONRecord } from './helpers/fake-rebyte.js';
 import { createDatabase } from '../src/db/client.js';
-import { RebyteRepository } from '../src/persistence/rebyte-repository.js';
+import { RebyteRepository } from '../src/db/repositories/rebyte-repository.js';
 import { ServiceError } from '../src/errors.js';
 
 const directory = fileURLToPath(new URL('../', import.meta.url));
@@ -421,7 +422,8 @@ test('Rebyte SDK integration recovers remote side effects across local process f
     });
     await t.test('main memory tool survives lost acknowledgement, repeats on follow-up, and rejects task access', async () => {
       const connection = createDatabase(databaseURL!);
-      const store = new MemoryStore(connection.db, new LocalFileProvider(memoryDirectory), new DevelopmentEmbedder());
+      const embedder = new DevelopmentEmbedder();
+      const store = new MemoryStore(new MemoryDatabaseRepository(connection.db, new LocalFileProvider(memoryDirectory), embedder), embedder);
       const alice = '00000000-0000-4000-8000-000000000001', bob = '00000000-0000-4000-8000-000000000002';
       await store.apply(alice, [{key:'alice-tea',event:'ADD',id:randomUUID(),content:'Alice prefers green tea',categories:['food'],sourceIds:['chat:fixture'],expiresAt:null}]);
       await store.apply(bob, [{key:'bob-tea',event:'ADD',id:randomUUID(),content:'Bob private tea preference',categories:['food'],sourceIds:['chat:fixture'],expiresAt:null}]);

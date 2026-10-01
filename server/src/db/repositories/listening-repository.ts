@@ -1,12 +1,12 @@
-import { ListeningBatchRepository, batchPublicFields } from './batch-repository.js';
+import { ListeningBatchRepository, batchPublicFields } from './listening-batch-repository.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { listeningSegments as segments, listeningBatches as batches } from '../db/schema.js';
-import { ServiceError } from '../errors.js';
-import type { TranscriptionResult } from './transcriber.js';
-import { hydrateTranscripts, type TranscriptArchive } from './transcript-archive.js';
-import { parseLocationLabel, withEchoLocation } from './location.js';
+import { and, asc, count, desc, eq, gt, gte, inArray, lt, lte, ne, or, sql } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { listeningSegments as segments, listeningBatches as batches } from '../schema.js';
+import { ServiceError } from '../../errors.js';
+import type { TranscriptionResult } from '../../listening/transcriber.js';
+import { hydrateTranscripts, type TranscriptArchive } from '../../listening/transcript-archive.js';
+import { parseLocationLabel, withEchoLocation } from '../../listening/location.js';
 
 export const maxAudioBytes = 8 * 1024 * 1024;
 export type Segment = typeof segments.$inferSelect;
@@ -40,7 +40,7 @@ export class ListeningRepository {
   async list(userId: string, from: Date, to: Date) {
     // A day contains at most 1440 non-overlapping minute segments. Bound malformed clients too.
     const legacy = await this.db.select(publicFields).from(segments).where(and(eq(segments.userId, userId),
-      gte(segments.startedAt, from), lt(segments.startedAt, to), sql`${segments.status} <> 'deleted'`))
+      gte(segments.startedAt, from), lt(segments.startedAt, to), ne(segments.status, 'deleted')))
       .orderBy(asc(segments.startedAt), asc(segments.id)).limit(2000);
     const batches = await new ListeningBatchRepository(this.db).list(userId, from, to);
     return (await hydrateTranscripts(this.archive, userId, [...legacy, ...batches].sort((a,b) => a.startedAt.getTime()-b.startedAt.getTime() || a.id.localeCompare(b.id)).slice(0,2000))).map(withEchoLocation);
@@ -48,34 +48,33 @@ export class ListeningRepository {
 
   async calendar(userId: string, timeZone: string) {
     // Only day/count metadata crosses the wire; never load transcript bodies to build the rail.
-    const result = await this.db.execute<{ date: string; count: number }>(sql`
-      SELECT to_char(started_at AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') AS date, count(*)::int AS count
-      FROM (
-        SELECT started_at FROM ${segments} WHERE user_id = ${userId} AND status <> 'deleted'
-        UNION ALL
-        SELECT started_at FROM ${batches} WHERE user_id = ${userId} AND status <> 'deleted'
-      ) recordings GROUP BY 1 ORDER BY 1 DESC`);
-    return { timeZone, days: result.rows };
+    const recordings = this.recordingMetadata(userId);
+    const date = sql<string>`to_char(${recordings.startedAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`.as('date');
+    const days = await this.db.select({ date, count: count() }).from(recordings).groupBy(({ date }) => date).orderBy(({ date }) => desc(date));
+    return { timeZone, days };
   }
 
   async timeline(userId: string, timeZone: string) {
     // Stable identities reserve the entire scroll range without reading S3 or
     // transferring transcript text. Hydration uses the owned records endpoint;
     // insertions/deletions cannot shift an offset page onto different recordings.
-    const result = await this.db.execute<{ date: string; ids: string[] }>(sql`
-      SELECT to_char(started_at AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') AS date,
-        array_agg(id ORDER BY started_at DESC, id DESC) AS ids
-      FROM (
-        SELECT id, started_at FROM ${segments} WHERE user_id = ${userId} AND status <> 'deleted'
-        UNION ALL
-        SELECT id, started_at FROM ${batches} WHERE user_id = ${userId} AND status <> 'deleted'
-      ) recordings GROUP BY 1 ORDER BY 1 DESC`);
-    return { timeZone, days: result.rows };
+    const recordings = this.recordingMetadata(userId);
+    const date = sql<string>`to_char(${recordings.startedAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`.as('date');
+    const days = await this.db.select({ date, ids: sql<string[]>`array_agg(${recordings.id} ORDER BY ${recordings.startedAt} DESC, ${recordings.id} DESC)` })
+      .from(recordings).groupBy(({ date }) => date).orderBy(({ date }) => desc(date));
+    return { timeZone, days };
+  }
+
+  private recordingMetadata(userId: string) {
+    return this.db.select({ id: segments.id, startedAt: segments.startedAt }).from(segments)
+      .where(and(eq(segments.userId, userId), ne(segments.status, 'deleted')))
+      .unionAll(this.db.select({ id: batches.id, startedAt: batches.startedAt }).from(batches)
+        .where(and(eq(batches.userId, userId), ne(batches.status, 'deleted')))).as('recordings');
   }
 
   async records(userId: string, ids: string[]) {
-    const legacy = await this.db.select(publicFields).from(segments).where(and(eq(segments.userId, userId), inArray(segments.id, ids), sql`${segments.status} <> 'deleted'`));
-    const current = await this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId, userId), inArray(batches.id, ids), sql`${batches.status} <> 'deleted'`));
+    const legacy = await this.db.select(publicFields).from(segments).where(and(eq(segments.userId, userId), inArray(segments.id, ids), ne(segments.status, 'deleted')));
+    const current = await this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId, userId), inArray(batches.id, ids), ne(batches.status, 'deleted')));
     return { segments: (await hydrateTranscripts(this.archive, userId, [...legacy, ...current])).map(row => ({ ...withEchoLocation(row), cursor: this.cursor(row) })) };
   }
 
@@ -99,14 +98,14 @@ export class ListeningRepository {
     const order = ascending ? asc : desc;
     const bound = (date: typeof segments.startedAt | typeof batches.startedAt, id: typeof segments.id | typeof batches.id) =>
       before ? (ascending
-        ? sql`(${date}, ${id}) > (${before.startedAt.toISOString()}::timestamptz, ${before.id}::uuid)`
-        : sql`(${date}, ${id}) < (${before.startedAt.toISOString()}::timestamptz, ${before.id}::uuid)`)
+        ? or(gt(date, before.startedAt), and(eq(date, before.startedAt), gt(id, before.id)))
+        : or(lt(date, before.startedAt), and(eq(date, before.startedAt), lt(id, before.id))))
         : beforeDate ? lt(date, beforeDate) : undefined;
     const legacy = await this.db.select(publicFields).from(segments).where(and(eq(segments.userId, userId),
-      sql`${segments.status} <> 'deleted'`, bound(segments.startedAt, segments.id)))
+      ne(segments.status, 'deleted'), bound(segments.startedAt, segments.id)))
       .orderBy(order(segments.startedAt), order(segments.id)).limit(limit + 1);
     const current = await this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId, userId),
-      sql`${batches.status} <> 'deleted'`, bound(batches.startedAt, batches.id)))
+      ne(batches.status, 'deleted'), bound(batches.startedAt, batches.id)))
       .orderBy(order(batches.startedAt), order(batches.id)).limit(limit + 1);
     const rows = [...legacy, ...current].sort((a,b) => (ascending ? -1 : 1) * (b.startedAt.getTime()-a.startedAt.getTime() || b.id.localeCompare(a.id)));
     const page = rows.slice(0, limit); if (ascending) page.reverse();
@@ -120,10 +119,10 @@ export class ListeningRepository {
     const locationLabel = parseLocationLabel(value);
     await this.db.transaction(async tx => {
       const changed = await tx.update(batches).set({locationLabel,updatedAt:new Date()})
-        .where(and(eq(batches.userId,userId),eq(batches.id,id),sql`${batches.status} <> 'deleted'`)).returning({id:batches.id});
+        .where(and(eq(batches.userId,userId),eq(batches.id,id),ne(batches.status, 'deleted'))).returning({id:batches.id});
       if (changed.length) return;
       const legacy = await tx.update(segments).set({locationLabel,updatedAt:new Date()})
-        .where(and(eq(segments.userId,userId),eq(segments.id,id),sql`${segments.status} <> 'deleted'`)).returning({id:segments.id});
+        .where(and(eq(segments.userId,userId),eq(segments.id,id),ne(segments.status, 'deleted'))).returning({id:segments.id});
       if (!legacy.length) throw new ServiceError(404,'not_found','Recording not found');
     });
     const recording = (await this.records(userId,[id])).segments[0];
@@ -146,10 +145,10 @@ export class ListeningRepository {
 
   async claim(leaseMs: number): Promise<ClaimedSegment | undefined> {
     return this.db.transaction(async tx => {
-      const [row] = await tx.select().from(segments).where(sql`(
-        (${segments.status} = 'pending' AND ${segments.availableAt} <= now()) OR
-        (${segments.status} = 'transcribing' AND ${segments.leaseUntil} <= now())
-      )`).orderBy(asc(segments.createdAt)).limit(1).for('update', { skipLocked: true });
+      const [row] = await tx.select().from(segments).where(or(
+        and(eq(segments.status, 'pending'), lte(segments.availableAt, sql`now()`)),
+        and(eq(segments.status, 'transcribing'), lte(segments.leaseUntil, sql`now()`)),
+      )).orderBy(asc(segments.createdAt)).limit(1).for('update', { skipLocked: true });
       if (!row) return undefined;
       const [claimed] = await tx.update(segments).set({ status: 'transcribing', leaseToken: randomUUID(),
         leaseUntil: new Date(Date.now() + leaseMs), attempts: row.attempts + 1, updatedAt: new Date() })

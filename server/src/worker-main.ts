@@ -1,16 +1,16 @@
-import { ListeningBatchRepository } from './listening/batch-repository.js';
-import { TodayRepository } from './today/repository.js';
+import { ListeningBatchRepository } from './db/repositories/listening-batch-repository.js';
+import { TodayRepository } from './db/repositories/today-repository.js';
 import { todayStep } from './today/worker.js';
 import { createMemoryStore } from './memory/index.js';
-import { MemoryRepository } from './memory/repository.js';
+import { MemoryRepository } from './db/repositories/memory-repository.js';
 import { memoryStep } from './memory/worker.js';
 import { createListeningActivities } from './listening/temporal/activities.js';
 import { createTemporalWorker } from './temporal/worker.js';
 import { createBackgroundActivities } from './background/activities.js';
 import { createBackgroundClient } from './background/client.js';
-import { BackgroundUserRepository } from './background/repository.js';
+import { BackgroundUserRepository } from './db/repositories/background-repository.js';
 import { BackgroundProvisioner } from './background/provisioner.js';
-import { ListeningRepository } from './listening/repository.js';
+import { ListeningRepository } from './db/repositories/listening-repository.js';
 import { ListeningWorker } from './listening/worker.js';
 import { S3TranscriptArchive } from './listening/transcript-archive.js';
 import { S3AudioObjectStore } from './listening/audio-upload.js';
@@ -18,11 +18,11 @@ import { DevelopmentTranscriber, GeminiTranscriber } from './listening/transcrib
 import { loadConfig, databaseRequiresSsl } from './config.js';
 import { createDatabase } from './db/client.js';
 import { createRuntimeRepository } from './runtime.js';
-import { RebyteRepository } from './persistence/rebyte-repository.js';
+import { RebyteRepository } from './db/repositories/rebyte-repository.js';
 import { RebyteGateway } from './rebyte/gateway.js';
 import { RebyteWorker } from './worker/rebyte-worker.js';
 import { DevelopmentWorker } from './worker/worker.js';
-import { NotificationRepository } from './notifications/repository.js';
+import { NotificationRepository } from './db/repositories/notification-repository.js';
 import { FCMSender } from './notifications/fcm.js';
 import { notificationActivities, NotificationProvisioner } from './notifications/worker.js';
 

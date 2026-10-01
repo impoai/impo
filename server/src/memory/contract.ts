@@ -14,6 +14,13 @@ export const memoryCategories = ['personal_details', 'family', 'professional_det
   'technology', 'hobbies', 'fashion', 'entertainment', 'milestones', 'user_preferences', 'misc'] as const;
 export type MemoryCategory = typeof memoryCategories[number];
 
+export interface MemoryMatch extends Memory { distance: number }
+/** A resolved change: `id` is a real memory ID; `key` makes the change apply at most once. */
+export type MemoryChange =
+  | { key: string; event: 'ADD'; id: string; content: string; categories: MemoryCategory[]; sourceIds: string[]; expiresAt: string | null }
+  | { key: string; event: 'UPDATE'; id: string; content: string; categories: MemoryCategory[]; sourceIds: string[]; expiresAt: string | null }
+  | { key: string; event: 'DELETE'; id: string; reason: string };
+
 /** A (time, id) position in one source; evidence strictly after it is unread. */
 export interface MemoryCursor { at: string; id: string }
 /** A run reads (after, through] per source. Absent means the run reads nothing from it. */

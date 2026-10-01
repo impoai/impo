@@ -1,6 +1,6 @@
-import { ListeningBatchRepository } from '../listening/batch-repository.js';
+import { ListeningBatchRepository } from '../db/repositories/listening-batch-repository.js';
 import type { ListeningUploadService } from '../listening/audio-upload.js';
-import type { TodayRepository } from '../today/repository.js';
+import type { TodayRepository } from '../db/repositories/today-repository.js';
 import type { MemoryStore } from '../memory/store.js';
 import { memoryCategories, type MemoryCategory } from '../memory/contract.js';
 import type { ListeningBatchService } from '../listening/temporal/client.js';
@@ -15,14 +15,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageChunk } from 'ai';
 import { verifyToken } from '@clerk/backend';
 import { ServiceError } from '../errors.js';
-import type { RuntimeRepository } from '../persistence/runtime-repository.js';
+import type { RuntimeRepository } from '../db/repositories/runtime-repository.js';
 import { clientContext } from '../tools/device-tools.js';
 import type { ConnectorAPI } from '../composio/connector-service.js';
-import type { ProfileRepository } from '../profile/repository.js';
-import { ListeningRepository, maxAudioBytes } from '../listening/repository.js';
+import type { ProfileRepository } from '../db/repositories/profile-repository.js';
+import { ListeningRepository, maxAudioBytes } from '../db/repositories/listening-repository.js';
 import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON, uuid } from './request.js';
 import { dictationAudio, maxDictationBytes, transcribeRequest, type Dictation } from '../voice/dictation.js';
-import type { NotificationRepository } from '../notifications/repository.js';
+import type { NotificationRepository } from '../db/repositories/notification-repository.js';
 import { registrationInput, settingsInput, type Registration, type Revocation } from '../notifications/contract.js';
 
 export type ApiRepository = Pick<RuntimeRepository,

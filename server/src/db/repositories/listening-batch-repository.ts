@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, lt, sql } from 'drizzle-orm';
-import type { Database } from '../db/client.js';
-import { listeningBatches as batches } from '../db/schema.js';
-import type { AcceptedBatch, StreamProgress } from './batch-contract.js';
-import type { TranscriptionResult } from './transcriber.js';
-import { ServiceError } from '../errors.js';
+import { and, asc, desc, eq, gte, lt, sql, inArray, ne, or } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { listeningBatches as batches } from '../schema.js';
+import type { AcceptedBatch, StreamProgress } from '../../listening/batch-contract.js';
+import type { TranscriptionResult } from '../../listening/transcriber.js';
+import { ServiceError } from '../../errors.js';
 
 export const batchPublicFields = {id:batches.id,clientSegmentId:batches.clientBatchId,startedAt:batches.startedAt,endedAt:batches.endedAt,
  status:batches.status,transcript:batches.transcript,model:batches.model,error:batches.error,segments:batches.segments,locationLabel:batches.locationLabel,
@@ -33,7 +33,7 @@ export class ListeningBatchRepository {
   if(['transcribed','deleted'].includes(row.status)) return {done:true as const,status:row.status};
   const token=randomUUID();
   const [claimed]=await this.db.update(batches).set({status:'transcribing',executionToken:token,attempts:sql`${batches.attempts}+1`,error:null,updatedAt:new Date()})
-   .where(and(eq(batches.id,row.id),sql`${batches.status} IN ('pending','transcribing','failed')`)).returning();
+   .where(and(eq(batches.id,row.id),inArray(batches.status, ['pending', 'transcribing', 'failed']))).returning();
   return claimed ? {done:false as const,id:row.id,token,attempts:claimed.attempts} : {done:true as const,status:'deleted'};
  }
  async complete(id:string,token:string,result:TranscriptionResult) {
@@ -49,10 +49,10 @@ export class ListeningBatchRepository {
  }
  async fail(userId:string,batchId:string,code:string) {
   await this.db.update(batches).set({status:'failed',executionToken:null,error:{code,message:'Transcription failed. Check Debug logs for this batch.',retryable:true},updatedAt:new Date()})
-   .where(and(eq(batches.userId,userId),eq(batches.clientBatchId,batchId),sql`${batches.status} IN ('pending','transcribing','failed')`));
+   .where(and(eq(batches.userId,userId),eq(batches.clientBatchId,batchId),inArray(batches.status, ['pending', 'transcribing', 'failed'])));
  }
- async list(userId:string,from:Date,to:Date) {return this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId,userId),gte(batches.startedAt,from),lt(batches.startedAt,to),sql`${batches.status}<>'deleted'`)).orderBy(asc(batches.startedAt),asc(batches.id)).limit(2000);}
- async history(userId:string,limit:number,before?:{startedAt:Date;id:string}) {return this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId,userId),sql`${batches.status}<>'deleted'`,before?sql`(${batches.startedAt},${batches.id}) < (${before.startedAt.toISOString()}::timestamptz,${before.id}::uuid)`:undefined)).orderBy(desc(batches.startedAt),desc(batches.id)).limit(limit);}
+ async list(userId:string,from:Date,to:Date) {return this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId,userId),gte(batches.startedAt,from),lt(batches.startedAt,to),ne(batches.status, 'deleted'))).orderBy(asc(batches.startedAt),asc(batches.id)).limit(2000);}
+ async history(userId:string,limit:number,before?:{startedAt:Date;id:string}) {return this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId,userId),ne(batches.status, 'deleted'),before?or(lt(batches.startedAt, before.startedAt), and(eq(batches.startedAt, before.startedAt), lt(batches.id, before.id))):undefined)).orderBy(desc(batches.startedAt),desc(batches.id)).limit(limit);}
  async delete(userId:string,id:string) {return (await this.db.update(batches).set({status:'deleted',transcript:'',model:null,error:null,executionToken:null,locationLabel:null,
   segments:sql`(SELECT coalesce(jsonb_agg(item - 'locations'), '[]'::jsonb) FROM jsonb_array_elements(${batches.segments}) item)`,updatedAt:new Date()}).where(and(eq(batches.userId,userId),eq(batches.id,id))).returning({batchId:batches.clientBatchId,startedAt:batches.startedAt}))[0];}
 }

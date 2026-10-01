@@ -5,12 +5,12 @@ import { once } from 'node:events';
 import { eq } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
 import { users, notificationEvents, notificationDeliveries, pushInstallations } from '../src/db/schema.js';
-import { NotificationRepository, enqueueNotification } from '../src/notifications/repository.js';
+import { NotificationRepository, enqueueNotification } from '../src/db/repositories/notification-repository.js';
 import { notificationActivities, NotificationProvisioner } from '../src/notifications/worker.js';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
 import { createTemporalWorker } from '../src/temporal/worker.js';
 import { DevelopmentWorker } from '../src/worker/worker.js';
-import { RuntimeRepository } from '../src/persistence/runtime-repository.js';
+import { RuntimeRepository } from '../src/db/repositories/runtime-repository.js';
 import { createApiServer } from '../src/http/api-server.js';
 import type { Registration } from '../src/notifications/contract.js';
 

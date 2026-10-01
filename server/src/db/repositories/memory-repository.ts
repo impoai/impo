@@ -1,12 +1,12 @@
-import { echoLocationContext } from '../listening/location.js';
+import { echoLocationContext } from '../../listening/location.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, inArray, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNotNull, lte, or, sql, type SQL, lt } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
-import type { Database } from '../db/client.js';
-import { listeningBatches, listeningSegments, memoryRuns, memoryState, messages, runtimeSubmissions, todaySettings } from '../db/schema.js';
-import { hydrateTranscripts, type TranscriptArchive } from '../listening/transcript-archive.js';
-import { hydrateMessages, type HistoryReader } from '../persistence/conversation-history.js';
-import { memoryConfigVersion, memoryLimits, type MemoryCursor, type MemoryEvidence, type MemoryWindow } from './contract.js';
+import type { Database } from '../client.js';
+import { listeningBatches, listeningSegments, memoryRuns, memoryState, messages, runtimeSubmissions, todaySettings } from '../schema.js';
+import { hydrateTranscripts, type TranscriptArchive } from '../../listening/transcript-archive.js';
+import { hydrateMessages, type HistoryReader } from './conversation-history.js';
+import { memoryConfigVersion, memoryLimits, type MemoryCursor, type MemoryEvidence, type MemoryWindow } from '../../memory/contract.js';
 
 export type MemoryRunRow = typeof memoryRuns.$inferSelect;
 export interface PendingEvidence { count: number; oldestAt: Date | null; newestAt: Date | null }
@@ -20,7 +20,7 @@ const settleMs = 60_000;
 /** (at, id) strictly after the cursor, and at or before `through` when given. */
 function range(at: PgColumn, id: PgColumn, after: MemoryCursor | null, through?: MemoryCursor): SQL | undefined {
   const gtCursor = after ? or(gt(at, new Date(after.at)), and(eq(at, new Date(after.at)), gt(id, after.id))) : undefined;
-  const lteCursor = through ? or(sql`${at} < ${new Date(through.at)}`, and(eq(at, new Date(through.at)), lte(id, through.id))) : undefined;
+  const lteCursor = through ? or(lt(at, new Date(through.at)), and(eq(at, new Date(through.at)), lte(id, through.id))) : undefined;
   return and(gtCursor, lteCursor);
 }
 const cursor = (at: Date | null, id: string | null): MemoryCursor | null => at && id ? { at: at.toISOString(), id } : null;
@@ -33,7 +33,7 @@ const clip = (text: string, max: number) => (text.length > max ? { text: text.sl
  * Both advance by (completion time, ID) cursors, so each item is consolidated once.
  */
 export class MemoryRepository {
-  constructor(readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
+  constructor(private readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
 
   async state(userId: string) {
     await this.db.insert(memoryState).values({ userId }).onConflictDoNothing();
@@ -48,16 +48,16 @@ export class MemoryRepository {
 
   private chatQuery(userId: string, after: MemoryCursor | null, through?: MemoryCursor, now = new Date()) {
     return and(eq(runtimeSubmissions.userId, userId), eq(runtimeSubmissions.status, 'completed'), isNotNull(runtimeSubmissions.completedAt),
-      sql`${runtimeSubmissions.completedAt} <= ${new Date(now.getTime() - settleMs)}`,
+      lte(runtimeSubmissions.completedAt, new Date(now.getTime() - settleMs)),
       range(runtimeSubmissions.completedAt, runtimeSubmissions.id, after, through));
   }
   private echoQueries(userId: string, after: MemoryCursor | null, through?: MemoryCursor, now = new Date()) {
     const settled = new Date(now.getTime() - settleMs);
     return [
       and(eq(listeningBatches.userId, userId), eq(listeningBatches.status, 'transcribed'), isNotNull(listeningBatches.transcribedAt),
-        sql`${listeningBatches.transcribedAt} <= ${settled}`, range(listeningBatches.transcribedAt, listeningBatches.id, after, through)),
+        lte(listeningBatches.transcribedAt, settled), range(listeningBatches.transcribedAt, listeningBatches.id, after, through)),
       and(eq(listeningSegments.userId, userId), eq(listeningSegments.status, 'transcribed'), isNotNull(listeningSegments.transcribedAt),
-        sql`${listeningSegments.transcribedAt} <= ${settled}`, range(listeningSegments.transcribedAt, listeningSegments.id, after, through)),
+        lte(listeningSegments.transcribedAt, settled), range(listeningSegments.transcribedAt, listeningSegments.id, after, through)),
     ] as const;
   }
 
