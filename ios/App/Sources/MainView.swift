@@ -9,14 +9,9 @@ struct MainView: View {
     @Environment(\.scenePhase) private var phase
     @State private var showSettings = false
     @State private var showSearch = false
-    @State private var showAttachment = false
     @State private var composer = ""
     @State private var search = ""
-    @State private var voiceActive = ProcessInfo.processInfo.arguments.contains("--voice-preview")
-    @State private var voiceCancelled = false
-    @State private var voiceBlocked = false
-    @State private var voiceNotice: String?
-    @State private var voiceCompletion: Task<Void, Never>?
+    @State private var voice = VoiceInput()
     @State private var composerFocused = false
 
     var body: some View {
@@ -43,7 +38,7 @@ struct MainView: View {
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) { bottomDock }
             }
-            if voiceActive { voiceOverlay.transition(.opacity) }
+            VoiceOverlay(voice: voice)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if listening.isListening {
@@ -51,15 +46,7 @@ struct MainView: View {
                     .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
             }
         }
-        .animation(.easeOut(duration: 0.18), value: voiceActive)
-        .sheet(isPresented: $showAttachment) {
-            VStack(spacing: 22) {
-                Image(systemName: "paperclip").font(.largeTitle).foregroundStyle(InstantStyle.accent)
-                Text("Bring something to the conversation").font(InstantStyle.serif(25)).multilineTextAlignment(.center)
-                Text("File and camera uploads are coming next. For this demo, you can paste text into your message.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                PillButton(title: "Got it") { showAttachment = false }
-            }.padding(28).presentationDetents([.medium]).presentationBackground(InstantStyle.paper).swipeToDismiss()
-        }
+        .animation(.easeOut(duration: 0.18), value: voice.active)
         .sheet(isPresented: $listening.showIntroduction) { ListeningIntroduction().swipeToDismiss() }
         .task { permissions.enteredToday(model.selectedTab == 1); await model.restoreConversation() }
         .onChange(of: model.selectedTab) { _, tab in permissions.enteredToday(tab == 1) }
@@ -74,9 +61,7 @@ struct MainView: View {
         .onChange(of: phase) { _, phase in
             if phase == .active { Task { await model.restoreConversation() } }
             else if phase == .background { model.suspendStream() }
-            if phase == .background || (phase == .inactive && model.dictation.phase != .starting) { cancelVoice() }
         }
-        .onDisappear { cancelVoice() }
         .onChange(of: model.useLiveBackend) { _, _ in model.changeChatMode() }
         .onChange(of: showSettings) { old, new in
             if old && !new { model.persistProfile(); Task { await model.restoreConversation() } }
@@ -117,62 +102,10 @@ struct MainView: View {
                 }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4)
                     .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
             }
-            if let voiceNotice {
-                HStack(alignment: .top, spacing: 8) {
-                    Text(voiceNotice).font(.caption).frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityIdentifier("chat.voice.notice")
-                    Button { self.voiceNotice = nil } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
-                        .accessibilityLabel("Dismiss voice notice")
-                }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4)
-                    .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
-            }
-            HStack(spacing: 9) {
-                Button { showAttachment = true } label: {
-                    Image(systemName: "plus").font(.system(size: 26, weight: .light)).frame(width: 32, height: 42)
-                }.accessibilityLabel("Add attachment")
-                ComposerTextView(text: $composer, focused: Binding(get: { composerFocused }, set: { composerFocused = $0 }), onSend: send)
-                    .overlay(alignment: .leading) {
-                        if composer.isEmpty {
-                            Text(model.selectedTab == 3 ? "Tell \(model.assistantName) more about you..."
-                                : model.selectedTab == 2 ? "Ask \(model.assistantName) to research, plan, or create" : "Chat or hold to speak...")
-                                .font(.system(size: 15)).foregroundStyle(InstantStyle.muted).lineLimit(1)
-                                .allowsHitTesting(false)
-                        }
-                    }
-                if composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Image(systemName: "waveform").font(.system(size: 21, weight: .regular))
-                        .frame(width: 44, height: 44)
-                        .background(InstantStyle.orangePaper, in: Circle())
-                        .overlay(Circle().strokeBorder(InstantStyle.paperElevated.opacity(0.8), lineWidth: 1))
-                        .foregroundStyle(InstantStyle.forest).contentShape(Rectangle())
-                        .accessibilityElement().accessibilityLabel("Hold to talk")
-                        .accessibilityHint("Release to send. Slide up to cancel.")
-                        .accessibilityIdentifier("chat.voice")
-                        .accessibilityAddTraits(.isButton)
-                } else {
-                    Button(action: send) {
-                        Image(systemName: "arrow.up").font(.system(size: 21, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                            .background(InstantStyle.orangePaper, in: Circle())
-                            .foregroundStyle(InstantStyle.forest)
-                    }.frame(width: 44, height: 44).disabled(model.isThinking)
-                        .accessibilityLabel("Send message").accessibilityIdentifier("chat.send")
-                }
-            }
-            .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 5)
-            .foregroundStyle(InstantStyle.forest)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 29))
-            .contentShape(RoundedRectangle(cornerRadius: 29))
-            .gesture(ComposerHoldGesture(enabled: composer.isEmpty,
-                onBegan: startVoice,
-                onMoved: { cancel in
-                    if voiceActive && cancel != voiceCancelled {
-                        voiceCancelled = cancel
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    }
-                }, onEnded: endVoice, onCancelled: cancelVoice))
-            .overlay(RoundedRectangle(cornerRadius: 29).strokeBorder(InstantStyle.paperElevated, lineWidth: 1))
-            .shadow(color: InstantStyle.forest.opacity(0.06), radius: 7, y: 3)
+            ChatComposer(text: $composer, focused: $composerFocused,
+                         placeholder: model.selectedTab == 3 ? "Tell \(model.assistantName) more about you..."
+                             : model.selectedTab == 2 ? "Ask \(model.assistantName) to research, plan, or create" : "Chat or hold to speak...",
+                         sendDisabled: model.isThinking && model.selectedTab != 2, voice: voice, onSend: send, onClip: deliverVoice)
 
             if !composerFocused {
                 HStack(spacing: 1) {
@@ -221,67 +154,14 @@ struct MainView: View {
             .accessibilityAddTraits(model.selectedTab == index ? .isSelected : [])
     }
 
-    /// Hold to talk: record while held, send the transcript on release, slide up to cancel.
-    private func startVoice() {
-        composerFocused = false
-        voiceNotice = nil
-        guard model.dictation.phase == .idle else { voiceBlocked = true; return }
-        if listening.isListening {
-            voiceBlocked = true
-            voiceNotice = "Echo is using the microphone. Stop Echo to talk to \(model.assistantName)."
-            return
-        }
-        voiceActive = true
-        voiceCancelled = false
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        model.dictation.begin()
-    }
-
-    private func endVoice() {
-        if voiceBlocked { voiceBlocked = false; return }
-        guard voiceActive else { return }
-        let cancelled = voiceCancelled
-        voiceActive = false
-        voiceCancelled = false
-        if cancelled { model.dictation.cancel(); return }
-        // Show the pending "…" bubble where the message will land.
+    /// Chat sends the clip itself: the server transcribes it and replies in one step, while a
+    /// "…" bubble holds its place. A task starts from text, and a busy chat keeps the words as a draft.
+    private func deliverVoice(_ clip: VoiceClip) async throws {
         if model.selectedTab != 2 { model.selectedTab = 0 }
-        voiceCompletion = Task {
-            let outcome = await model.dictation.finish()
-            guard !Task.isCancelled else { return }
-            switch outcome {
-            case .clip(let clip):
-                // Chat sends the clip itself; the server transcribes and replies in one step.
-                if model.selectedTab != 2, model.sendVoice(clip) { return }
-                // A task starts from text, and a busy chat keeps the words as a draft.
-                voiceNotice = "Transcribing…"
-                do {
-                    let text = try await model.transcribe(clip)
-                    guard !Task.isCancelled else { return }
-                    voiceNotice = nil
-                    composer = composer.isEmpty ? text : composer + " " + text
-                    if model.selectedTab == 2 { send() }
-                } catch is CancellationError {
-                } catch let error as InstantAPIError where error.code == "empty_transcript" {
-                    voiceNotice = "Didn't catch that. Hold the input field while you speak, then release."
-                } catch {
-                    voiceNotice = (error as? VoiceTranscriptionError)?.errorDescription ?? "Couldn't transcribe that. Check your connection and try again."
-                }
-            case .empty:
-                voiceNotice = "Didn't catch that. Hold the input field while you speak, then release."
-            case .unavailable(let message):
-                voiceNotice = message
-            }
-        }
-    }
-
-    private func cancelVoice() {
-        voiceCompletion?.cancel()
-        voiceCompletion = nil
-        voiceActive = false
-        voiceCancelled = false
-        voiceBlocked = false
-        model.dictation.cancel()
+        if model.selectedTab != 2, model.sendVoice(clip) { return }
+        let text = try await model.transcribe(clip)
+        composer = composer.isEmpty ? text : composer + " " + text
+        if model.selectedTab == 2 { send() }
     }
 
     private func send() {
@@ -300,41 +180,6 @@ struct MainView: View {
         guard !model.isThinking else { return }
         model.selectedTab = 0
         if model.send(composer) { composer = ""; composerFocused = false }
-    }
-
-    private var voiceOverlay: some View {
-        let preview = ProcessInfo.processInfo.arguments.contains("--voice-preview")
-        let levels = preview ? (0..<40).map { 0.25 + 0.6 * abs(sin(Double($0) * 0.55)) } : model.dictation.levels
-        let tint = voiceCancelled ? Color.red : InstantStyle.accent
-        return ZStack(alignment: .bottom) {
-            // An opaque paper base hides the composer and tabs; the tinted glow sits on top.
-            ZStack {
-                LinearGradient(stops: [.init(color: InstantStyle.paper.opacity(0), location: 0), .init(color: InstantStyle.paper, location: 0.3), .init(color: InstantStyle.paper, location: 1)], startPoint: .top, endPoint: .bottom)
-                LinearGradient(stops: [.init(color: tint.opacity(0), location: 0.15), .init(color: tint.opacity(0.28), location: 0.55), .init(color: tint.opacity(0.62), location: 1)], startPoint: .top, endPoint: .bottom)
-            }
-            .frame(height: 360).frame(maxWidth: .infinity)
-            .ignoresSafeArea(edges: .bottom)
-            .animation(.easeOut(duration: 0.15), value: voiceCancelled)
-            VStack(spacing: 18) {
-                Text(voiceCancelled ? "Release to cancel" : "Release to send · Slide up to cancel")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(voiceCancelled ? Color.red : InstantStyle.forest)
-                HStack(alignment: .center, spacing: 3) {
-                    ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
-                        Capsule().fill(voiceCancelled ? Color.red.opacity(0.75) : InstantStyle.paperElevated)
-                            .frame(width: 3, height: 4 + 30 * level)
-                    }
-                }
-                .frame(height: 36)
-                .animation(.easeOut(duration: 0.08), value: levels)
-            }
-            .padding(.bottom, 82)
-        }
-        .frame(maxHeight: .infinity, alignment: .bottom)
-        .ignoresSafeArea(.container, edges: .bottom)
-        .ignoresSafeArea(.keyboard)
-        .allowsHitTesting(false)
-        .accessibilityIdentifier("voice.preview")
     }
 }
 
@@ -520,9 +365,10 @@ private struct BubbleTail: Shape {
 
 /// UITextView keeps native multiline editing while its Send key submits rather
 /// than inserting a newline. Pasted multiline text remains intact.
-private struct ComposerTextView: UIViewRepresentable {
+struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
+    var identifier = "chat.input"
     var onSend: () -> Void
 
     func makeUIView(context: Context) -> UITextView {
@@ -538,7 +384,7 @@ private struct ComposerTextView: UIViewRepresentable {
         view.returnKeyType = .send
         view.enablesReturnKeyAutomatically = true
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        view.accessibilityIdentifier = "chat.input"
+        view.accessibilityIdentifier = identifier
         view.accessibilityLabel = "Message"
         return view
     }
@@ -549,6 +395,8 @@ private struct ComposerTextView: UIViewRepresentable {
         // replace marked text while a Chinese/Japanese IME is composing.
         if view.text != text && view.markedTextRange == nil && (!view.isFirstResponder || text.isEmpty) { view.text = text }
         if !focused && view.isFirstResponder { view.resignFirstResponder() }
+        // Focus requested by the screen, e.g. after choosing a suggestion to edit.
+        if focused && !view.isFirstResponder && view.window != nil { DispatchQueue.main.async { view.becomeFirstResponder() } }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
@@ -628,7 +476,7 @@ struct LiveStepList: View {
 }
 
 /// The user's voice message while its transcript is being finalized.
-private struct TranscribingBubble: View {
+struct TranscribingBubble: View {
     @State private var phase = 0
     var body: some View {
         HStack {

@@ -50,6 +50,49 @@ final class VoiceComposerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Keep this draft"].waitForExistence(timeout: 3))
     }
 
+    /// New tasks and task conversations use the same composer and hold-to-talk as Chat.
+    func testTaskComposersMatchChatIncludingHoldToTalk() {
+        element("tab.tasks").tap()
+        element("task.add").tap()
+        XCTAssertTrue(app.buttons["Add a Task"].waitForExistence(timeout: 5))
+        app.buttons["Add a Task"].tap()
+        let newInput = element("task.new.input")
+        XCTAssertTrue(newInput.waitForExistence(timeout: 5))
+        XCTAssertEqual(newInput.elementType, app.textViews["chat.input"].elementType, "Same native multiline input as Chat")
+        XCTAssertTrue(element("task.new.voice").exists, "Empty composer offers hold to talk")
+        XCTAssertFalse(element("task.new.send").exists)
+
+        // Speech starts the task, exactly like typing it.
+        newInput.press(forDuration: 0.9)
+        let taskMessages = app.descendants(matching: .any).matching(identifier: "task.message.user")
+        XCTAssertTrue(taskMessages.firstMatch.waitForExistence(timeout: 8))
+        XCTAssertEqual(taskMessages.firstMatch.label, "Voice gesture regression")
+        XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 10))
+
+        // Inside the task: "…" while transcribing, then the spoken follow-up is sent.
+        let detailInput = element("task.detail.input")
+        XCTAssertTrue(element("task.detail.voice").waitForExistence(timeout: 5))
+        detailInput.press(forDuration: 0.9)
+        XCTAssertTrue(element("chat.voice.transcribing").waitForExistence(timeout: 2))
+        let sent = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count == 2"), object: taskMessages)
+        XCTAssertEqual(XCTWaiter.wait(for: [sent], timeout: 8), .completed)
+        waitUntilGone("chat.voice.transcribing")
+
+        // Slide up cancels here too.
+        XCTAssertTrue(app.staticTexts["Completed"].waitForExistence(timeout: 10))
+        let start = detailInput.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.8, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
+        XCTAssertFalse(element("chat.voice.transcribing").waitForExistence(timeout: 2))
+        XCTAssertEqual(taskMessages.count, 2)
+        XCTAssertFalse(element("voice.preview").exists)
+
+        // Typing switches the voice button to Send, as in Chat.
+        detailInput.tap()
+        detailInput.typeText("Thanks")
+        XCTAssertTrue(element("task.detail.send").waitForExistence(timeout: 2))
+        XCTAssertFalse(element("task.detail.voice").exists)
+    }
+
     private var messages: XCUIElementQuery { app.descendants(matching: .any).matching(identifier: "chat.message.user") }
     private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any).matching(identifier: id).firstMatch }
     private func waitUntilGone(_ id: String) {

@@ -255,7 +255,8 @@ private struct NewTaskView: View {
     @State private var text: String
     @State private var sending = false
     @State private var error: String?
-    @FocusState private var focused: Bool
+    @State private var focused = false
+    @State private var voice = VoiceInput()
 
     private let suggestions: [(String, String)] = [
         ("sparkles", "Get a daily email roundup"),
@@ -282,11 +283,18 @@ private struct NewTaskView: View {
                         }.buttonStyle(PressStyle())
                     }
                     if let error { Text(error).font(.footnote).foregroundStyle(InstantStyle.accent) }
-                    TaskComposer(text: $text, placeholder: "Describe what you’d like done…", sending: sending, focused: $focused, identifier: "task.new") { submit() }
+                    ChatComposer(text: $text, focused: $focused, placeholder: "Describe what you’d like done…", identifier: "task.new",
+                                 sendDisabled: sending, voice: voice, onSend: submit) { clip in
+                        // A task starts from text: transcribe, then create it like a typed request.
+                        text = try await model.transcribe(clip)
+                        submit()
+                    }
                         .padding(.top, 10)
                 }.padding(.horizontal, 16).padding(.bottom, 10)
             }
+            VoiceOverlay(voice: voice)
         }
+        .animation(.easeOut(duration: 0.18), value: voice.active)
     }
 
     private func submit() {
@@ -313,7 +321,8 @@ private struct TaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State var thread: TaskThreadModel
     @State private var text = ""
-    @FocusState private var focused: Bool
+    @State private var focused = false
+    @State private var voice = VoiceInput()
 
     var body: some View {
         ZStack {
@@ -333,6 +342,8 @@ private struct TaskDetailView: View {
                             ForEach(thread.messages) { message in
                                 if message.role == "user" { userBubble(message.text) } else { assistantText(message.text) }
                             }
+                            // Same as Chat: "…" holds the message's place until its text arrives.
+                            if voice.transcribing { TranscribingBubble() }
                             if thread.isRunning { LiveStepList(steps: thread.steps) }
                             if thread.isRunning && thread.messages.last?.role != "assistant" {
                                 Text("Thinking…").font(.system(size: 16)).foregroundStyle(InstantStyle.muted)
@@ -345,14 +356,20 @@ private struct TaskDetailView: View {
                         }.padding(.horizontal, 18).padding(.bottom, 12)
                     }
                     .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
-                    .followsBottom(proxy, content: [AnyHashable(thread.messages.count), AnyHashable(thread.messages.last?.text.count ?? 0), AnyHashable(thread.isRunning), AnyHashable(thread.error), AnyHashable(thread.steps.count)],
+                    .followsBottom(proxy, content: [AnyHashable(thread.messages.count), AnyHashable(thread.messages.last?.text.count ?? 0), AnyHashable(thread.isRunning), AnyHashable(thread.error), AnyHashable(thread.steps.count), AnyHashable(voice.transcribing)],
                                    identifier: "task.scrollToBottom")
                 }
-                TaskComposer(text: $text, placeholder: "Chat or hold to speak…", sending: thread.isRunning, focused: $focused, identifier: "task.detail") {
-                    if thread.send(text) { text = "" }
+                ChatComposer(text: $text, focused: $focused, placeholder: "Chat or hold to speak…", identifier: "task.detail",
+                             sendDisabled: thread.isRunning, showsTranscribing: false, voice: voice,
+                             onSend: { if thread.send(text) { text = "" } }) { clip in
+                    let spoken = try await model.transcribe(clip)
+                    // While a run is still going, the words wait in the composer instead.
+                    if !thread.send(spoken) { text = text.isEmpty ? spoken : text + " " + spoken }
                 }.padding(.horizontal, 16).padding(.bottom, 10)
             }
+            VoiceOverlay(voice: voice)
         }
+        .animation(.easeOut(duration: 0.18), value: voice.active)
         .onAppear { thread.start() }
         .onDisappear { thread.stop() }
     }
@@ -412,38 +429,5 @@ private struct TaskStatusLabel: View {
             }
         }.font(.system(size: 15)).foregroundStyle(InstantStyle.muted).accessibilityElement(children: .combine)
             .accessibilityIdentifier("task.status")
-    }
-}
-
-private struct TaskComposer: View {
-    @Binding var text: String
-    let placeholder: String
-    let sending: Bool
-    var focused: FocusState<Bool>.Binding
-    let identifier: String
-    let onSend: () -> Void
-
-    private var canSend: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !sending }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus").font(.system(size: 22, weight: .light)).foregroundStyle(InstantStyle.muted)
-                .frame(width: 30).accessibilityHidden(true)
-            TextField(placeholder, text: $text, axis: .vertical)
-                .font(.system(size: 17)).lineLimit(1...5)
-                .focused(focused)
-                .submitLabel(.send)
-                .onSubmit { if canSend { onSend() } }
-                .accessibilityIdentifier("\(identifier).input")
-            Button(action: onSend) {
-                Image(systemName: "arrow.up").font(.system(size: 18, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(canSend ? InstantStyle.orangePaper : InstantStyle.border.opacity(0.4), in: Circle())
-                    .foregroundStyle(InstantStyle.forest)
-            }.disabled(!canSend).accessibilityLabel("Send").accessibilityIdentifier("\(identifier).send")
-        }
-        .padding(.leading, 16).padding(.trailing, 6).padding(.vertical, 6)
-        .background(InstantStyle.paperElevated.opacity(0.95), in: Capsule())
-        .overlay(Capsule().strokeBorder(InstantStyle.border.opacity(0.7), lineWidth: 0.7))
     }
 }

@@ -530,7 +530,8 @@ final class AppModel {
     func transcribe(_ clip: VoiceClip) async throws -> String {
         guard useLiveBackend else {
             guard let text = clip.fixtureTranscript else { throw VoiceTranscriptionError.needsServer }
-            try await Task.sleep(for: .milliseconds(800))
+            // Same simulated latency as a demo voice message in Chat.
+            try await Task.sleep(for: .milliseconds(1500))
             return text
         }
         let api = InstantClient(baseURL: try endpoint(), tokenProvider: activeTokenProvider, session: session)
