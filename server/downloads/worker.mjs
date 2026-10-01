@@ -1,4 +1,5 @@
-// Public, read-only facade over the dedicated private ANDROID_RELEASES R2 bucket.
+import { appReleaseResponse, releaseChannels } from './app-releases.mjs';
+// Public, read-only facade over the dedicated private release metadata/APK bucket.
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const RELEASE = /^\/android\/releases\/([A-Za-z0-9][A-Za-z0-9._-]{0,63})-([1-9][0-9]*)\/impo\.apk$/;
 const HASH = /^[a-fA-F0-9]{64}$/;
@@ -14,7 +15,8 @@ export function validateManifest(value) {
       value.packageName !== 'ai.impo.android' || typeof value.publishedAt !== 'string' ||
       !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(value.publishedAt) || !Number.isFinite(Date.parse(value.publishedAt)) ||
       value.objectKey !== `android/releases/${value.versionName}-${value.versionCode}/impo.apk`) return null;
-  return Object.fromEntries(['versionName', 'versionCode', 'sha256', 'size', 'certificateSha256', 'packageName', 'objectKey', 'publishedAt'].map(key => [key, value[key]]));
+  if (value.minimumSdk !== undefined && (!Number.isInteger(value.minimumSdk) || value.minimumSdk < 28 || value.minimumSdk > 1000)) return null;
+  return Object.fromEntries(['versionName', 'versionCode', 'sha256', 'size', 'certificateSha256', 'packageName', 'objectKey', 'publishedAt', ...(value.minimumSdk === undefined ? [] : ['minimumSdk'])].map(key => [key, value[key]]));
 }
 
 function unchanged(header, etag) {
@@ -52,14 +54,17 @@ export default {
     const historical = RELEASE.exec(path);
     const latestApk = path === '/android.apk';
     const metadataRoute = path === '/android/latest.json';
+    const releaseKey = /^\/app-releases\/([a-z-]+)\.json$/.exec(path)?.[1];
+    const releaseRoute = releaseKey && Object.hasOwn(releaseChannels, releaseKey);
     const fail = (status, message, extra = {}) => new Response(request.method === 'HEAD' ? null : message, {
       status, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': NO_STORE, 'X-Content-Type-Options': 'nosniff', ...extra },
     });
-    if (!latestApk && !metadataRoute && !historical) return fail(404, 'Not found');
+    if (!latestApk && !metadataRoute && !historical && !releaseRoute) return fail(404, 'Not found');
     if (!['GET', 'HEAD'].includes(request.method)) return fail(405, 'Method not allowed', { Allow: 'GET, HEAD' });
     if (historical && !Number.isSafeInteger(Number(historical[2]))) return fail(404, 'Not found');
     try {
       const bucket = env.ANDROID_RELEASES;
+      if (releaseRoute) return await appReleaseResponse(request, bucket, releaseKey, validateManifest);
       let manifest, pointer;
       if (!historical) {
         pointer = await bucket.get(LATEST);

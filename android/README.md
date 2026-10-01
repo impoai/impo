@@ -363,6 +363,15 @@ The Android app does not yet include attachments/camera uploads,
 billing/subscriptions, recurring user-created tasks or diary generation.
 Web remains planned.
 
+## Optional updates
+
+Each cold launch checks the public APK release metadata. A newer compatible
+build offers **Update** (opens the signed download in a browser) and **Later**.
+Dismissal survives navigation, activity recreation and foreground return.
+Offline or failed checks silently leave the app usable. Publishing through
+`npm run publish:android` also updates the version check automatically. See the
+[shared update contract](../contracts/app-releases.md).
+
 ## Remote notifications
 
 FCM data messages use three native channels: Chat replies, Task updates and

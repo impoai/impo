@@ -15,6 +15,7 @@
     "test:android:downloads": "node --test server/downloads/*.test.mjs",
     "deploy:android:downloads": "wrangler pages deploy --cwd server/downloads --project-name impo-ai --branch main --commit-dirty=true",
     "publish:android": "node scripts/publish-android.mjs",
+    "publish:ios:update": "node scripts/publish-ios-update.mjs",
     "test:android": "node scripts/android-app.mjs test",
     "test:android:client": "node scripts/android-app.mjs client-test",
     "lint:android": "node scripts/android-app.mjs lint",

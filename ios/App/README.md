@@ -3,6 +3,11 @@
 SwiftUI application for iOS 18 and later. The Xcode scheme remains `Instant` and
 the reusable package remains `InstantClient` for compatibility.
 
+Each cold foreground launch checks for an optional update. TestFlight and App
+Store builds use separate published metadata; **Later** keeps the app usable
+without another prompt until the next cold launch. See the shared
+[update contract and release steps](../../contracts/app-releases.md).
+
 ## Requirements
 
 - macOS, Xcode with Swift 6, an installed iOS Simulator, and XcodeGen.

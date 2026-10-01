@@ -39,5 +39,14 @@ test('Pages sends only the exact download paths to the shared R2 handler, never 
 
 test('Pages invocation routes keep ordinary static assets outside the Function', async () => {
   const routes = JSON.parse(await readFile(new URL('../../site/_routes.json', import.meta.url), 'utf8'));
-  assert.deepEqual(routes, { version: 1, include: ['/android.apk', '/android/latest.json', '/android/releases/*'], exclude: [] });
+  assert.deepEqual(routes, { version: 1, include: ['/android.apk', '/android/latest.json', '/android/releases/*', '/app-releases/*'], exclude: [] });
+});
+
+test('Pages routes native release checks to R2 while unknown paths remain static assets', async () => {
+  for (const channel of ['ios-testflight', 'ios-app-store', 'android-apk']) {
+    const response = await pages.fetch(new Request(`https://impo.ai/app-releases/${channel}.json`), {
+      ANDROID_RELEASES: { get: async () => null }, ASSETS: { fetch() { throw new Error('Must not return HTML'); } },
+    });
+    assert.equal(response.status, 200); assert.equal((await response.json()).latest, null);
+  }
 });

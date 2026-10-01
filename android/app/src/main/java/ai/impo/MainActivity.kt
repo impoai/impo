@@ -10,6 +10,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,13 +27,30 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleIntent(intent)
+        val app = application as ImpoApplication
+        app.upgrade.checkOnce(app.scope) {
+            if (BuildConfig.DEBUG) intent.getStringExtra("impo.test.release")?.let {
+                ai.impo.client.AppRelease.update(it, BuildConfig.VERSION_CODE, android.os.Build.VERSION.SDK_INT)
+            } else ai.impo.client.AppReleaseClient().check(BuildConfig.VERSION_CODE, android.os.Build.VERSION.SDK_INT)
+        }
         setContent { ImpoTheme {
+            val update by app.upgrade.available.collectAsState()
             ImpoApp(model)
             if (showHealthPrivacy) AlertDialog(onDismissRequest = { showHealthPrivacy = false },
                 title = { Text("Your health data in Impo") },
                 text = { Text("When you enable Health in Connections, Impo can read the health categories you permit to answer your requests. Requested summaries are sent to your Impo account for your assistant to use. Impo does not write health records. You can turn this connection off or revoke access in Health Connect at any time. Missing samples are treated as unknown.") },
                 confirmButton = { TextButton(onClick = { showHealthPrivacy = false }) { Text("Done") } },
                 dismissButton = { TextButton(onClick = { ai.impo.ui.openWeb(this, "https://impo.ai/privacy/") }) { Text("Privacy policy") } })
+            if (!showHealthPrivacy) update?.let { release ->
+                AlertDialog(onDismissRequest = { app.upgrade.dismiss() },
+                    title = { Text("Update available") },
+                    text = { Text("Impo ${release.version} (${release.build}) is available. You can update now or keep using this version.") },
+                    confirmButton = { TextButton(onClick = {
+                        app.upgrade.dismiss()
+                        runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(release.url))) }
+                    }) { Text("Update") } },
+                    dismissButton = { TextButton(onClick = { app.upgrade.dismiss() }) { Text("Later") } })
+            }
         } }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); handleIntent(intent) }

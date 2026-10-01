@@ -19,6 +19,7 @@ class ImpoApplication : Application() {
     lateinit var settings: SettingsStore
     lateinit var auth: AuthController
     lateinit var push: PushNotifications
+    internal var upgrade = ai.impo.data.SoftUpgrade()
     @Volatile var nativeAccount: NativeAccount? = null
     override fun onCreate() {
         super.onCreate()

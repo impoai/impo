@@ -39,6 +39,7 @@ struct InstantApp: App {
             .environment(today)
             .environment(memories)
             .environment(permissions)
+            .modifier(SoftUpgradePrompt())
             .task(id: model.listeningScope) {
                 push.configure(scope: model.listeningScope, client: model.listeningClient())
                 push.setForeground(scenePhase == .active)
