@@ -217,3 +217,8 @@
 - Added a separate Scheduled tasks notification preference, native channels/routes and the existing foreground suppression policy. Fixed Android Echo preference updates rejecting their supported category. No provider credentials enter client code.
 - Validation: TypeScript; 106 server unit tests; 6 scheduled-task PostgreSQL/Temporal integration tests; 8 notification, 6 account-deletion and 15 Rebyte recovery integration tests. Swift package: 69 tests, 10 live-only skips. Android app/client: 168 tests, one fixture-only skip; Android lint passed. Native UI create/pause/relaunch/delete passed on iOS 26.5 Simulator and Android API 35 emulator, including a corrected Android stale-draft restore race. Physical-device push presentation remains unverified.
 - Prepared iOS build 52 and Android 0.1.8 (9); production release evidence is recorded separately after rollout.
+
+## 2026-10-01 — Preserve recurring task time across iOS time-zone changes
+
+- Keep a recurring schedule's clock string independent from the one-time date picker. Choosing another time zone now preserves the requested local hour, matching Android and the server calendar contract.
+- Validation: the native clock regression passed for Shanghai, New York and fractional-offset zones; the iOS create/pause/relaunch/delete UI test passed again. Updated the feature guide to describe implemented scheduling.

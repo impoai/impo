@@ -54,6 +54,7 @@
 		654E1370931DA937B33DE08F /* EchoLocationHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D1F0F1EB59253154C760BF5 /* EchoLocationHistory.swift */; };
 		66B0DF8C545CF2E1DA105698 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = E60956254F2D1F7D830E2214 /* Markdown */; };
 		6702371C1B4AA0F5A8A5C629 /* TodayModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14BAD0563576643ED82CD3E3 /* TodayModel.swift */; };
+		6828497075D8D2572A6DD259 /* ScheduledClockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60616964211B45B80F4AFA72 /* ScheduledClockTests.swift */; };
 		6C7311DE9B8190A6D0AB92AE /* DeviceDataInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4437D699225157D6A5920E9E /* DeviceDataInput.swift */; };
 		6CCFEA25DF29CD0FC4540C4B /* PermissionPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF76F9B7FB73886434097D86 /* PermissionPreview.swift */; };
 		6F71F70A82E024ECDFABF931 /* TodayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B7AA24036DD0855B8E7C29 /* TodayViews.swift */; };
@@ -235,6 +236,7 @@
 		59FDC4627EF99C0405B30D5D /* ScheduledTaskViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskViews.swift; sourceTree = "<group>"; };
 		5FA7DB1069BD088F570437BD /* ScheduledTaskUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskUITests.swift; sourceTree = "<group>"; };
 		5FC02F97B00DE9BDC24AD80C /* DeviceLiveUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLiveUITests.swift; sourceTree = "<group>"; };
+		60616964211B45B80F4AFA72 /* ScheduledClockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledClockTests.swift; sourceTree = "<group>"; };
 		60D02470CAD7AFD5EC9CBAFB /* EchoLocationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoLocationViews.swift; sourceTree = "<group>"; };
 		6174858526AD68600CB657CD /* InstantUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InstantUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		637ADD64D181EB3266E53CCE /* InstantUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstantUITests.swift; sourceTree = "<group>"; };
@@ -550,6 +552,7 @@
 				36C56D58190B3E9B31A7A772 /* ListeningVADTests.swift */,
 				D6FF4E47CEE1DC9A56D012FA /* PublicConfigurationTests.swift */,
 				71C4B79367DEADD5DC2DA9D5 /* ResponseDocumentTests.swift */,
+				60616964211B45B80F4AFA72 /* ScheduledClockTests.swift */,
 				0EE7F711A6A3E927F3542FDD /* TodayCaptureTests.swift */,
 				C82A72034099DDAF954DD0B3 /* TodayModelTests.swift */,
 				742E84A60F45D78CC3D7A018 /* VoiceDictationTests.swift */,
@@ -910,6 +913,7 @@
 				F0E183350FD5455F8FC22F79 /* ListeningVADTests.swift in Sources */,
 				3E755B238BE3A9870A5AF7FC /* PublicConfigurationTests.swift in Sources */,
 				CCBCAD2573C5AB17F1FADC96 /* ResponseDocumentTests.swift in Sources */,
+				6828497075D8D2572A6DD259 /* ScheduledClockTests.swift in Sources */,
 				A888A3CA43DA7C54D6839A6C /* TodayCaptureTests.swift in Sources */,
 				EF80823050C0747F858A44DE /* TodayModelTests.swift in Sources */,
 				E88897779DE7AF80C3F55A41 /* VoiceDictationTests.swift in Sources */,

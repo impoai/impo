@@ -60,6 +60,7 @@ struct ScheduledTaskEditor: View {
     @State private var frequency = "daily"
     @State private var zone = TimeZone.current.identifier
     @State private var date = Date().addingTimeInterval(3600)
+    @State private var clockTime = "09:00"
     @State private var days: Set<Int> = [1, 2, 3, 4, 5]
     @State private var enabled = true
     @State private var ready = false
@@ -76,11 +77,12 @@ struct ScheduledTaskEditor: View {
     private let dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
     private var input: ScheduledTaskInput {
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: zone); formatter.dateFormat = "HH:mm"
         return .init(title: title.trimmingCharacters(in: .whitespacesAndNewlines), goal: goal.trimmingCharacters(in: .whitespacesAndNewlines),
                      schedule: .init(frequency: frequency, timeZone: zone, runAt: frequency == "once" ? ISO8601DateFormatter().string(from: date) : nil,
-                                     time: frequency == "once" ? nil : formatter.string(from: date), weekdays: frequency == "weekly" ? days.sorted() : []), enabled: enabled)
+                                     time: frequency == "once" ? nil : clockTime, weekdays: frequency == "weekly" ? days.sorted() : []), enabled: enabled)
+    }
+    private var recurringClock: Binding<Date> {
+        Binding(get: { scheduledClockDate(clockTime, timeZone: zone) }, set: { clockTime = scheduledClockString($0, timeZone: zone) })
     }
     private var valid: Bool {
         !input.title.isEmpty && input.title.utf16.count <= 120 && !input.goal.isEmpty && input.goal.utf16.count <= 4000
@@ -98,8 +100,11 @@ struct ScheduledTaskEditor: View {
                 Section {
                     Picker("Repeat", selection: $frequency) { Text("Once").tag("once"); Text("Every day").tag("daily"); Text("Every week").tag("weekly") }
                         .accessibilityIdentifier("schedule.frequency")
-                    DatePicker(frequency == "once" ? "Run at" : "Time", selection: $date,
-                               displayedComponents: frequency == "once" ? [.date, .hourAndMinute] : [.hourAndMinute])
+                    if frequency == "once" {
+                        DatePicker("Run at", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                    } else {
+                        DatePicker("Time", selection: recurringClock, displayedComponents: [.hourAndMinute])
+                    }
                     if frequency == "weekly" {
                         ForEach(1...7, id: \.self) { day in
                             Toggle(dayNames[day - 1], isOn: Binding(get: { days.contains(day) }, set: { if $0 { days.insert(day) } else { days.remove(day) } }))
@@ -171,7 +176,8 @@ struct ScheduledTaskEditor: View {
         zone = value?.schedule.timeZone ?? TimeZone.current.identifier; enabled = value?.enabled ?? true
         days = Set(value?.schedule.weekdays.isEmpty == false ? value!.schedule.weekdays : [1, 2, 3, 4, 5])
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: zone) ?? .current
-        let clock = (value?.schedule.time ?? "09:00").split(separator: ":").compactMap { Int($0) }
+        clockTime = value?.schedule.time ?? "09:00"
+        let clock = clockTime.split(separator: ":").compactMap { Int($0) }
         date = scheduleDate(value?.schedule.runAt) ?? calendar.date(bySettingHour: clock.first ?? 9, minute: clock.last ?? 0, second: 0, of: Date().addingTimeInterval(86400))!
     }
     private func reload() async {
@@ -229,4 +235,16 @@ private struct ScheduleTimeZones: View {
             }
         }.searchable(text: $search).navigationTitle("Time zone").scrollContentBackground(.hidden).background(InstantStyle.paper)
     }
+}
+
+// Recurring schedules store wall-clock fields; a zone change must never convert 09:00 into another hour.
+func scheduledClockDate(_ value: String, timeZone: String) -> Date {
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: timeZone) ?? .current
+    let clock = value.split(separator: ":").compactMap { Int($0) }
+    return calendar.date(from: DateComponents(year: 2020, month: 1, day: 15, hour: clock.first ?? 9, minute: clock.last ?? 0))!
+}
+func scheduledClockString(_ date: Date, timeZone: String) -> String {
+    let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: timeZone); formatter.dateFormat = "HH:mm"
+    return formatter.string(from: date)
 }

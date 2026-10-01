@@ -4,7 +4,9 @@
 
 Each user has one main conversation and current main Agent Session. One-shot
 tasks use isolated conversations and Sessions. Work survives a client disconnect;
-task rows show relative last-modified time. User-defined recurring tasks are planned.
+task rows show relative last-modified time. User-defined one-time, daily and weekly plans are available in Tasks → Scheduled,
+with Chat creation, explicit time zones, pause/resume and run history. See the
+[shared contract](../contracts/scheduled-tasks.md).
 
 Chat and tasks run in a Rebyte Sandbox, so a reply can deliver files such as a PDF,
 spreadsheet or image. The Agent saves them in `/workspace/outputs/`; Rebyte keeps
