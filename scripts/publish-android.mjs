@@ -71,7 +71,7 @@ if (!certificateSha256 || /Android Debug/i.test(certificate) || /^Signer #2 cert
 const sha256 = await hashFile(snapshot);
 const versionName = identity[3];
 const versionCode = Number(identity[2]);
-const minimumSdk = Number(/^sdkVersion:'(\d+)'/m.exec(badging)?.[1]);
+const minimumSdk = Number(/^(?:minSdkVersion|sdkVersion):'(\d+)'/m.exec(badging)?.[1]);
 const manifest = validateManifest({
   versionName, versionCode, sha256, size: statSync(snapshot).size, certificateSha256, minimumSdk,
   packageName: identity[1], objectKey: `android/releases/${versionName}-${versionCode}/impo.apk`,
