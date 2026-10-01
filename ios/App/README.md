@@ -78,7 +78,7 @@ Apple App ID and refresh automatic provisioning. Debug uses the development
 APNs environment; the signed distribution export must contain
 `aps-environment = production`. Upload the matching APNs keys in Firebase.
 
-Settings → Notifications provides Chat replies, Task updates and Brief switches
+Settings → Notifications provides Chat replies, Task updates, Scheduled tasks, Brief and Echo switches
 backed by one server-side preference document. Registration follows the signed-in
 account and native permission; sign-out revokes it. Foreground banners stay
 silent and notification taps recheck account registration and expiry. See the
@@ -144,3 +144,11 @@ SwiftUI and a cached parse; a native text view exists only while selecting.
 `ResponseRenderingUITests` covers rendering, native selection, streaming snapshots,
 100-message scrolling and the actual Chat menu. Its `--response-render-fixture`
 launch surface is compiled only in Debug.
+
+## Scheduled tasks
+
+Tasks → Scheduled supports one-time, daily and weekly plans, explicit time zones,
+editing, pause/resume, deletion and paged run history. Chat can also create plans.
+Each run opens an ordinary Task conversation. The shared
+[contract](../../contracts/scheduled-tasks.md) defines timing, overlap and retries.
+Offline Demo cannot execute schedules.

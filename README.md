@@ -154,7 +154,9 @@ job before local audio is removed; failed jobs retain S3 audio for retry.
 briefing preferences, and invokes a dedicated Rebyte Agent when a brief is due.
 Results are saved as new card editions with source and runtime provenance.
 The workflow continues as new after 24 ticks to bound its execution history.
-Rebyte's Schedule API is not used.
+Rebyte's Schedule API is not used. User-created one-time, daily and weekly tasks
+are managed in Tasks → Scheduled, with independent results and notification
+preferences. See [scheduled tasks](contracts/scheduled-tasks.md).
 
 ## Repository layout
 

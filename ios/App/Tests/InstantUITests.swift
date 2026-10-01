@@ -105,7 +105,7 @@ final class InstantUITests: XCTestCase {
         tap("task.category.work")
         require("task.template.meeting-prep")
         tap("task.segment.scheduled")
-        require("task.scheduled.placeholder")
+        require("schedule.new")
         tap("task.segment.tasks")
         tap("task.template.meeting-prep")
         require("task.new.input")

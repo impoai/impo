@@ -1,3 +1,5 @@
+import type { ScheduledTaskRepository } from '../db/repositories/scheduled-task-repository.js';
+import { parseScheduledTask } from '../scheduling/contract.js';
 import { ListeningBatchRepository } from '../db/repositories/listening-batch-repository.js';
 import type { ListeningUploadService } from '../listening/audio-upload.js';
 import type { TodayRepository } from '../db/repositories/today-repository.js';
@@ -33,6 +35,7 @@ export type ApiRepository = Pick<RuntimeRepository,
   & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
 
 export interface ApiOptions {
+  scheduledTasks?: Pick<ScheduledTaskRepository, 'list' | 'get' | 'create' | 'update' | 'remove' | 'runs'>;
   echoSchedules?: Pick<EchoScheduleRepository, 'get' | 'save'>;
   accounts?: Pick<AccountDeletionRepository, 'closedIdentity' | 'status' | 'prepare' | 'confirm'>;
   accountDeletionEnabled?: boolean;
@@ -183,6 +186,32 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 202, await options.accounts.confirm(user.id, await readJSON(req, requestTimeoutMs))); return;
       }
       throw new ServiceError(404, 'not_found', 'Account route not found');
+    }
+    const schedulePath = /^\/api\/v1\/scheduled-tasks(?:\/([^/]+)(\/runs)?)?$/.exec(path);
+    if (schedulePath) {
+      if (!options.scheduledTasks) throw new ServiceError(503, 'schedules_unavailable', 'Scheduled tasks are temporarily unavailable.', true);
+      const id = schedulePath[1] ? uuid(schedulePath[1]) : undefined;
+      if (schedulePath[2] && id && method === 'GET') {
+        if ([...url.searchParams.keys()].some(key => key !== 'before')) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        sendJSON(res, 200, await options.scheduledTasks.runs(user.id, id, url.searchParams.get('before') ?? undefined)); return;
+      }
+      if (url.search || schedulePath[2]) throw new ServiceError(400, 'invalid_request', 'Unsupported schedule request');
+      if (method === 'GET') { sendJSON(res, 200, id ? await options.scheduledTasks.get(user.id, id) : await options.scheduledTasks.list(user.id)); return; }
+      if (!id && method === 'POST') {
+        const input = await readJSON(req, requestTimeoutMs);
+        onlyFields(input, ['clientRequestId', 'title', 'goal', 'schedule', 'enabled']);
+        sendJSON(res, 201, await options.scheduledTasks.create(user.id, uuid(requiredString(input, 'clientRequestId', 36)), parseScheduledTask(input))); return;
+      }
+      if (id && method === 'PUT') {
+        const input = await readJSON(req, requestTimeoutMs);
+        onlyFields(input, ['revision', 'title', 'goal', 'schedule', 'enabled']);
+        sendJSON(res, 200, await options.scheduledTasks.update(user.id, id, uuid(requiredString(input, 'revision', 36)), parseScheduledTask(input))); return;
+      }
+      if (id && method === 'DELETE') {
+        const input = await readJSON(req, requestTimeoutMs); onlyFields(input, ['revision']);
+        sendJSON(res, 200, await options.scheduledTasks.remove(user.id, id, uuid(requiredString(input, 'revision', 36)))); return;
+      }
+      throw new ServiceError(405, 'method_not_allowed', 'Unsupported schedule operation');
     }
     if (path === '/api/v1/echo/schedule') {
       if (!options.echoSchedules) throw new ServiceError(503, 'echo_schedule_unavailable', 'Echo schedules are not configured.', true);

@@ -1,3 +1,6 @@
+import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
+import { scheduledTaskToolRegistry } from './tools/scheduled-task-tools.js';
+import { ServiceError } from './errors.js';
 import type { loadConfig } from './config.js';
 import type { Database } from './db/client.js';
 import { RuntimeRepository } from './db/repositories/runtime-repository.js';
@@ -20,7 +23,11 @@ export function createRuntimeRepository(db: Database, config: ReturnType<typeof 
   let repository!: RebyteRepository;
   const task = taskToolRegistry({ createTask: (userId, goal, invocationId) => repository.createTask(userId, goal, invocationId) });
   const memory = memoryToolRegistry(options.memories, (userId, invocationId) => repository.isMainConversationInvocation(userId, invocationId));
-  const serverTools = ToolRegistry.merge(...(connectors ? [connectors] : []), task, memory);
+  const scheduling = config.temporal ? scheduledTaskToolRegistry(async (userId, invocationId, input) => {
+    if (!await repository.isMainConversationInvocation(userId, invocationId)) throw new ServiceError(403, 'main_chat_required', 'Create schedules from the main chat.');
+    return new ScheduledTaskRepository(db, repository.runtime).create(userId, invocationId, input);
+  }) : undefined;
+  const serverTools = ToolRegistry.merge(...(connectors ? [connectors] : []), task, memory, ...(scheduling ? [scheduling] : []));
   // Each Session gets a Rebyte Sandbox (shell, files, patches) with network access, plus live web search.
   // These are the full catalogs; each user's Session receives only the tools currently usable for them.
   const environment = rebyteSandbox({ network: { access: 'enabled' } });

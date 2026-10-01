@@ -121,6 +121,8 @@ to the originating login session, including when the same user signs in again.
 
 ## Chat, tasks and runs
 
+Account-owned one-time/daily/weekly plans use the [scheduled task contract](scheduled-tasks.md).
+
 | Method and path | Request | Success |
 | --- | --- | --- |
 | `GET /conversation` | `afterSequence=0`, `limit=50` (1–100) | 200 `ConversationPage` |
@@ -573,7 +575,7 @@ an unadvertised alias. No `platform` field or negotiation endpoint is required.
 - Account deletion currently requests support by email; it is not an immediate
   account/data deletion command. Sign-out belongs to authentication.
 - Voice chat/hold-to-speak, attachments/camera uploads, billing/subscriptions,
-  recurring user-created tasks, diary generation and some onboarding connections
+  diary generation and some onboarding connections
   are not implemented end-to-end features.
 - `/health` and `/ready` are unauthenticated operational probes. Health does not
   prove optional providers are configured. Optional features can return errors

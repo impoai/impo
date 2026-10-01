@@ -54,7 +54,7 @@ class PushNotifications(private val app: ImpoApplication) {
             .setApplicationId(BuildConfig.FIREBASE_APPID).setApiKey(BuildConfig.FIREBASE_APIKEY)
             .setGcmSenderId(BuildConfig.FIREBASE_SENDERID).setProjectId(BuildConfig.FIREBASE_PROJECTID).build())
         val manager = app.getSystemService(NotificationManager::class.java)
-        for ((id, title) in listOf("chat" to "Chat replies", "tasks" to "Task updates", "brief" to "Brief", "echo" to "Echo reminders")) {
+        for ((id, title) in listOf("chat" to "Chat replies", "tasks" to "Task updates", "scheduledTasks" to "Scheduled tasks", "brief" to "Brief", "echo" to "Echo reminders")) {
             manager.createNotificationChannel(NotificationChannel("impo_$id", title, NotificationManager.IMPORTANCE_DEFAULT))
         }
         app.scope.launch { while (isActive) { if (foreground) refresh(); delay(20_000) } }

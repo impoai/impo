@@ -1,3 +1,4 @@
+import { scheduledTaskWorkflowId } from '../../scheduling/contract.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
@@ -54,7 +55,7 @@ export class AccountDeletionRepository {
         throw new ServiceError(400, 'deletion_confirmation_required', 'Start again from Delete account in Settings.');
       if (request.status !== 'challenge') return this.receipt(request, confirmation.token);
       if (!user || request.challengeExpiresAt <= this.now()) throw new ServiceError(409, 'deletion_confirmation_expired', 'The confirmation expired. Start again from Delete account in Settings.');
-      const [conversations, sessions, attempts, agents, agentAttempts, briefs, memoryRuns, batches, segments, connections, notificationEvents] = await Promise.all([
+      const [conversations, sessions, attempts, agents, agentAttempts, briefs, memoryRuns, batches, segments, connections, notificationEvents, schedules] = await Promise.all([
         tx.select({ id: s.conversations.id }).from(s.conversations).where(eq(s.conversations.userId, userId)),
         tx.select({ id: s.sessionBindings.providerSessionId }).from(s.sessionBindings).where(eq(s.sessionBindings.userId, userId)),
         tx.select({ id: s.sessionCreationAttempts.providerSessionId }).from(s.sessionCreationAttempts).where(eq(s.sessionCreationAttempts.userId, userId)),
@@ -66,6 +67,7 @@ export class AccountDeletionRepository {
         tx.select({ id: s.listeningSegments.clientSegmentId, startedAt: s.listeningSegments.startedAt }).from(s.listeningSegments).where(eq(s.listeningSegments.userId, userId)),
         tx.select({ entityId: s.connectorConnections.entityId, authConfigId: s.connectorConnections.authConfigId, accountId: s.connectorConnections.connectedAccountId, routerId: s.connectorConnections.routerSessionId }).from(s.connectorConnections).where(eq(s.connectorConnections.userId, userId)),
         tx.select({ id: s.notificationEvents.id }).from(s.notificationEvents).where(eq(s.notificationEvents.userId, userId)),
+        tx.select({ id: s.scheduledTasks.id }).from(s.scheduledTasks).where(eq(s.scheduledTasks.userId, userId)),
       ]);
       const ids = (rows: Array<{ id: string | null }>) => [...new Set(rows.flatMap(r => r.id ? [r.id] : []))];
       const objectKeys = [...segments.map(r => transcriptKey(userId, r.id, r.startedAt)), ...batches.flatMap(r => {
@@ -77,12 +79,12 @@ export class AccountDeletionRepository {
         authProvider: user.authProvider, authSubject: user.authSubject, conversationIds: conversations.map(r => r.id),
         sessionIds: ids([...sessions, ...attempts, ...briefs, ...memoryRuns]), agentIds: ids([...agents, ...agentAttempts]),
         objectKeys: [...new Set(objectKeys)], memoryDatabaseName: `impo-mem-${userId}`, connections,
-        workflows: [backgroundWorkflowId(userId), listeningWorkflowId(userId), echoScheduleWorkflowId(userId), ...batches.map(r => batchWorkflowId(userId, r.clientBatchId)), ...notificationEvents.map(r => `impo/notification/${r.id}`)],
+        workflows: [...schedules.map(r => scheduledTaskWorkflowId(userId, r.id)), backgroundWorkflowId(userId), listeningWorkflowId(userId), echoScheduleWorkflowId(userId), ...batches.map(r => batchWorkflowId(userId, r.clientBatchId)), ...notificationEvents.map(r => `impo/notification/${r.id}`)],
       };
       const requestedAt = this.now();
       const [accepted] = await tx.update(s.accountDeletions).set({ status: 'pending', manifest, requestedAt, appleManualRevocationRequired }).where(eq(s.accountDeletions.id, request.id)).returning();
       // Foreign-key order is explicit. Every deletion includes ownership; no global purge.
-      for (const table of [s.deviceDispatches, s.outboxJobs, s.toolInvocations, s.productEvents, s.messageItemBindings,
+      for (const table of [s.scheduledTaskRuns, s.scheduledTasks, s.deviceDispatches, s.outboxJobs, s.toolInvocations, s.productEvents, s.messageItemBindings,
         s.runtimeSubmissions, s.sessionCreationAttempts, s.sessionBindings, s.agentCreationAttempts, s.userAgents,
         s.messages, s.conversations, s.actions, s.deviceCapabilities, s.devices, s.connectorConnections,
         s.listeningSegments, s.listeningBatches, s.todayBriefs, s.todaySettings, s.memoryRuns, s.memoryState,

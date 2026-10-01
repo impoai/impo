@@ -38,6 +38,7 @@
     "dev:api": "npm --workspace @instant/server run dev:api",
     "dev:worker": "npm --workspace @instant/server run dev:worker",
     "test:db": "node scripts/test-db.mjs",
+    "test:scheduled-tasks": "node scripts/test-db.mjs --scheduled-tasks",
     "test:devices": "node scripts/test-db.mjs --devices",
     "test:rebyte": "node scripts/test-db.mjs --rebyte",
     "test:live": "node --env-file-if-exists=.env scripts/test-db.mjs --live",

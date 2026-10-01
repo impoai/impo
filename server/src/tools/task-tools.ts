@@ -9,7 +9,7 @@ export interface TaskCreator {
 export function taskToolRegistry(creator: TaskCreator): ToolRegistry {
   return new ToolRegistry([{
     name: 'instant_create_task', version: 1, family: 'internal', executionLocation: 'server',
-    description: 'Delegate a self-contained goal to a new, independent task with its own conversation, so this chat is not blocked while it works. Use this for something that takes real, possibly slow effort to produce (a plan, a draft, a multi-step lookup), not for a short direct answer. There is no result yet when this returns. No recurring/scheduled execution is supported: never tell the user a daily or weekly task was set up.',
+    description: 'Delegate a self-contained goal to a new, independent task with its own conversation, so this chat is not blocked while it works. Use this for something that takes real, possibly slow effort to produce (a plan, a draft, a multi-step lookup), not for a short direct answer. There is no result yet when this returns. This starts immediately. For a future or recurring task, use instant_schedule_task if available.',
     parameters: { type: 'object', properties: { goal: { type: 'string', minLength: 1, maxLength: 4000, description: 'A self-contained goal with relevant facts, constraints, and the expected result. Include dates and time zone when needed; the task cannot read main chat.' } }, required: ['goal'], additionalProperties: false },
     timeoutMs: 10_000,
     // Creating this task is not safe to retry blindly: an unknown outcome could otherwise create a duplicate task.

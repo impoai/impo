@@ -1,3 +1,4 @@
+import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
 import { ListeningBatchRepository } from './db/repositories/listening-batch-repository.js';
 import { TodayRepository } from './db/repositories/today-repository.js';
 import { createListeningBatchService } from './listening/temporal/client.js';
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
   const files = config.rebyte ? new FileDownloads(repository, new RebyteGateway(config.rebyte)) : undefined;
   const server = createApiServer(repository, { files, profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
     notifications: new NotificationRepository(database.db),
+    scheduledTasks: config.temporal ? new ScheduledTaskRepository(database.db, repository.runtime) : undefined,
     echoSchedules: config.temporal ? new EchoScheduleRepository(database.db) : undefined,
     accounts: new AccountDeletionService(new AccountDeletionRepository(database.db), config.clerk?.secretKey, config.appleSignIn ? new AppleGrantRevoker(config.appleSignIn) : undefined), accountDeletionEnabled: Boolean(config.temporal),
     dictation: config.voice ? new GeminiDictation(config.voice) : config.runtime === 'development' ? new DevelopmentDictation() : undefined });

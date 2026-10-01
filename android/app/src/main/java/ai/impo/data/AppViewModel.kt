@@ -27,6 +27,8 @@ data class AppState(
     val recordErrors: Set<String> = emptySet(), val selectedRecord: EchoRecord? = null,
     val source: BriefSource? = null, val busy: Set<String> = emptySet(), val errors: Map<String, String> = emptyMap(),
     val pendingTask: String? = null,
+    val schedules: List<ScheduledTask> = emptyList(), val selectedSchedule: ScheduledTask? = null,
+    val scheduleRuns: List<ScheduledTaskRun> = emptyList(), val scheduleCursor: String? = null,
 )
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val app = application as ImpoApplication
@@ -199,6 +201,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelChat(task: Boolean = false) {
         val session = (if (task) mutable.value.taskSession else mutable.value.chat) ?: return
         launch(if (task) "task" else "chat") { session.cancel() }
+    }
+    fun refreshSchedules() { launch("schedules", replacePrevious = true) { client ->
+        val rows = client.scheduledTasks(); ensureCurrentAccount(); mutable.update { it.copy(schedules = rows) }
+    } }
+    fun openSchedule(id: String, loaded: (ScheduledTask) -> Unit = {}) {
+        mutable.update { it.copy(selectedSchedule = null, scheduleRuns = emptyList(), scheduleCursor = null, errors = it.errors - "scheduleSave" - "scheduleHistory") }
+        launch("scheduleDetail", replacePrevious = true) { client ->
+            val value = client.scheduledTask(id); ensureCurrentAccount(); mutable.update { it.copy(selectedSchedule = value) }; loaded(value); loadScheduleHistory(id, true)
+        }
+    }
+    fun loadScheduleHistory(id: String, reset: Boolean = false) {
+        val cursor = if (reset) null else state.value.scheduleCursor
+        launch("scheduleHistory", replacePrevious = true) { client ->
+            val page = client.scheduledTaskRuns(id, cursor); ensureCurrentAccount()
+            if (state.value.selectedSchedule?.id == id) mutable.update { it.copy(scheduleRuns = (if (reset) page.runs else it.scheduleRuns + page.runs).distinctBy { run -> run.id }, scheduleCursor = page.nextCursor) }
+        }
+    }
+    fun saveSchedule(source: ScheduledTask?, requestId: String, value: ScheduledTaskInput, rejected: () -> Unit, saved: () -> Unit) {
+        if ("scheduleSave" in state.value.busy) return
+        launch("scheduleSave") { client ->
+            try {
+                if (source == null) client.createScheduledTask(value, requestId) else client.updateScheduledTask(source.id, source.revision, value)
+                ensureCurrentAccount(); refreshSchedules(); saved()
+            } catch (error: ApiException) {
+                ensureCurrentAccount(); if (error.statusCode in 400..499) rejected(); throw error
+            }
+        }
+    }
+    fun deleteSchedule(source: ScheduledTask, done: () -> Unit) {
+        if ("scheduleSave" in state.value.busy) return
+        launch("scheduleSave") { client -> client.deleteScheduledTask(source.id, source.revision); ensureCurrentAccount(); refreshSchedules(); done() }
     }
     fun refreshTasks() { launch("tasks", replacePrevious = true) { client -> val rows = client.tasks(); ensureCurrentAccount(); mutable.update { it.copy(tasks = rows) } } }
     fun createTask(text: String, opened: (String) -> Unit) {

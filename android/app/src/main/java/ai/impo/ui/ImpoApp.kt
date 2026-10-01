@@ -165,7 +165,7 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
         pushRoute?.let { route ->
             when (route.category) {
                 "chat" -> go("chat")
-                "tasks" -> go("task/${route.targetId}")
+                "tasks", "scheduledTasks" -> go("task/${route.targetId}")
                 "brief" -> { vm.openNotificationBrief(route.targetId); go("brief") }
                 "echo" -> { echoReminderEvent = route.eventId; go("memories") }
             }
@@ -191,6 +191,8 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
             NavHost(nav, "chat", Modifier.weight(1f)) {
                 composable("chat") { ChatScreen(vm, state, go) }
                 composable("brief") { BriefScreen(vm, state, go) }
+                composable("scheduled-tasks") { ScheduledTasksScreen(vm, state, go, back) }
+                composable("schedule/{id}") { entry -> ScheduledTaskEditor(vm, state, entry.arguments?.getString("id")!!, go, back) }
                 composable("tasks") { TasksScreen(vm, state, go) }
                 composable("memories") { MemoriesScreen(vm, state, go, echoReminderEvent) }
                 composable("settings") { SettingsScreen(vm, state, go, back) }

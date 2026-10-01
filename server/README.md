@@ -134,6 +134,7 @@ the in-memory fixture tokens. JSON writes require `Content-Type: application/jso
 | `GET /api/v1/submissions/:id` | Execution status and saved result count. |
 | `POST /api/v1/submissions/:id/cancel` | Explicit cancellation, with body `{}`. |
 | `GET /api/v1/submissions/:id/stream` | Reconstructed message state followed by streamed updates. |
+| `GET/POST /api/v1/scheduled-tasks` | List/create owned scheduled tasks. See [the contract](../contracts/scheduled-tasks.md) for editing, deletion and run history. |
 | `GET /api/v1/tasks` | Owned tasks, latest execution status, and `updatedAt`, ordered by latest modification. |
 | `POST /api/v1/tasks` | Starts a task with `{clientMessageId,text,clientContext?}`. |
 | `GET /api/v1/tasks/:id/conversation` | History for an isolated task conversation. |
@@ -324,6 +325,7 @@ handlers must use the owned domain repositories.
 | `npm run test:listening` | PostgreSQL; recording persistence and recovery. |
 | `npm run test:listening-batches` | PostgreSQL and Temporal CLI; durable batch coordination across API/worker instances. |
 | `npm run test:background` | PostgreSQL and Temporal CLI; hourly timers, Continue-As-New, provisioning, and recovery. Apple Silicon time-skipping tests require Rosetta. |
+| `npm run test:scheduled-tasks` | PostgreSQL and Temporal; owned CRUD, idempotency, revisions, overlap, timer replacement, notifications and account deletion. |
 | `npm run test:today` | PostgreSQL; brief scheduling, append-only editions, source invalidation, and Rebyte protocol recovery. |
 | `npm run test:live` | Rebyte credentials, PostgreSQL, and Swift; real runtime and Swift acceptance. |
 

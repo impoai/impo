@@ -115,7 +115,7 @@ struct InstantApp: App {
               route.isCurrent(registration: push.registrationId) else { return }
         switch route.category {
         case .chat: model.selectedTab = 0
-        case .tasks:
+        case .tasks, .scheduledTasks:
             tasks.configure(scope: model.listeningScope)
             model.selectedTab = 2; tasks.route = .detail(route.targetId)
         case .brief: model.selectedTab = 1; model.notificationBriefID = route.targetId

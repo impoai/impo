@@ -1,3 +1,4 @@
+import { nextTaskOccurrence, parseScheduledTask } from '../server/src/scheduling/contract.js';
 /** Local, synthetic Android smoke fixture. No database, model, OAuth or cloud credentials.
  * Uses the production HTTP/SSE adapter; state is intentionally reset on process restart.
  * Run from the root: node --import tsx scripts/android-ui-fixture.ts --port 3011 --public-host 127.0.0.1
@@ -72,6 +73,8 @@ export function createAndroidFixture(
   const settings = new Map<string, Json>();
   const profiles = new Map<string, Json>();
   const notificationPreferences = new Map<string, Json>();
+  const schedules = new Map<string, Json>();
+  const scheduleKeys = new Map<string, string>();
   const echoSchedules = new Map<string, EchoSchedule>();
   const briefs = new Map<string, Json>();
   const memories = new Map<string, Json>();
@@ -580,6 +583,27 @@ export function createAndroidFixture(
         if (!receipt) throw missing(); return receipt;
       },
     },
+    scheduledTasks: {
+      list: async (userId: string) => ({ schedules: visible(schedules, userId).map(strip) }),
+      get: async (userId: string, id: string) => { const row = own(schedules, userId, id); if (row.deleted) throw missing(); return strip(row); },
+      create: async (userId: string, key: string, value: Json) => {
+        const input = parseScheduledTask(value), existing = scheduleKeys.get(`${userId}:${key}`);
+        if (existing) return apiOptions.scheduledTasks.get(userId, existing);
+        const row = { id: randomUUID(), userId, ...input, revision: randomUUID(), nextRunAt: input.enabled ? nextTaskOccurrence(input.schedule, new Date())?.toISOString() ?? null : null, createdAt: stamp, updatedAt: stamp };
+        schedules.set(row.id, row); scheduleKeys.set(`${userId}:${key}`, row.id); return strip(row);
+      },
+      update: async (userId: string, id: string, revision: string, value: Json) => {
+        const previous = own(schedules, userId, id); if (previous.deleted) throw missing();
+        if (previous.revision !== revision) throw new ServiceError(409, 'schedule_changed', 'Reload your schedule.');
+        const input = parseScheduledTask(value), row = { ...previous, ...input, revision: randomUUID(), nextRunAt: input.enabled ? nextTaskOccurrence(input.schedule, new Date())?.toISOString() ?? null : null, updatedAt: new Date().toISOString() };
+        schedules.set(id, row); return strip(row);
+      },
+      remove: async (userId: string, id: string, revision: string) => {
+        const row = own(schedules, userId, id); if (row.revision !== revision) throw new ServiceError(409, 'schedule_changed', 'Reload your schedule.');
+        row.deleted = true; return { deleted: true };
+      },
+      runs: async (userId: string, id: string) => { await apiOptions.scheduledTasks.get(userId, id); return { runs: [], nextCursor: null }; },
+    },
     echoSchedules: {
       get: async (userId: string) => echoSchedules.get(userId) ?? defaultEchoSchedule(),
       save: async (userId: string, value: unknown) => {
@@ -589,9 +613,9 @@ export function createAndroidFixture(
       },
     },
     notifications: {
-      settings: async (userId: string) => ({ chat: true, tasks: true, brief: true, echo: true, ...notificationPreferences.get(userId) }),
+      settings: async (userId: string) => ({ chat: true, tasks: true, scheduledTasks: true, brief: true, echo: true, ...notificationPreferences.get(userId) }),
       updateSettings: async (userId: string, patch: Json) => {
-        const saved = { chat: true, tasks: true, brief: true, echo: true, ...notificationPreferences.get(userId), ...patch };
+        const saved = { chat: true, tasks: true, scheduledTasks: true, brief: true, echo: true, ...notificationPreferences.get(userId), ...patch };
         notificationPreferences.set(userId, saved); return saved;
       },
       register: async (_userId: string, _id: string, input: { registrationId: string }) => ({ registrationId: input.registrationId }),

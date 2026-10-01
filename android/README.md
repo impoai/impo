@@ -360,7 +360,7 @@ the authenticated API and opens a native viewer, with sharing as a fallback.
 Downloads validate the complete byte count before becoming available. Settings
 also supports account deletion with two confirmations and durable cloud cleanup.
 The Android app does not yet include attachments/camera uploads,
-billing/subscriptions, recurring user-created tasks or diary generation.
+billing/subscriptions or diary generation.
 Web remains planned.
 
 ## Optional updates
@@ -374,14 +374,14 @@ Offline or failed checks silently leave the app usable. Publishing through
 
 ## Remote notifications
 
-FCM data messages use three native channels: Chat replies, Task updates and
-Brief. The server supplies the same title and body used by iOS, including
+FCM data messages use five native channels: Chat replies, Task updates, Scheduled
+tasks, Brief and Echo reminders. The server supplies the same title and body used by iOS, including
 clear completion/failure wording. Brief alerts say “You have a brief”. Settings category switches sync to the per-user server JSON; Android's
 notification permission and channel controls remain additional gates. The app
 reports foreground presence, suppresses foreground presentation, deduplicates
 events, rejects expired or old-account routes and revokes registration before
 sign-out. The same [notification policy](../contracts/notifications.md) applies
-to iOS. Echo reminders use the shared [weekly schedule](../contracts/echo-schedule.md); recurring task schedules remain future work.
+to iOS. Echo reminders use the shared [weekly schedule](../contracts/echo-schedule.md); task schedules use the shared [task schedule contract](../contracts/scheduled-tasks.md).
 
 Build configuration comes from ignored `local.properties` entries
 `impo.firebase.projectId`, `impo.firebase.senderId`, `impo.firebase.apiKey`,
@@ -420,3 +420,10 @@ foreground service reads its account cache before capture and keeps the original
 session deadline across pauses and interruptions. It finalizes accepted audio
 when stopping, including offline. Other-device changes apply after a foreground
 sync. See [the shared contract](../contracts/echo-schedule.md) for exact timing.
+
+## Scheduled tasks
+
+Tasks → Scheduled supports one-time, daily and weekly plans, explicit time zones,
+editing, pause/resume, deletion and paged run history. Chat can also create plans.
+Each run opens an ordinary Task conversation. Settings → Notifications has a
+separate Scheduled tasks switch. Schedules require a live server with Temporal.

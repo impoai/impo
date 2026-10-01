@@ -101,6 +101,8 @@
 		B392B7ADBEEBE80947CF5A28 /* AssistantAvatarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD8087183BA6519B06788DDC /* AssistantAvatarTests.swift */; };
 		B46296A3DD9CCA644B494BE7 /* ListeningSpeechSegmenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B8ADE5361A08C4238C5A61 /* ListeningSpeechSegmenter.swift */; };
 		B4C1133E6C377920FA064FD8 /* SoftUpgradeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 726CD695E456A4FEBB136FEC /* SoftUpgradeUITests.swift */; };
+		B76F5234E6E2E56DBD3704BA /* ScheduledTaskUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA7DB1069BD088F570437BD /* ScheduledTaskUITests.swift */; };
+		B85029E0A9E4C54EC0144965 /* ScheduledTaskViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59FDC4627EF99C0405B30D5D /* ScheduledTaskViews.swift */; };
 		C32CED456EF3CCD3755FB6AB /* ListeningBatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E38C57258357CCE4C70FD02 /* ListeningBatchTests.swift */; };
 		C3E0DDAAC41382024A00602A /* ConnectorsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C6F74B646CA5D0D4AB56387 /* ConnectorsModel.swift */; };
 		C435207ECF4623EE6E44A5E8 /* ListeningUploadPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3FCEEB246F7262D4F08124 /* ListeningUploadPolicy.swift */; };
@@ -230,6 +232,8 @@
 		5668718CDDD98763B210B28A /* AccountProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountProfileTests.swift; sourceTree = "<group>"; };
 		566C0EEF06FCD9D8149735D7 /* ConnectorViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorViews.swift; sourceTree = "<group>"; };
 		58E2DACEC136C272B77A1185 /* ListeningStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningStore.swift; sourceTree = "<group>"; };
+		59FDC4627EF99C0405B30D5D /* ScheduledTaskViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskViews.swift; sourceTree = "<group>"; };
+		5FA7DB1069BD088F570437BD /* ScheduledTaskUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTaskUITests.swift; sourceTree = "<group>"; };
 		5FC02F97B00DE9BDC24AD80C /* DeviceLiveUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceLiveUITests.swift; sourceTree = "<group>"; };
 		60D02470CAD7AFD5EC9CBAFB /* EchoLocationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoLocationViews.swift; sourceTree = "<group>"; };
 		6174858526AD68600CB657CD /* InstantUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InstantUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -384,6 +388,7 @@
 				A65393B3910975BFF6D1DC38 /* ResponseDocument.swift */,
 				A753789167CC87E1855043AA /* ResponseRenderingFixture.swift */,
 				64C39BE3BC102A5DEDD8541F /* ResponseSelection.swift */,
+				59FDC4627EF99C0405B30D5D /* ScheduledTaskViews.swift */,
 				78CE7DA99D562048B7AFE650 /* ScrollToBottom.swift */,
 				9F12EF2400CF85250C058846 /* SoftUpgrade.swift */,
 				63ED441D340F7D3BFD945D3D /* SwipeBack.swift */,
@@ -445,6 +450,7 @@
 				876D1C3EA178A74BC875C45A /* NotificationUITests.swift */,
 				CA6273379290EFB3DA1E1976 /* PermissionUITests.swift */,
 				4270A920B1FE0019FE72646E /* ResponseRenderingUITests.swift */,
+				5FA7DB1069BD088F570437BD /* ScheduledTaskUITests.swift */,
 				726CD695E456A4FEBB136FEC /* SoftUpgradeUITests.swift */,
 				F57ECF8140437D95329D8AAA /* TodayUITests.swift */,
 				18BDEBBE4C520C7DCF0825C3 /* VoiceComposerUITests.swift */,
@@ -828,6 +834,7 @@
 				C461D0E387DAA12E374F978B /* ResponseDocument.swift in Sources */,
 				3376A321308439B29E5F8342 /* ResponseRenderingFixture.swift in Sources */,
 				A80AC5861A73743C369FE118 /* ResponseSelection.swift in Sources */,
+				B85029E0A9E4C54EC0144965 /* ScheduledTaskViews.swift in Sources */,
 				94EB70859F008F9DBD8C41D6 /* ScrollToBottom.swift in Sources */,
 				27B4F5C88D0B1F322B55C634 /* SoftUpgrade.swift in Sources */,
 				F53FD71D1BD09759B714EAF4 /* StopListeningIntent.swift in Sources */,
@@ -871,6 +878,7 @@
 				5BA402EE85DB8CDEE86A2DDF /* NotificationUITests.swift in Sources */,
 				27E227F3DCA678A98FDC1790 /* PermissionUITests.swift in Sources */,
 				CF6C09A14521A59D0D61E347 /* ResponseRenderingUITests.swift in Sources */,
+				B76F5234E6E2E56DBD3704BA /* ScheduledTaskUITests.swift in Sources */,
 				B4C1133E6C377920FA064FD8 /* SoftUpgradeUITests.swift in Sources */,
 				9AD582B86208BFD34E628E16 /* TodayUITests.swift in Sources */,
 				87786790A46739A3F1AB418D /* VoiceComposerUITests.swift in Sources */,
@@ -1036,7 +1044,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1177,7 +1185,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 52;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

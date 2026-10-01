@@ -88,8 +88,32 @@ class ImpoClient(
         body["revision"] = value.revision?.let(::JsonPrimitive) ?: JsonNull
         return send<EchoSchedule>("PUT", listOf("echo", "schedule"), JsonObject(body)).also { if (!it.isValid) throw ProtocolException("Invalid Echo schedule") }
     }
+    private fun scheduleBody(value: ScheduledTaskInput): MutableMap<String, JsonElement> {
+        val body = ProtocolJson.encodeToJsonElement(value).jsonObject.toMutableMap()
+        val schedule = ProtocolJson.encodeToJsonElement(value.schedule).jsonObject.toMutableMap()
+        schedule["runAt"] = value.schedule.runAt?.let(::JsonPrimitive) ?: JsonNull
+        schedule["time"] = value.schedule.time?.let(::JsonPrimitive) ?: JsonNull
+        body["schedule"] = JsonObject(schedule)
+        return body
+    }
+    suspend fun scheduledTasks(): List<ScheduledTask> = get<ScheduledTasksResponse>(listOf("scheduled-tasks")).schedules
+    suspend fun scheduledTask(id: String): ScheduledTask = get(listOf("scheduled-tasks", identifier(id)))
+    suspend fun createScheduledTask(value: ScheduledTaskInput, clientRequestId: String): ScheduledTask {
+        val body = scheduleBody(value)
+        body["clientRequestId"] = JsonPrimitive(clientRequestId)
+        return send("POST", listOf("scheduled-tasks"), JsonObject(body), expected = 201)
+    }
+    suspend fun updateScheduledTask(id: String, revision: String, value: ScheduledTaskInput): ScheduledTask {
+        val body = scheduleBody(value)
+        body["revision"] = JsonPrimitive(revision)
+        return send("PUT", listOf("scheduled-tasks", identifier(id)), JsonObject(body))
+    }
+    suspend fun deleteScheduledTask(id: String, revision: String) {
+        send<ScheduleDeletionReceipt>("DELETE", listOf("scheduled-tasks", identifier(id)), buildJsonObject { put("revision", revision) })
+    }
+    suspend fun scheduledTaskRuns(id: String, before: String? = null): ScheduledTaskRunPage = get(listOf("scheduled-tasks", identifier(id), "runs"), query("before" to before))
     suspend fun updateNotificationPreference(category: String, enabled: Boolean): NotificationPreferences {
-        require(category in setOf("chat", "tasks", "brief"))
+        require(category in setOf("chat", "tasks", "scheduledTasks", "brief", "echo"))
         return send("PATCH", listOf("notifications", "settings"), buildJsonObject { put(category, enabled) })
     }
     suspend fun registerPush(installationId: String, installationSecret: String, revision: Long, registrationId: String, token: String?, enabled: Boolean, foreground: Boolean): PushRegistrationReceipt =

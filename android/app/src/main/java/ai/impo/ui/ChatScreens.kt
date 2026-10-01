@@ -208,6 +208,10 @@ import ai.impo.data.AppViewModel
             IconButton(onClick = { vm.refreshTasks() }) { Icon(Icons.Outlined.Refresh, "Refresh tasks") }
             IconButton(onClick = { create = true }, modifier = Modifier.testTag("tasks.new")) { Icon(Icons.Outlined.Add, "New task") }
         })
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FilterChip(selected = true, onClick = {}, label = { Text("Tasks") }, modifier = Modifier.weight(1f))
+            FilterChip(selected = false, onClick = { go("scheduled-tasks") }, label = { Text("Scheduled") }, modifier = Modifier.weight(1f).testTag("tasks.scheduled"))
+        }
         BusyLine("tasks" in state.busy)
         ErrorNotice(state.errors["tasks"], { vm.refreshTasks() })
         ErrorNotice(state.errors["createTask"])

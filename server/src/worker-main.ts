@@ -1,3 +1,5 @@
+import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
+import { scheduledTaskActivities, ScheduledTaskProvisioner } from './scheduling/worker.js';
 import { ListeningBatchRepository } from './db/repositories/listening-batch-repository.js';
 import { TodayRepository } from './db/repositories/today-repository.js';
 import { todayStep } from './today/worker.js';
@@ -60,13 +62,17 @@ try {
     let provisioner: BackgroundProvisioner | undefined;
     let notificationProvisioner: NotificationProvisioner | undefined;
     let deletionProvisioner: AccountDeletionProvisioner | undefined;
+    let taskProvisioner: ScheduledTaskProvisioner | undefined;
     let echoProvisioner: EchoScheduleProvisioner | undefined;
     if (config.temporal) {
       const users = new BackgroundUserRepository(database.db);
       background = await createBackgroundClient(config.temporal);
       const accounts = new AccountDeletionRepository(database.db);
       deletionProvisioner = new AccountDeletionProvisioner(accounts, background.client, config.temporal.taskQueue);
+      const schedules = new ScheduledTaskRepository(database.db, repository.runtime);
+      taskProvisioner = new ScheduledTaskProvisioner(schedules, background.client, config.temporal.taskQueue);
       temporal = await createTemporalWorker(config.temporal, {
+        ...scheduledTaskActivities(schedules),
         ...accountDeletionActivities(accounts, createAccountCleanup(config, background.client)),
         ...(config.notificationsEnabled ? echoScheduleActivities(new EchoScheduleRepository(database.db)) : {}),
         ...(config.notificationsEnabled && config.fcm ? notificationActivities(new NotificationRepository(database.db), new FCMSender(config.fcm)) : {}),
@@ -85,6 +91,7 @@ try {
       ...(notificationProvisioner ? [notificationProvisioner.run(controller.signal)] : []),
       ...(deletionProvisioner ? [deletionProvisioner.run(controller.signal)] : []),
       ...(echoProvisioner ? [echoProvisioner.run(controller.signal)] : []),
+      ...(taskProvisioner ? [taskProvisioner.run(controller.signal)] : []),
       worker.run(controller.signal), ...(listening ? [listening.run(controller.signal)] : [])];
     try { await Promise.all(loops); }
     finally {

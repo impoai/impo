@@ -47,5 +47,5 @@ test('memory-first instruction is scoped to main chat, with task prompt versions
   assert.match(composePrompt('main'), /Start every user turn with impo_search_memory before answering or using other tools/);
   assert.ok(!composePrompt('task').includes(MEMORY_SEARCH_TOOL));
   assert.ok(!composePrompt('scheduled-task').includes(MEMORY_SEARCH_TOOL));
-  assert.equal(promptVersion, 'impo.v3'); assert.equal(mainPromptVersion, 'impo.main.v4');
+  assert.equal(promptVersion, 'impo.v3'); assert.equal(mainPromptVersion, 'impo.main.v5');
 });

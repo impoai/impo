@@ -11,7 +11,7 @@ import { enqueueNotification } from './notification-repository.js';
 import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from '../../tools/device-tools.js';
 import { CONNECTOR_TOOL_NAMES } from '../../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
-import { accountDeletions } from '../schema.js';
+import { accountDeletions, scheduledTaskRuns } from '../schema.js';
 import { identityHash } from '../../accounts/contract.js';
 
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -153,23 +153,26 @@ export class RuntimeRepository {
 
   /** A user-started task: its own Action and conversation, then the same durable acceptance as chat. */
   async createUserTask(userId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
+    return this.db.transaction(tx => this.createUserTaskInTransaction(tx, userId, input));
+  }
+
+  /** Reused by scheduled admission so the occurrence and task commit atomically. */
+  protected async createUserTaskInTransaction(tx: Transaction, userId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
     // A task never gets device Function tools (it may run with no foreground device), so no deviceId.
     const prepared = this.prepareInput({ ...input, text: input.text.trim() }, 4000);
-    return this.db.transaction(async tx => {
-      await this.lockUser(tx, userId);
-      const [existing] = await tx.select({ conversationId: messages.conversationId }).from(messages).where(and(eq(messages.userId, userId), eq(messages.clientMessageId, input.clientMessageId)));
-      let conversation: typeof conversations.$inferSelect | undefined;
-      if (existing) {
-        [conversation] = await tx.select().from(conversations).where(and(eq(conversations.userId, userId), eq(conversations.id, existing.conversationId), eq(conversations.kind, 'task')));
-        if (!conversation) throw new ServiceError(409, 'idempotency_conflict', 'Message ID already has different content');
-      } else {
-        const actionId = randomUUID();
-        await tx.insert(actions).values({ id: actionId, userId, goal: input.text.trim() });
-        [conversation] = await tx.insert(conversations).values({ userId, kind: 'task', actionId }).returning();
-      }
-      const receipt = await this.accept(tx, userId, conversation!, { ...input, text: input.text.trim() }, prepared);
-      return { taskId: conversation!.actionId!, conversationId: conversation!.id, ...receipt };
-    });
+    await this.lockUser(tx, userId);
+    const [existing] = await tx.select({ conversationId: messages.conversationId }).from(messages).where(and(eq(messages.userId, userId), eq(messages.clientMessageId, input.clientMessageId)));
+    let conversation: typeof conversations.$inferSelect | undefined;
+    if (existing) {
+      [conversation] = await tx.select().from(conversations).where(and(eq(conversations.userId, userId), eq(conversations.id, existing.conversationId), eq(conversations.kind, 'task')));
+      if (!conversation) throw new ServiceError(409, 'idempotency_conflict', 'Message ID already has different content');
+    } else {
+      const actionId = randomUUID();
+      await tx.insert(actions).values({ id: actionId, userId, goal: input.text.trim() });
+      [conversation] = await tx.insert(conversations).values({ userId, kind: 'task', actionId }).returning();
+    }
+    const receipt = await this.accept(tx, userId, conversation!, { ...input, text: input.text.trim() }, prepared);
+    return { taskId: conversation!.actionId!, conversationId: conversation!.id, ...receipt };
   }
 
   async acceptTaskMessage(userId: string, taskId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
@@ -493,7 +496,9 @@ export class RuntimeRepository {
     await tx.update(messages).set({ status, updatedAt: new Date() }).where(eq(messages.id, submission.assistantMessageId));
     if (status === 'completed' || status === 'failed') {
       const [conversation] = await tx.select().from(conversations).where(and(eq(conversations.userId, submission.userId), eq(conversations.id, submission.conversationId)));
-      if (conversation) await enqueueNotification(tx, { userId: submission.userId, sourceKey: `turn/${submission.id}`, category: conversation.kind === 'task' ? 'tasks' : 'chat',
+      const [scheduled] = conversation?.actionId ? await tx.select({ id: scheduledTaskRuns.id }).from(scheduledTaskRuns)
+        .where(and(eq(scheduledTaskRuns.userId, submission.userId), eq(scheduledTaskRuns.taskId, conversation.actionId))).limit(1) : [];
+      if (conversation) await enqueueNotification(tx, { userId: submission.userId, sourceKey: `turn/${submission.id}`, category: scheduled ? 'scheduledTasks' : conversation.kind === 'task' ? 'tasks' : 'chat',
         targetId: conversation.actionId ?? conversation.id, failed: status === 'failed' });
     }
     await this.appendEvents(tx, submission, [...chunks, this.statusChunk(submission, status), { type: 'finish', finishReason: status === 'completed' ? 'stop' : 'other' }]);

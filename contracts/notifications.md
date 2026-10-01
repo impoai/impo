@@ -6,7 +6,8 @@ APNs for iOS. Provider private keys belong only in the server secret store.
 | Category | Trigger | Setting | Destination |
 | --- | --- | --- | --- |
 | `chat` | A main Chat turn completes or fails | Chat replies | Main Chat |
-| `tasks` | A Task turn completes or fails | Task updates | That Task |
+| `scheduledTasks` | A scheduled Task turn completes or fails | Scheduled tasks | That Task |
+| `tasks` | An ordinary Task turn completes or fails | Task updates | That Task |
 | `brief` | A new Brief edition completes | Brief | That edition |
 | `echo` | A saved weekly reminder becomes due | Echo reminders | Echo timeline |
 
@@ -17,11 +18,11 @@ not backfilled. Brief notification preference does not change its generation pla
 
 Preferences are one extensible JSON object per authenticated account in PostgreSQL
 (`notification_settings.preferences`) and sync across devices. Patches merge only
-the selected keys, preserving other categories and the nested Echo plan. All four
+the selected keys, preserving other categories and the nested Echo plan. All five
 default to enabled; displaying an alert additionally requires native OS permission
 and an enabled, registered installation. System notification settings remain final.
 
-Recurring Task schedules remain future work. [Echo schedules](echo-schedule.md)
+[Scheduled tasks](scheduled-tasks.md) and [Echo schedules](echo-schedule.md)
 use a dedicated calendar workflow and this same outbox. Both the
 hourly background producer (Brief) and ordinary Agent completion producers feed
 the same outbox and preference evaluation; notification delivery never generates
@@ -71,7 +72,7 @@ other's destination when their integer hash codes collide.
 
 ## Authenticated API
 
-- `GET /api/v1/notifications/settings` returns `{chat, tasks, brief, echo}`.
+- `GET /api/v1/notifications/settings` returns `{chat, tasks, scheduledTasks, brief, echo}`.
 - `PATCH /api/v1/notifications/settings` accepts any nonempty subset of these boolean fields.
 - `PUT /api/v1/notifications/installations/:installationId` accepts
   `{installationSecret, revision, registrationId, platform, token, enabled, foreground}`.

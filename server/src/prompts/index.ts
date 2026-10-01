@@ -5,7 +5,7 @@ import { scheduledTaskPrompt } from './scheduled-task.js';
 
 export { appPrompt, mainPrompt, taskPrompt, scheduledTaskPrompt };
 export const promptVersion = 'impo.v3';
-export const mainPromptVersion = 'impo.main.v4';
+export const mainPromptVersion = 'impo.main.v5';
 export type PromptRole = 'main' | 'task' | 'scheduled-task';
 
 /** Context is server-selected data. JSON keeps profile/history text out of the instruction structure. */

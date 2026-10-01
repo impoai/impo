@@ -61,11 +61,13 @@ such as task creation. Direct remote MCP is not the default dispatch path.
 Temporal coordinates independent Echo batch jobs and perpetual hourly background
 workflows. The background registry runs Brief and Memory steps, with periodic
 Continue-As-New. A scheduled trigger and the execution model are separate
-concepts; recurring user-created tasks are not implemented yet.
+concepts. Account-owned scheduled tasks use a dedicated Temporal calendar workflow
+per plan and atomically admit ordinary isolated Tasks. Revisions fence old timers;
+overlapping runs are skipped. See [scheduled tasks](../contracts/scheduled-tasks.md).
 
 Chat/Task completion and the hourly Brief step both write notification events in
 their completion transaction. One per-user JSON preference document controls
-Chat, Tasks and Brief. A shared outbox starts Temporal delivery workflows; the
+Chat, Tasks, Scheduled tasks, Brief and Echo. A shared outbox starts Temporal delivery workflows; the
 Worker sends through FCM, which bridges to APNs on iOS. API handlers register
 owned installations and preferences but never call a push provider. Chat/Task
 events are suppressed while any owned installation has fresh foreground presence.

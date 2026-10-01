@@ -57,8 +57,8 @@ test('foreground on any account device suppresses Chat and Tasks, including befo
 test('preferences sync by owner, cancel pending delivery and do not backfill after re-enable', async () => {
   const f = await fixture(); const event = await enqueue(f.alice);
   await f.repo.updateSettings(f.alice, { chat: false, brief: false });
-  assert.deepEqual(await f.repo.settings(f.alice), { chat: false, tasks: true, brief: false, echo: true });
-  assert.deepEqual(await f.repo.settings(f.bob), { chat: true, tasks: true, brief: true, echo: true });
+  assert.deepEqual(await f.repo.settings(f.alice), { chat: false, tasks: true, scheduledTasks: true, brief: false, echo: true });
+  assert.deepEqual(await f.repo.settings(f.bob), { chat: true, tasks: true, scheduledTasks: true, brief: true, echo: true });
   assert.equal((await enqueue(f.alice)).status, 'suppressed');
   const activity = notificationActivities(f.repo, { async send() { assert.fail('Disabled category was delivered'); } });
   await activity.deliverNotification(event.id);

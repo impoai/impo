@@ -44,6 +44,10 @@ private func currentClientContext() -> MessageClientContext {
 @MainActor @Observable
 final class TasksModel {
     var tasks: [TaskItem] = []
+    var schedules: [ScheduledTask] = []
+    var scheduleError: String?
+    var schedulesLoading = false
+    @ObservationIgnored private var scheduleRequest = UUID()
     var loadError: String?
     /// The New task or task conversation page currently shown over the Tasks tab.
     var route: TaskRoute?
@@ -59,7 +63,7 @@ final class TasksModel {
     func configure(scope: String?) {
         guard scope != self.scope else { return }
         self.scope = scope; revision = UUID()
-        tasks = []; loadError = nil; route = nil
+        tasks = []; schedules = []; scheduleError = nil; schedulesLoading = false; scheduleRequest = UUID(); loadError = nil; route = nil
     }
     private struct DemoStore: Codable { var tasks: [TaskItem]; var threads: [String: [ChatMessage]] }
 
@@ -98,6 +102,21 @@ final class TasksModel {
         } catch {
             guard token == revision else { return }
             loadError = "Couldn't load your tasks. Pull to try again."
+        }
+    }
+
+    func refreshSchedules(using app: AppModel) async {
+        configure(scope: app.listeningScope)
+        let request = UUID(); scheduleRequest = request
+        guard let api = app.liveClient() else { schedules = []; scheduleError = "Sign in to run scheduled tasks."; return }
+        schedulesLoading = true
+        do {
+            let values = try await api.scheduledTasks()
+            guard request == scheduleRequest, scope == app.listeningScope else { return }
+            schedules = values; scheduleError = nil; schedulesLoading = false
+        } catch {
+            guard request == scheduleRequest, scope == app.listeningScope else { return }
+            scheduleError = "Couldn't load scheduled tasks. Pull to try again."; schedulesLoading = false
         }
     }
 

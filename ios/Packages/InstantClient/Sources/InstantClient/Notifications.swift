@@ -1,21 +1,23 @@
 import Foundation
 
-public enum NotificationCategory: String, Codable, Sendable, CaseIterable { case chat, tasks, brief, echo }
+public enum NotificationCategory: String, Codable, Sendable, CaseIterable { case chat, tasks, brief, echo, scheduledTasks }
 public struct NotificationPreferences: Codable, Equatable, Sendable {
     public var chat: Bool
     public var tasks: Bool
     public var brief: Bool
+    public var scheduledTasks: Bool
     public var echo: Bool
-    public init(chat: Bool = true, tasks: Bool = true, brief: Bool = true, echo: Bool = true) { self.chat = chat; self.tasks = tasks; self.brief = brief; self.echo = echo }
-    enum CodingKeys: String, CodingKey { case chat, tasks, brief, echo }
+    public init(chat: Bool = true, tasks: Bool = true, brief: Bool = true, echo: Bool = true, scheduledTasks: Bool = true) { self.chat = chat; self.tasks = tasks; self.brief = brief; self.echo = echo; self.scheduledTasks = scheduledTasks }
+    enum CodingKeys: String, CodingKey { case chat, tasks, brief, echo, scheduledTasks }
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         chat = try values.decode(Bool.self, forKey: .chat); tasks = try values.decode(Bool.self, forKey: .tasks); brief = try values.decode(Bool.self, forKey: .brief)
+        scheduledTasks = try values.decodeIfPresent(Bool.self, forKey: .scheduledTasks) ?? true
         echo = try values.decodeIfPresent(Bool.self, forKey: .echo) ?? true
     }
     public subscript(_ category: NotificationCategory) -> Bool {
-        get { switch category { case .chat: chat; case .tasks: tasks; case .brief: brief; case .echo: echo } }
-        set { switch category { case .chat: chat = newValue; case .tasks: tasks = newValue; case .brief: brief = newValue; case .echo: echo = newValue } }
+        get { switch category { case .chat: chat; case .tasks: tasks; case .scheduledTasks: scheduledTasks; case .brief: brief; case .echo: echo } }
+        set { switch category { case .chat: chat = newValue; case .tasks: tasks = newValue; case .scheduledTasks: scheduledTasks = newValue; case .brief: brief = newValue; case .echo: echo = newValue } }
     }
 }
 public struct PushRegistrationReceipt: Decodable, Sendable { public let registrationId: String }

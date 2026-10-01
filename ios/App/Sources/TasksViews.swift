@@ -63,6 +63,7 @@ struct TasksView: View {
     @Environment(AppModel.self) private var model
     @Environment(TasksModel.self) private var tasks
     @State private var showScheduled = false
+    @State private var scheduleRoute: ScheduledTaskRoute?
     @State private var category = TaskCategory.general
 
     var body: some View {
@@ -75,7 +76,7 @@ struct TasksView: View {
                     Menu {
                         Button { tasks.route = .new(prefill: "") } label: { Label("Add a Task", systemImage: "square.and.pencil") }
                             .accessibilityIdentifier("task.menu.add")
-                        Button { showScheduled = true } label: { Label("Add a Scheduled Task", systemImage: "clock") }
+                        Button { showScheduled = true; scheduleRoute = ScheduledTaskRoute() } label: { Label("Add a Scheduled Task", systemImage: "clock") }
                             .accessibilityIdentifier("task.menu.scheduled")
                     } label: {
                         Image(systemName: "plus").font(.system(size: 20, weight: .regular))
@@ -84,7 +85,7 @@ struct TasksView: View {
                     NotificationPermissionButton()
                 }
                 segments
-                if showScheduled { scheduledPlaceholder }
+                if showScheduled { ScheduledTasksList { scheduleRoute = ScheduledTaskRoute(value: $0) } }
                 else if tasks.tasks.isEmpty { getStarted }
                 else { taskList }
                 if let error = tasks.loadError, !showScheduled {
@@ -93,8 +94,13 @@ struct TasksView: View {
             }.padding(.horizontal, 18).padding(.top, 6).padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
-        .refreshable { await tasks.refresh(using: model) }
-        .task(id: model.listeningScope) { await tasks.refresh(using: model) }
+        .refreshable { await tasks.refresh(using: model); await tasks.refreshSchedules(using: model) }
+        .task(id: model.listeningScope) { await tasks.refresh(using: model); await tasks.refreshSchedules(using: model) }
+        .onChange(of: model.listeningScope) { _, _ in scheduleRoute = nil }
+        .onChange(of: showScheduled) { _, value in if value { Task { await tasks.refreshSchedules(using: model) } } }
+        .sheet(item: $scheduleRoute, onDismiss: { Task { await tasks.refreshSchedules(using: model) } }) { route in
+            ScheduledTaskEditor(initial: route.value).id(model.listeningScope)
+        }
         .fullScreenCover(item: $tasks.route, onDismiss: { Task { await tasks.refresh(using: model) } }) { route in
             Group {
                 switch route {
@@ -191,15 +197,7 @@ struct TasksView: View {
         return result
     }
 
-    private var scheduledPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "clock").font(.system(size: 30, weight: .light)).foregroundStyle(InstantStyle.forest)
-            Text("Scheduled tasks are coming soon").font(InstantStyle.serif(24))
-            Text("Soon you’ll be able to have Impo run a task for you every morning, every Friday, or whenever you choose.")
-                .font(.system(size: 16)).foregroundStyle(InstantStyle.muted).lineSpacing(4)
-        }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
-            .paperSurface(cornerRadius: 24).accessibilityIdentifier("task.scheduled.placeholder")
-    }
+
 }
 
 private struct TaskRow: View {
@@ -316,7 +314,7 @@ private struct NewTaskView: View {
 
 // MARK: - Task conversation
 
-private struct TaskDetailView: View {
+struct TaskDetailView: View {
     @Environment(AppModel.self) private var model
     @Environment(TasksModel.self) private var tasks
     @Environment(\.dismiss) private var dismiss

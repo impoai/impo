@@ -209,3 +209,11 @@
 
 - Verified the live API `instant-api:48` and Worker `instant-worker:47` inject Temporal address, namespace and API key through AWS Secrets Manager references; no Temporal values are configured as plaintext ECS environment entries. Application code reads environment variables and the public example leaves all three values empty.
 - Fetched remote refs and passed the public-file inventory and Gitleaks scan across all 57 reachable commits. Local environment files and release evidence remain ignored. The existing push/PR secret-scan workflow checks the complete reachable history. No credential values were retrieved from Secrets Manager or printed during the audit; no production changes were made.
+
+## 2026-10-01 — Scheduled tasks across iOS, Android and Server
+
+- Added account-owned one-time, daily and weekly plans, explicit IANA time zones, optimistic edits, pause/resume, deletion and paged run history. Main Chat creates plans with an idempotent, main-only tool; both native Tasks screens manage the same server records.
+- Temporal calendar workflows atomically admit independent ordinary Tasks with autonomous Rebyte instructions. Revision fencing prevents stale timers; active prior runs skip the occurrence, and outages catch up once instead of replaying a backlog. Account deletion purges plans/history and captures workflow IDs.
+- Added a separate Scheduled tasks notification preference, native channels/routes and the existing foreground suppression policy. Fixed Android Echo preference updates rejecting their supported category. No provider credentials enter client code.
+- Validation: TypeScript; 106 server unit tests; 6 scheduled-task PostgreSQL/Temporal integration tests; 8 notification, 6 account-deletion and 15 Rebyte recovery integration tests. Swift package: 69 tests, 10 live-only skips. Android app/client: 168 tests, one fixture-only skip; Android lint passed. Native UI create/pause/relaunch/delete passed on iOS 26.5 Simulator and Android API 35 emulator, including a corrected Android stale-draft restore race. Physical-device push presentation remains unverified.
+- Prepared iOS build 52 and Android 0.1.8 (9); production release evidence is recorded separately after rollout.
