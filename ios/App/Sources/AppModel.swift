@@ -26,6 +26,19 @@ final class AppModel {
     @ObservationIgnored private var deviceOperationID = UUID()
     @ObservationIgnored private var isForeground = true
     var onboardingStep = 0
+    var showDeletionReceipt = false
+    var deletionCleanupError: String?
+    struct SavedDeletion: Codable {
+        let receipt: AccountDeletionReceipt
+        let endpoint: URL
+        let scope: String
+        let identity: String
+        var localCleanupPending: Bool
+    }
+    var savedDeletion: SavedDeletion? {
+        get { defaults.data(forKey: "impo.accountDeletion.receipt").flatMap { try? JSONDecoder().decode(SavedDeletion.self, from: $0) } }
+        set { defaults.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "impo.accountDeletion.receipt") }
+    }
     var isOnboarded = false
     var assistantName = "Momo"
     var avatarIndex = 3
@@ -141,6 +154,9 @@ final class AppModel {
     }
 
     private func didSignIn() throws {
+        if let subject = Clerk.shared.user?.id, (defaults.stringArray(forKey: "impo.deletedIdentities") ?? []).contains(subject) {
+            throw NSError(domain: "Impo", code: 410, userInfo: [NSLocalizedDescriptionKey: "This account has been deleted. Sign out before creating a new account."])
+        }
         guard Clerk.shared.session != nil, Clerk.shared.user != nil else { throw ClerkTokenError.notSignedIn }
         usesRealAuth = true
         adoptAccount(activeIdentityTag)
@@ -225,6 +241,63 @@ final class AppModel {
         onboardingStep = 1
     }
 
+    struct PendingDeletion: Codable {
+        let challenge: AccountDeletionChallenge
+        let endpoint: URL
+        let scope: String
+        let identity: String
+    }
+    private var pendingDeletion: PendingDeletion? {
+        get { defaults.data(forKey: "impo.accountDeletion.pending").flatMap { try? JSONDecoder().decode(PendingDeletion.self, from: $0) } }
+        set { defaults.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "impo.accountDeletion.pending") }
+    }
+    func deleteAccount(challenge: AccountDeletionChallenge, confirmation: String, appleAuthorizationCode: String? = nil, listening: ListeningModel) async throws {
+        guard let client = listeningClient(), let scope = listeningScope else { throw CancellationError() }
+        let intent = PendingDeletion(challenge: challenge, endpoint: try endpoint(), scope: scope, identity: activeIdentityTag)
+        pendingDeletion = intent
+        let receipt: AccountDeletionReceipt
+        do { receipt = try await client.deleteAccount(challenge: challenge, confirmation: confirmation, appleAuthorizationCode: appleAuthorizationCode) }
+        catch {
+            // The server may have committed just before the connection failed or Clerk signed out.
+            guard let recovered = try? await InstantClient(baseURL: intent.endpoint, bearerToken: challenge.token, session: session).accountDeletionStatus(challenge.challengeId) else {
+                if let error = error as? InstantAPIError, [400, 403, 409].contains(error.statusCode) { pendingDeletion = nil }
+                throw error
+            }
+            receipt = recovered
+        }
+        await acceptDeletion(receipt, intent: intent, listening: listening)
+    }
+    func recoverAccountDeletion(listening: ListeningModel) async {
+        if let intent = pendingDeletion,
+           let receipt = try? await InstantClient(baseURL: intent.endpoint, bearerToken: intent.challenge.token, session: session).accountDeletionStatus(intent.challenge.challengeId) {
+            await acceptDeletion(receipt, intent: intent, listening: listening)
+        }
+        await finishLocalDeletion(listening: listening)
+    }
+    private func acceptDeletion(_ receipt: AccountDeletionReceipt, intent: PendingDeletion, listening: ListeningModel) async {
+        savedDeletion = SavedDeletion(receipt: receipt, endpoint: intent.endpoint, scope: intent.scope, identity: intent.identity, localCleanupPending: true)
+        pendingDeletion = nil
+        await finishLocalDeletion(listening: listening)
+        if ClerkConfig.isConfigured, "clerk:" + (Clerk.shared.user?.id ?? "") == intent.identity { try? await Clerk.shared.auth.signOut() }
+        showDeletionReceipt = true
+    }
+
+    func finishLocalDeletion(listening: ListeningModel) async {
+        guard var saved = savedDeletion, saved.localCleanupPending else { return }
+        if saved.identity.hasPrefix("clerk:") {
+            let subject = String(saved.identity.dropFirst(6))
+            defaults.set(Array(Set((defaults.stringArray(forKey: "impo.deletedIdentities") ?? []) + [subject])), forKey: "impo.deletedIdentities")
+        }
+        if activeIdentityTag == saved.identity || defaults.string(forKey: Self.accountOwnerKey) == saved.identity {
+            dictation.cancel(); usesRealAuth = false; resetDemo(); onboardingStep = 1
+            PushNotifications.shared.configure(scope: nil, client: nil)
+        }
+        do {
+            try await listening.deleteLocalAccountData(scope: saved.scope)
+            saved.localCleanupPending = false; savedDeletion = saved; deletionCleanupError = nil
+        } catch { deletionCleanupError = "Your account is closed. Some recordings on this iPhone still need to be removed. Reopen Impo to retry." }
+    }
+
     func syncRealAuthFromClerkSession() async {
         guard ClerkConfig.isConfigured else { return }
         while !Clerk.shared.isLoaded {
@@ -234,7 +307,7 @@ final class AppModel {
         if Clerk.shared.session != nil { try? didSignIn() }
         // A saved session can outlive local state (reinstall, sign-out on another build).
         if usesRealAuth && !isOnboarded { _ = await restoreAccountProfile() }
-        if displayName.isEmpty, let first = Clerk.shared.user?.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty {
+        if usesRealAuth, displayName.isEmpty, let first = Clerk.shared.user?.firstName?.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty {
             displayName = String(first.prefix(40)); persistProfile()
         }
     }
@@ -244,6 +317,11 @@ final class AppModel {
     init(defaults: UserDefaults = .standard, session: URLSession = .shared) {
         self.defaults = defaults
         self.session = session
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--account-deletion-fixture") {
+            for key in ["impo.accountDeletion.receipt", "impo.accountDeletion.pending", "impo.deletedIdentities"] { defaults.removeObject(forKey: key) }
+        }
+        #endif
         if ProcessInfo.processInfo.arguments.contains("--reset-demo") {
             for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && key != "instant.installationID" { defaults.removeObject(forKey: key) }
         }
@@ -329,7 +407,7 @@ final class AppModel {
     func resetDemo() {
         invalidateOperation()
         stopDeviceConnection()
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && key != "instant.installationID" && key != Self.debugModeKey { defaults.removeObject(forKey: key) }
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && !key.hasPrefix("instant.listening.") && key != "instant.installationID" && key != Self.debugModeKey { defaults.removeObject(forKey: key) }
         isOnboarded = false; onboardingStep = 0; selectedTab = 0
         assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; messages = []
         selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil

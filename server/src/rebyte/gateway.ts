@@ -112,6 +112,22 @@ export class RebyteGateway {
     return sessions.filter(session => Object.entries(metadata).every(([key, value]) => session.metadata?.[key] === value));
   }
 
+  /** Includes uncertain creations whose provider IDs never reached PostgreSQL. */
+  async deleteAccountResources(userId: string, conversationIds: string[], knownSessions: string[], knownAgents: string[], signal: AbortSignal): Promise<void> {
+    const sessions = await collect(this.client.beta.agents.sessions.list({ order: 'desc', limit: 100 }, { signal }), signal);
+    const conversations = new Set(conversationIds);
+    const ownedSessions = sessions.filter(s => s.metadata?.instant_app === 'instant' &&
+      (s.metadata?.instant_user === userId || conversations.has(s.metadata?.instant_conversation ?? '')));
+    const remove = async (operation: () => Promise<unknown>) => {
+      try { await operation(); } catch (error) { if ((error as { status?: number }).status !== 404) throw error; }
+    };
+    for (const id of new Set([...knownSessions, ...ownedSessions.map(s => s.id)]))
+      await remove(() => this.client.beta.agents.sessions.delete(id, { signal }));
+    const agents = await this.findAgents({ instant_app: 'instant', instant_user: userId }, signal);
+    for (const id of new Set([...knownAgents, ...agents.map(a => a.id)]))
+      await remove(() => this.client.beta.agents.delete(id, { signal }));
+  }
+
   async retrieve(sessionId: string, signal: AbortSignal): Promise<AgentSession> {
     signal.throwIfAborted();
     return this.client.beta.agents.sessions.retrieve(sessionId, { signal });

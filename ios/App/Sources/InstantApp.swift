@@ -27,6 +27,7 @@ struct InstantApp: App {
             Group {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--response-render-fixture") { ResponseRenderingFixture() }
+                else if ProcessInfo.processInfo.arguments.contains("--account-deletion-fixture") { DeleteAccountView() }
                 else { appContent }
                 #else
                 appContent
@@ -89,6 +90,7 @@ struct InstantApp: App {
             .foregroundStyle(InstantStyle.ink)
             .tint(InstantStyle.ink)
             .preferredColorScheme(.light)
+            .sheet(isPresented: $model.showDeletionReceipt) { AccountDeletionReceiptView().environment(model).environment(listening) }
             .onOpenURL { url in
                 if url.scheme == "ai.impo", url.host == "listening" {
                     model.selectedTab = 3
@@ -96,6 +98,8 @@ struct InstantApp: App {
                 }
             }
             .task {
+                await model.recoverAccountDeletion(listening: listening)
+                if model.savedDeletion != nil { model.showDeletionReceipt = true }
                 await model.syncRealAuthFromClerkSession()
                 if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--sign-in-ticket"),
                    ProcessInfo.processInfo.arguments.indices.contains(index + 1) {

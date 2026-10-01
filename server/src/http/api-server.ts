@@ -24,12 +24,15 @@ import { integerQuery, onlyFields, readBody, readJSON, requiredString, sendJSON,
 import { dictationAudio, maxDictationBytes, transcribeRequest, type Dictation } from '../voice/dictation.js';
 import type { NotificationRepository } from '../db/repositories/notification-repository.js';
 import { registrationInput, settingsInput, type Registration, type Revocation } from '../notifications/contract.js';
+import type { AccountDeletionRepository } from '../db/repositories/account-deletion-repository.js';
 
 export type ApiRepository = Pick<RuntimeRepository,
   'health' | 'findUser' | 'findOrCreateUser' | 'acceptMessage' | 'getConversation' | 'getSubmission' | 'cancelSubmission' | 'readEvents'>
   & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
 
 export interface ApiOptions {
+  accounts?: Pick<AccountDeletionRepository, 'closedIdentity' | 'status' | 'prepare' | 'confirm'>;
+  accountDeletionEnabled?: boolean;
   notifications?: Pick<NotificationRepository, 'settings' | 'updateSettings' | 'register' | 'revoke'>;
   today?: TodayRepository;
   /** Read and forget the user's long-term memories; the hourly pipeline is the only writer. */
@@ -113,11 +116,16 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
   const auth = options.auth ?? { mode: 'local-dev' as const };
 
   /** local-dev matches a fixed fixture header; clerk verifies a real Bearer session token. */
-  async function authenticate(req: IncomingMessage): Promise<{ id: string }> {
+  async function authenticate(req: IncomingMessage, allowDeleted = false): Promise<{ id: string }> {
     const header = req.headers.authorization;
     if (auth.mode === 'local-dev') {
       const subject = header === 'Bearer instant-dev-alice' ? 'alice' : header === 'Bearer instant-dev-bob' ? 'bob' : undefined;
       if (!subject) throw new ServiceError(401, 'unauthorized', 'Local development identity required');
+      const deleted = await options.accounts?.closedIdentity('local-dev', subject);
+      if (deleted) {
+        if (allowDeleted) return { id: deleted.userId };
+        throw new ServiceError(410, 'account_deleted', 'This account has been deleted.');
+      }
       return repository.findUser(subject);
     }
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
@@ -125,6 +133,11 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
     let claims;
     try { claims = await verifyToken(token, { secretKey: auth.secretKey }); }
     catch (error) { throw new ServiceError(401, 'unauthorized', 'Invalid or expired session token'); }
+    const deleted = await options.accounts?.closedIdentity('clerk', claims.sub);
+    if (deleted) {
+      if (allowDeleted) return { id: deleted.userId };
+      throw new ServiceError(410, 'account_deleted', 'This account has been deleted.');
+    }
     return repository.findOrCreateUser('clerk', claims.sub, 'Impo user');
   }
 
@@ -146,8 +159,26 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       catch { throw new ServiceError(503, 'database_unavailable', 'Database is unavailable', true); }
       sendJSON(res, 200, { status: 'ready' }); return;
     }
-    const user = await authenticate(req);
     const path = url.pathname;
+    const receiptPath = path.match(/^\/api\/v1\/account\/deletions\/([0-9a-f-]{36})$/i);
+    if (receiptPath && method === 'GET' && options.accounts) {
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      const token = req.headers.authorization?.replace(/^Bearer /, '') ?? '';
+      sendJSON(res, 200, await options.accounts.status(uuid(receiptPath[1]), token)); return;
+    }
+    const user = await authenticate(req, path === '/api/v1/account' && method === 'DELETE');
+    if (path === '/api/v1/account/deletion-challenge' || path === '/api/v1/account') {
+      if (!options.accounts || !options.accountDeletionEnabled) throw new ServiceError(503, 'account_deletion_unavailable', 'Account deletion is temporarily unavailable. Please try again.', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      if (path.endsWith('/deletion-challenge') && method === 'POST') {
+        onlyFields(await readJSON(req, requestTimeoutMs), []);
+        sendJSON(res, 200, await options.accounts.prepare(user.id)); return;
+      }
+      if (path === '/api/v1/account' && method === 'DELETE') {
+        sendJSON(res, 202, await options.accounts.confirm(user.id, await readJSON(req, requestTimeoutMs))); return;
+      }
+      throw new ServiceError(404, 'not_found', 'Account route not found');
+    }
     if (path.startsWith('/api/v1/notifications/')) {
       if (!options.notifications) throw new ServiceError(503, 'notifications_unavailable', 'Notifications are not configured', true);
       if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');

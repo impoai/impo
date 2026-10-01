@@ -3,6 +3,7 @@ package ai.impo.data
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import ai.impo.client.ProtocolJson
 import ai.impo.client.ProfileUpdate
@@ -23,6 +24,8 @@ private val Context.settingsDataStore by preferencesDataStore("impo_settings")
     val calendarEnabled: Boolean = false, val healthEnabled: Boolean = false, val contactsEnabled: Boolean = false,
 )
 @Serializable data class ProfileCache(val settings: UserSettings = UserSettings(), val pending: ProfileUpdate? = null, val pendingDisplayName: String? = null)
+@Serializable data class PendingAccountDeletion(val accountId: String, val baseUrl: String, val development: Boolean, val challenge: ai.impo.client.AccountDeletionChallenge)
+@Serializable data class SavedAccountDeletion(val accountId: String, val baseUrl: String, val development: Boolean, val receipt: ai.impo.client.AccountDeletionReceipt, val localCleanupPending: Boolean = true)
 interface ProfilePreferences {
     suspend fun read(account: String): ProfileCache
     suspend fun update(account: String, change: (ProfileCache) -> ProfileCache): ProfileCache
@@ -38,6 +41,20 @@ internal fun decodeProfileCache(current: String?, legacy: String?): ProfileCache
 }
 fun accountScope(id: String): String = MessageDigest.getInstance("SHA-256").digest(id.toByteArray()).joinToString("") { "%02x".format(it) }
 class SettingsStore(private val context: Context) : ProfilePreferences {
+    private val deletedKey = stringSetPreferencesKey("deleted_account_ids")
+    private val pendingDeletionKey = stringPreferencesKey("account_deletion_pending")
+    val deletedAccounts = context.settingsDataStore.data.map { it[deletedKey].orEmpty() }
+    suspend fun pendingDeletion(): PendingAccountDeletion? = context.settingsDataStore.data.first()[pendingDeletionKey]?.let { ProtocolJson.decodeFromString<PendingAccountDeletion>(it) }
+    suspend fun savePendingDeletion(value: PendingAccountDeletion?) { context.settingsDataStore.edit { if (value == null) it.remove(pendingDeletionKey) else it[pendingDeletionKey] = ProtocolJson.encodeToString(value) } }
+    private val deletionKey = stringPreferencesKey("account_deletion_receipt")
+    suspend fun isDeleted(account: String): Boolean = account in context.settingsDataStore.data.first()[deletedKey].orEmpty()
+    suspend fun deletionReceipt(): SavedAccountDeletion? = context.settingsDataStore.data.first()[deletionKey]?.let { ProtocolJson.decodeFromString<SavedAccountDeletion>(it) }
+    suspend fun saveDeletion(value: SavedAccountDeletion) { context.settingsDataStore.edit {
+        it[deletionKey] = ProtocolJson.encodeToString(value)
+        it.remove(pendingDeletionKey)
+        it[deletedKey] = it[deletedKey].orEmpty() + value.accountId
+        it.remove(key(value.accountId)); it.remove(legacyKey(value.accountId))
+    } }
     private fun key(account: String) = stringPreferencesKey("account_profile_${accountScope(account)}")
     private fun legacyKey(account: String) = stringPreferencesKey("profile_${accountScope(account)}")
     fun observe(account: String): Flow<UserSettings> = context.settingsDataStore.data.map { values ->

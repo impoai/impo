@@ -151,7 +151,7 @@ import java.util.UUID
             item {
                 ErrorNotice(error ?: state.errors["account"])
                 OutlinedButton(onClick = { signOut = true }, modifier = Modifier.fillMaxWidth().testTag("settings.signOut")) { Text("Sign out") }
-                TextButton(onClick = { deletion = true }, modifier = Modifier.fillMaxWidth()) { Text("Request account deletion", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { deletion = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete account", color = MaterialTheme.colorScheme.error) }
                 Spacer(Modifier.height(20.dp))
             }
         }
@@ -164,10 +164,7 @@ import java.util.UUID
         text = { Text("Echo recording will stop. Any audio waiting to upload stays on this device and can resume uploading when you sign back into this account.") },
         confirmButton = { TextButton(onClick = { signOut = false; vm.signOut() }) { Text("Sign out") } },
         dismissButton = { TextButton(onClick = { signOut = false }) { Text("Cancel") } })
-    if (deletion) AlertDialog(onDismissRequest = { deletion = false }, title = { Text("Request account deletion") },
-        text = { Text("This opens an email requesting deletion of your account, conversations, memories and Echo recordings. Send it from your account email address. Support will confirm when deletion is complete.") },
-        confirmButton = { TextButton(onClick = { deletion = false; launch(mail("Delete my Impo account", "Please delete my Impo account and all associated data.\n\nAccount: ${state.account?.email.orEmpty()}")) }) { Text("Compose request") } },
-        dismissButton = { TextButton(onClick = { deletion = false }) { Text("Cancel") } })
+    if (deletion) DeleteAccountDialog(vm) { deletion = false }
     if (debug && BuildConfig.DEBUG) AlertDialog(onDismissRequest = { debug = false }, title = { Text("Developer connection") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Switch to an explicitly configured local development API. This signs you into its development account.")

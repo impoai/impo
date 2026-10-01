@@ -593,3 +593,7 @@ for persistent boundaries. Android verification uses `npm run test:android`,
 Android debug build, lint, 149 unit tests, the production-router integration and
 29 API 35 instrumentation tests passed on 2026-10-01. Physical-device validation
 is still required before claiming microphone, location, health or background parity.
+
+## Account deletion
+
+Deletion requires an authenticated five-minute challenge and an exact `DELETE` confirmation. The returned receipt token authorizes status checks independently of the removed login identity. Clients persist the confirmation intent before sending, recover accepted requests via the status endpoint after a lost response, and purge only the deleted account’s local data. See [the API and lifecycle](../docs/account-deletion.md).

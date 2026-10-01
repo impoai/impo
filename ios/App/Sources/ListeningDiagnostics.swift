@@ -6,6 +6,7 @@ final class ListeningDiagnostics: @unchecked Sendable {
     static let shared = ListeningDiagnostics()
     private let queue = DispatchQueue(label: "ai.impo.listening.diagnostics", qos: .utility)
     private let root: URL
+    private let launchUptime = ProcessInfo.processInfo.systemUptime
     private let launch = UUID().uuidString.lowercased()
     private let maxBytes: Int
     private let retention: TimeInterval
@@ -16,7 +17,7 @@ final class ListeningDiagnostics: @unchecked Sendable {
         record("app.launch", ["version":Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?", "build":Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"])
     }
     func record(_ event: String, _ fields: [String: String] = [:]) {
-        let now = Date(); let uptime = ProcessInfo.processInfo.systemUptime
+        let now = Date(); let elapsed = ProcessInfo.processInfo.systemUptime - launchUptime
         queue.async { [self] in
             do {
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication])
@@ -24,7 +25,7 @@ final class ListeningDiagnostics: @unchecked Sendable {
                 let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 let time = formatter.string(from: now)
                 let safe = fields.filter { allowed.contains($0.key) }.mapValues { String($0.prefix(200)) }
-                let row: [String:Any] = ["at":time,"uptime":uptime,"launch":launch,"event":String(event.prefix(80)),"fields":safe]
+                let row: [String:Any] = ["at":time,"elapsedSinceLaunch":elapsed,"launch":launch,"event":String(event.prefix(80)),"fields":safe]
                 var data = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]); data.append(10)
                 let files = try logFiles()
                 let day = String(time.prefix(10))

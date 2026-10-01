@@ -11,6 +11,8 @@ import { enqueueNotification } from './notification-repository.js';
 import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from '../../tools/device-tools.js';
 import { CONNECTOR_TOOL_NAMES } from '../../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
+import { accountDeletions } from '../schema.js';
+import { identityHash } from '../../accounts/contract.js';
 
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Query = Database | Transaction;
@@ -60,6 +62,10 @@ export class RuntimeRepository {
   /** Just-in-time provisioning for a real auth provider: first verified sight creates the row. */
   async findOrCreateUser(authProvider: string, authSubject: string, name: string): Promise<{ id: string }> {
     return this.db.transaction(async tx => {
+      const fingerprint = identityHash(authProvider, authSubject);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${fingerprint}, 0))`);
+      const [closed] = await tx.select({ status: accountDeletions.status }).from(accountDeletions).where(eq(accountDeletions.identityHash, fingerprint));
+      if (closed && closed.status !== 'challenge') throw new ServiceError(410, 'account_deleted', 'This account has been deleted.');
       const owned = and(eq(users.authProvider, authProvider), eq(users.authSubject, authSubject));
       const [existing] = await tx.select({ id: users.id }).from(users).where(owned);
       if (existing) return existing;

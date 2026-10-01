@@ -66,6 +66,13 @@ class EchoUploadWorker(context: Context, parameters: WorkerParameters) : Corouti
 
     companion object {
         private val uploadLock = Mutex()
+        suspend fun deleteAccountFiles(context: Context, accountId: String) {
+            WorkManager.getInstance(context).cancelUniqueWork("echo_upload_${sha256(accountId.toByteArray())}")
+            uploadLock.withLock {
+                val directory = NativeBridge.store(context, accountId).directory
+                check(!directory.exists() || directory.deleteRecursively()) { "Could not remove local Echo audio. Reopen Impo to retry." }
+            }
+        }
         fun enqueue(context: Context, accountId: String, replace: Boolean = false) {
             val constraint = if (NativeBridge.wifiOnly(context)) NetworkType.UNMETERED else NetworkType.CONNECTED
             val request = OneTimeWorkRequestBuilder<EchoUploadWorker>()

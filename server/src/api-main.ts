@@ -15,6 +15,9 @@ import { S3TranscriptArchive } from './listening/transcript-archive.js';
 import { createMemoryStore } from './memory/index.js';
 import { ListeningUploadService, S3AudioObjectStore } from './listening/audio-upload.js';
 import { NotificationRepository } from './db/repositories/notification-repository.js';
+import { AccountDeletionRepository } from './db/repositories/account-deletion-repository.js';
+import { AccountDeletionService } from './accounts/service.js';
+import { AppleGrantRevoker } from './accounts/apple.js';
 
 async function main(): Promise<void> {
   const config = loadConfig('api');
@@ -33,6 +36,7 @@ async function main(): Promise<void> {
     new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
   const server = createApiServer(repository, { profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
     notifications: new NotificationRepository(database.db),
+    accounts: new AccountDeletionService(new AccountDeletionRepository(database.db), config.clerk?.secretKey, config.appleSignIn ? new AppleGrantRevoker(config.appleSignIn) : undefined), accountDeletionEnabled: Boolean(config.temporal),
     dictation: config.voice ? new GeminiDictation(config.voice) : config.runtime === 'development' ? new DevelopmentDictation() : undefined });
   let stopping = false;
   async function shutdown(): Promise<void> {

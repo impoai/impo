@@ -39,6 +39,15 @@ final class ListeningBackgroundUpload: NSObject, URLSessionDataDelegate, @unchec
         _ = session
     }
 
+    @MainActor func cancelUploads(directory: URL) async {
+        for task in await session.allTasks {
+            guard let text = task.taskDescription, let data = text.data(using: .utf8),
+                  let descriptor = try? JSONDecoder().decode(Description.self, from: data),
+                  descriptor.directory == directory.path else { continue }
+            task.cancel()
+        }
+    }
+
     @MainActor func hasPendingBatch(_ id: String, objectUpload: Bool? = nil) async -> Bool {
         await session.allTasks.contains { task in
             guard task.state != .completed && task.state != .canceling,

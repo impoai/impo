@@ -252,6 +252,15 @@ class EchoRecordingService : Service() {
         private const val CHANNEL = "echo_recording"
         private const val NOTIFICATION_ID = 2401
         @Volatile private var activeService: java.lang.ref.WeakReference<EchoRecordingService>? = null
+        internal suspend fun finishForDeletion(accountId: String) = withContext(Dispatchers.Main.immediate) {
+            val service = activeService?.get() ?: return@withContext
+            if (service.owner?.accountId != accountId) return@withContext
+            service.transition.withLock {
+                val capture = service.capture
+                service.stopCapture(); capture?.join()
+                service.stopForeground(STOP_FOREGROUND_REMOVE); service.stopSelf()
+            }
+        }
         internal fun accountChanged() { activeService?.get()?.let { service -> service.scope.launch { service.checkAccount() } } }
         internal fun control(action: String): Boolean {
             val service = activeService?.get() ?: return false

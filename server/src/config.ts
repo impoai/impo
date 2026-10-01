@@ -1,4 +1,5 @@
 import { parseFCMCredentials } from './notifications/fcm.js';
+import { parseAppleSignInConfig } from './accounts/apple.js';
 
 function integer(name: string, fallback: number, minimum: number, maximum: number): number {
   const raw = process.env[name];
@@ -99,6 +100,7 @@ export function loadConfig(role: 'api' | 'worker') {
       model: process.env.MEMORY_EMBEDDING_MODEL ?? 'gemini-embedding-001', dimensions: integer('MEMORY_EMBEDDING_DIMENSIONS', 768, 64, 3072), timeoutMs: 20_000 },
   } : runtime === 'development' || process.env.MEMORY_LOCAL_DIR ? { localDirectory: process.env.MEMORY_LOCAL_DIR ?? '.local/memory' } : undefined;
   return {
+    appleSignIn: role === 'api' && process.env.APPLE_SIGN_IN_JSON ? parseAppleSignInConfig(process.env.APPLE_SIGN_IN_JSON) : undefined,
     notificationsEnabled: process.env.NOTIFICATIONS_ENABLED === 'true',
     fcm: role === 'worker' && process.env.FCM_SERVICE_ACCOUNT_JSON ? parseFCMCredentials(process.env.FCM_SERVICE_ACCOUNT_JSON) : undefined,
     temporal, transcriptArchive, memory,

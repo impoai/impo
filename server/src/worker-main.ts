@@ -25,6 +25,9 @@ import { DevelopmentWorker } from './worker/worker.js';
 import { NotificationRepository } from './db/repositories/notification-repository.js';
 import { FCMSender } from './notifications/fcm.js';
 import { notificationActivities, NotificationProvisioner } from './notifications/worker.js';
+import { AccountDeletionRepository } from './db/repositories/account-deletion-repository.js';
+import { accountDeletionActivities, AccountDeletionProvisioner } from './accounts/worker.js';
+import { createAccountCleanup } from './accounts/cleanup.js';
 
 const config = loadConfig('worker');
 if (config.notificationsEnabled && (!config.fcm || !config.temporal)) throw new Error('Notifications require FCM and Temporal configuration');
@@ -54,10 +57,14 @@ try {
   else {
     let provisioner: BackgroundProvisioner | undefined;
     let notificationProvisioner: NotificationProvisioner | undefined;
+    let deletionProvisioner: AccountDeletionProvisioner | undefined;
     if (config.temporal) {
       const users = new BackgroundUserRepository(database.db);
       background = await createBackgroundClient(config.temporal);
+      const accounts = new AccountDeletionRepository(database.db);
+      deletionProvisioner = new AccountDeletionProvisioner(accounts, background.client, config.temporal.taskQueue);
       temporal = await createTemporalWorker(config.temporal, {
+        ...accountDeletionActivities(accounts, createAccountCleanup(config, background.client)),
         ...(config.notificationsEnabled && config.fcm ? notificationActivities(new NotificationRepository(database.db), new FCMSender(config.fcm)) : {}),
         ...createBackgroundActivities(users, config.rebyte ? [
           todayStep(new TodayRepository(database.db, archive, new RebyteGateway(config.rebyte)), new RebyteGateway(config.rebyte), config.rebyte.model),
@@ -71,6 +78,7 @@ try {
     const loops = [...(temporal ? [temporal.worker.run()] : []),
       ...(provisioner ? [provisioner.run(controller.signal)] : []),
       ...(notificationProvisioner ? [notificationProvisioner.run(controller.signal)] : []),
+      ...(deletionProvisioner ? [deletionProvisioner.run(controller.signal)] : []),
       worker.run(controller.signal), ...(listening ? [listening.run(controller.signal)] : [])];
     try { await Promise.all(loops); }
     finally {

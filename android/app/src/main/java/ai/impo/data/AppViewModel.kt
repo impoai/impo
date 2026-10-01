@@ -33,6 +33,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val auth = app.auth
     private val mutable = MutableStateFlow(AppState())
     val state = mutable.asStateFlow()
+    private val deletion = MutableStateFlow<SavedAccountDeletion?>(null)
+    val deletionReceipt = deletion.asStateFlow()
+    val deletionCleanupError = MutableStateFlow<String?>(null)
     private var api: ImpoClient? = null
     private var accountJob = SupervisorJob()
     private var accountScope = CoroutineScope(viewModelScope.coroutineContext + accountJob)
@@ -50,6 +53,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var taskCreator: DurableTaskCreator? = null
     private var profileSession: AccountProfileSession? = null
     init {
+        viewModelScope.launch {
+            app.settings.pendingDeletion()?.let { intent ->
+                val client = ImpoClient(intent.baseUrl, StaticTokenProvider(intent.challenge.token), allowInsecureLocalhost = intent.development)
+                val receipt = runCatching { client.accountDeletionStatus(intent.challenge.challengeId) }.getOrNull()
+                if (receipt != null) {
+                    val saved = SavedAccountDeletion(intent.accountId, intent.baseUrl, intent.development, receipt)
+                    app.settings.saveDeletion(saved)
+                }
+            }
+            app.settings.deletionReceipt()?.let { deletion.value = it; finishLocalDeletion(it) }
+        }
         viewModelScope.launch {
             auth.state.distinctUntilChangedBy { it.account?.requestScope }.collect { accountState ->
                 accountGeneration++
@@ -328,6 +342,53 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         try { app.push.revokeBeforeSignOut(); auth.signOut() }
         catch (error: Exception) { app.push.configure(auth.state.value.account); throw error }
     } }
+    suspend fun prepareAccountDeletion(): AccountDeletionChallenge {
+        val captured = auth.state.value.account ?: throw AccountChangedException()
+        val challenge = (api ?: throw AccountChangedException()).prepareAccountDeletion()
+        if (auth.state.value.account?.requestScope != captured.requestScope) throw AccountChangedException()
+        return challenge
+    }
+    suspend fun deleteAccount(challenge: AccountDeletionChallenge, confirmation: String) {
+        val captured = auth.state.value.account ?: throw AccountChangedException()
+        val client = api ?: throw AccountChangedException()
+        app.settings.savePendingDeletion(PendingAccountDeletion(captured.id, captured.baseUrl, captured.development, challenge))
+        val receipt = try { client.deleteAccount(challenge, confirmation) }
+        catch (failure: Exception) {
+            val recovery = ImpoClient(captured.baseUrl, StaticTokenProvider(challenge.token), allowInsecureLocalhost = captured.development)
+            val recovered = runCatching { recovery.accountDeletionStatus(challenge.challengeId) }.getOrNull()
+            if (recovered == null) {
+                if (failure is ApiException && failure.statusCode in setOf(400, 403, 409)) app.settings.savePendingDeletion(null)
+                throw failure
+            }
+            recovered
+        }
+        withContext(NonCancellable) {
+            val saved = SavedAccountDeletion(captured.id, captured.baseUrl, captured.development, receipt)
+            app.settings.saveDeletion(saved); deletion.value = saved
+            if (auth.state.value.account?.requestScope == captured.requestScope) {
+                mutable.value.chat?.close(); mutable.value.taskSession?.close(); devices.stop()
+                client.cancelInFlight(); app.nativeAccount?.api?.cancelInFlight(); app.nativeAccount = null
+                NativeBridge.accountChanged(app); app.push.configure(null)
+            }
+            auth.finishAccountDeletion(captured)
+            finishLocalDeletion(saved)
+        }
+    }
+    private suspend fun finishLocalDeletion(saved: SavedAccountDeletion) {
+        if (!saved.localCleanupPending) return
+        try {
+            NativeBridge.deleteAccountData(app, saved.accountId)
+            outbox.deleteAccount(saved.accountId)
+            val completed = saved.copy(localCleanupPending = false)
+            app.settings.saveDeletion(completed); deletion.value = completed; deletionCleanupError.value = null
+        } catch (_: Exception) { deletionCleanupError.value = "Your account is closed. Some local data still needs to be removed. Reopen Impo to retry." }
+    }
+    suspend fun checkAccountDeletion(): String {
+        val saved = deletion.value ?: throw IllegalStateException("No deletion receipt")
+        finishLocalDeletion(saved)
+        val client = ImpoClient(saved.baseUrl, StaticTokenProvider(requireNotNull(saved.receipt.receiptToken)), allowInsecureLocalhost = saved.development)
+        return client.accountDeletionStatus(saved.receipt.requestId).status
+    }
     fun openNotificationBrief(id: String) {
         launch("briefs") { client ->
             val brief = client.brief(id); ensureCurrentAccount()

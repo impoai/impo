@@ -46,6 +46,12 @@ interface ConversationOutboxStore {
 /** Files contain message content, never authentication tokens; app supplies its private files directory. */
 class FileConversationOutboxStore(private val directory: File) : ConversationOutboxStore {
     private val lock = Mutex()
+    suspend fun deleteAccount(accountId: String) = lock.withLock {
+        for (file in directory.listFiles().orEmpty().filter { it.name.endsWith(".json") || it.name.endsWith(".json.tmp") }) {
+            val entry = runCatching { ProtocolJson.decodeFromString<OutboxEntry>(file.readText(Charsets.UTF_8)) }.getOrNull() ?: continue
+            if (entry.accountId == accountId && file.exists() && !file.delete()) throw java.io.IOException("Could not remove this account's pending messages")
+        }
+    }
     override suspend fun load(accountId: String, taskId: String?): OutboxEntry? = lock.withLock {
         val file = file(accountId, taskId)
         if (!file.exists()) return@withLock null

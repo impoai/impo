@@ -57,6 +57,7 @@ object NativeBridge {
     val recording: StateFlow<EchoRecordingState> = mutableRecording
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val recovery = EchoRecoveryState(mutableRecording)
+    private val recoveryJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
 
     fun install(context: Context, accountProvider: () -> NativeAccount?) {
         application = context.applicationContext; provider = accountProvider
@@ -64,13 +65,20 @@ object NativeBridge {
     }
     internal fun account() = provider()
     internal fun store(context: Context, accountId: String) = EchoBatchStore(File(context.filesDir, "echo"), accountId)
+    suspend fun deleteAccountData(context: Context, accountId: String) {
+        recoveryJobs.remove(accountId)?.join()
+        EchoRecordingService.finishForDeletion(accountId)
+        EchoUploadWorker.deleteAccountFiles(context, accountId)
+        context.getSharedPreferences("native_preferences", Context.MODE_PRIVATE).edit()
+            .remove("wifi_${sha256(accountId.toByteArray())}").remove("location_${sha256(accountId.toByteArray())}").commit()
+    }
 
     /** Invoke after restoring or switching identity. Recovery never restarts the microphone. */
     fun accountChanged(context: Context) {
         val current = account()
         EchoRecordingService.accountChanged()
         val ticket = recovery.begin(current?.accountId, current?.captureSession?.token) ?: return
-        scope.launch {
+        recoveryJobs[ticket.accountId] = scope.launch {
             val store = store(context, ticket.accountId)
             val errors = store.recover()
             val now = account()

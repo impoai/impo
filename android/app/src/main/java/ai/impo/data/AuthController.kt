@@ -30,11 +30,12 @@ class AuthController(private val store: SettingsStore, private val scope: Corout
             val local = if (BuildConfig.DEBUG) store.developmentEndpoint() else null
             if (local != null) connectDevelopment(local)
             else if (!configured) mutable.value = AuthState(loading = false)
-            if (configured) combine(Clerk.isInitialized, Clerk.userFlow, Clerk.sessionFlow) { ready, user, session ->
+            if (configured) combine(Clerk.isInitialized, Clerk.userFlow, Clerk.sessionFlow, store.deletedAccounts) { ready, user, session, deleted ->
                 if (mutable.value.account?.development != true) {
                     mutable.value = when {
                         !ready -> AuthState()
                         user == null || session == null -> AuthState(loading = false)
+                        user.id in deleted -> AuthState(loading = false)
                         session.user?.id != user.id -> AuthState()
                         BuildConfig.API_BASE_URL.isBlank() -> AuthState(false, error = "Configure the Impo API URL for this build.")
                         else -> AuthState(false, Account(user.id, user.firstName.orEmpty(), user.emailAddresses?.firstOrNull()?.emailAddress, BuildConfig.API_BASE_URL, false, session.id))
@@ -54,6 +55,7 @@ class AuthController(private val store: SettingsStore, private val scope: Corout
     suspend fun signIn(provider: SignInProvider) {
         if (!configured) { mutable.value = AuthState(false, error = "Set your Clerk publishable key and API URL to enable sign-in."); return }
         if (state.value.account != null) return
+        if (Clerk.user?.id?.let { store.isDeleted(it) } == true) Clerk.auth.signOut()
         mutable.update { it.copy(error = null) }
         // The pinned SDK's Account Portal method sends no strategy and cannot
         // obtain a browser URL. Its supported OAuth flow also transfers new
@@ -76,6 +78,11 @@ class AuthController(private val store: SettingsStore, private val scope: Corout
         if (mutable.value.account?.requestScope?.let { it != captured.requestScope } == true) return
         store.setDevelopmentEndpoint(null)
         if (mutable.value.account?.requestScope?.let { it != captured.requestScope } != true) mutable.value = AuthState(false)
+    }
+    suspend fun finishAccountDeletion(captured: Account) {
+        if (mutable.value.account?.requestScope == captured.requestScope) mutable.value = AuthState(false)
+        if (!captured.development && configured) Clerk.auth.signOut(captured.sessionId)
+        if (captured.development) store.setDevelopmentEndpoint(null)
     }
     fun tokenProvider(account: Account): TokenProvider = object : TokenProvider {
         override suspend fun token(): SessionToken = read(false)

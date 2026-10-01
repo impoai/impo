@@ -224,6 +224,19 @@ final class ListeningModel: NSObject {
         beginListening()
     }
 
+    /// Account deletion discards this owner's queue; ordinary sign-out preserves it.
+    func deleteLocalAccountData(scope deletedScope: String) async throws {
+        if scope == deletedScope { configure(scope: nil, client: nil) }
+        await deactivation?.value
+        await recovery?.value
+        let storage = try ListeningStore(scope: deletedScope, root: storageRoot)
+        await ListeningBackgroundUpload.shared.cancelUploads(directory: storage.directory)
+        if FileManager.default.fileExists(atPath: storage.directory.path) { try FileManager.default.removeItem(at: storage.directory) }
+        for prefix in ["instant.listening.wifiOnly.", "instant.listening.consent.", "impo.echo.location.", "impo.echo.locationExplained."] {
+            UserDefaults.standard.removeObject(forKey: prefix + deletedScope)
+        }
+    }
+
     func agreeAndStart() {
         if let scope {
             UserDefaults.standard.set(true, forKey: "instant.listening.consent.\(scope)")

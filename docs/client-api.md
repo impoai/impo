@@ -86,3 +86,7 @@ associated location metadata and the transcript archive object.
 
 See [protocol fixtures](../contracts/README.md) and the server integration tests
 for Unicode streaming, disconnect/recovery, duplicate delivery and ownership.
+
+## Account deletion
+
+See [Account deletion](account-deletion.md) for the two-confirmation protocol, durable receipt and post-signout status endpoint.

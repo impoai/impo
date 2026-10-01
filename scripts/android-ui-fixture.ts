@@ -2,7 +2,7 @@
  * Uses the production HTTP/SSE adapter; state is intentionally reset on process restart.
  * Run from the root: node --import tsx scripts/android-ui-fixture.ts --port 3011 --public-host 127.0.0.1
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -12,6 +12,7 @@ import { createApiServer, type ApiRepository, type ApiOptions } from '../server/
 import { ServiceError } from '../server/src/errors.js';
 import { parseUploadManifest } from '../server/src/listening/audio-upload.js';
 import { parseListeningBatch } from '../server/src/listening/batch-input.js';
+import { parseConfirmation } from '../server/src/accounts/contract.js';
 import { TranscriptionError } from '../server/src/listening/transcriber.js';
 import { validateTodaySettings } from '../server/src/db/repositories/today-repository.js';
 import { isDeviceTool, deviceHash, deviceToolNames } from '../server/src/tools/device-tools.js';
@@ -530,7 +531,30 @@ export function createAndroidFixture(
       return androidFixtureVoice.transcript;
     },
   };
+  const deletionChallenges = new Map<string, { challengeId: string; token: string; expiresAt: string }>();
+  const deletionReceipts = new Map<string, Json>();
   const apiOptions = {
+    accountDeletionEnabled: true,
+    accounts: {
+      closedIdentity: async (_provider: string, subject: string) => {
+        const user = users.get(subject);
+        return user && deletionReceipts.has(user.id) ? { userId: user.id } : undefined;
+      },
+      prepare: async (userId: string) => {
+        const challenge = { challengeId: randomUUID(), token: randomBytes(32).toString('hex'), expiresAt: new Date(Date.now() + 300_000).toISOString() };
+        deletionChallenges.set(userId, challenge); return challenge;
+      },
+      confirm: async (userId: string, input: unknown) => {
+        const value = parseConfirmation(input), challenge = deletionChallenges.get(userId);
+        if (!challenge || value.challengeId !== challenge.challengeId || value.token !== challenge.token) throw new ServiceError(400, 'deletion_confirmation_required', 'Confirm the warning first.');
+        const receipt = deletionReceipts.get(userId) ?? { requestId: challenge.challengeId, receiptToken: challenge.token, status: 'deleting', requestedAt: new Date().toISOString(), appleManualRevocationRequired: false };
+        deletionReceipts.set(userId, receipt); return receipt;
+      },
+      status: async (requestId: string, token: string) => {
+        const receipt = [...deletionReceipts.values()].find(r => r.requestId === requestId && r.receiptToken === token);
+        if (!receipt) throw missing(); return receipt;
+      },
+    },
     notifications: {
       settings: async (userId: string) => ({ chat: true, tasks: true, brief: true, ...notificationPreferences.get(userId) }),
       updateSettings: async (userId: string, patch: Json) => {

@@ -72,6 +72,12 @@ class ImpoClient(
     private val boundAccount = java.util.concurrent.atomic.AtomicReference<String?>(null)
 
     suspend fun currentAccountId(): String = checkedSession().accountId
+    suspend fun prepareAccountDeletion(): AccountDeletionChallenge = send("POST", listOf("account", "deletion-challenge"), buildJsonObject {})
+    suspend fun deleteAccount(challenge: AccountDeletionChallenge, confirmation: String): AccountDeletionReceipt =
+        send("DELETE", listOf("account"), buildJsonObject {
+            put("challengeId", challenge.challengeId); put("token", challenge.token); put("confirmation", confirmation)
+        }, expected = 202)
+    suspend fun accountDeletionStatus(requestId: String): AccountDeletionReceipt = get(listOf("account", "deletions", identifier(requestId)))
     suspend fun notificationPreferences(): NotificationPreferences = get(listOf("notifications", "settings"))
     suspend fun updateNotificationPreference(category: String, enabled: Boolean): NotificationPreferences {
         require(category in setOf("chat", "tasks", "brief"))

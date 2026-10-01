@@ -17,6 +17,7 @@ const listening = process.argv.includes('--listening');
 const live = process.argv.includes('--live');
 const memory = process.argv.includes('--memory');
 const notifications = process.argv.includes('--notifications');
+const accounts = process.argv.includes('--accounts');
 if (live && !process.env.REBYTE_API_KEY) throw new Error('REBYTE_API_KEY is required for live acceptance');
 const children = new Set();
 let cluster;
@@ -135,8 +136,8 @@ try {
   // Re-running setup must leave an existing database usable, without duplicate seeds.
   await run('npm', ['run', 'db:push'], { env, expectOutput: /No changes detected/i });
   await run(process.execPath, ['--import', 'tsx', 'src/db/seed.ts'], { env });
-  await run(process.execPath, ['--import', 'tsx', '--test', notifications ? 'test/notifications.integration.ts' : memory ? 'test/memory.integration.ts' : today ? 'test/today.integration.ts' : background ? 'test/background.integration.ts' : batches ? 'test/listening-batches.integration.ts' : listening ? 'test/listening.integration.ts' : live ? 'test/rebyte.live.ts' : connectors ? 'test/connectors.integration.ts' : devices ? 'test/devices.integration.ts' : rebyte ? 'test/rebyte.integration.ts' : 'test/database.integration.ts'], { env });
-  console.log(memory ? '\nPASS: Memory consolidation over chat and Echo evidence: planner deferral, bounded windows, idempotent add/update/delete, failure skip and expiry sweep.' : today ? '\nPASS: Today scheduling, append-only editions, ownership, source invalidation and real SDK recovery against a protocol double.' : background
+  await run(process.execPath, ['--import', 'tsx', '--test', accounts ? 'test/accounts.integration.ts' : notifications ? 'test/notifications.integration.ts' : memory ? 'test/memory.integration.ts' : today ? 'test/today.integration.ts' : background ? 'test/background.integration.ts' : batches ? 'test/listening-batches.integration.ts' : listening ? 'test/listening.integration.ts' : live ? 'test/rebyte.live.ts' : connectors ? 'test/connectors.integration.ts' : devices ? 'test/devices.integration.ts' : rebyte ? 'test/rebyte.integration.ts' : 'test/database.integration.ts'], { env });
+  console.log(accounts ? '\nPASS: account deletion confirmation, ownership, cleanup retries, receipts and session fencing.' : memory ? '\nPASS: Memory consolidation over chat and Echo evidence: planner deferral, bounded windows, idempotent add/update/delete, failure skip and expiry sweep.' : today ? '\nPASS: Today scheduling, append-only editions, ownership, source invalidation and real SDK recovery against a protocol double.' : background
     ? '\nPASS: per-user hourly Temporal lifecycle, empty ticks, Continue-As-New, Worker recovery and extension isolation.'
     : batches
     ? '\nPASS: real Temporal, two API clients/two Workers, independent admission, direct upload confirmation, retry, deletion and restart.'

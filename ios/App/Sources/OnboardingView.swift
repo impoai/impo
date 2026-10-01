@@ -193,8 +193,8 @@ struct OnboardingView: View {
                         Text("AI Data Processing Notice")
                             .font(InstantStyle.serif(23))
                             .foregroundStyle(InstantStyle.forest)
-                        noticeSection("What Data We Send", text: "Your messages are sent to the Impo server and then to our AI service to generate a response.")
-                        noticeSection("How Your Data Is Used", text: "Your messages and conversation history are processed by the Impo server and our AI service so you can continue the same conversation. Include only information you want to share.")
+                        noticeSection("What Data We Send", text: "Your messages and selected connected data go to Impo, Rebyte, and its AI model providers, including OpenAI, to answer requests. Google Gemini processes voice audio and creates memory search embeddings.")
+                        noticeSection("How Your Data Is Used", text: "Impo stores your conversations. Rebyte and its AI model providers also process saved messages, completed Echo transcripts and tasks in background Brief and memory jobs. Include only information you want to share.")
                         noticeSection("Your Connections", text: "Calendar and Health use Apple’s permission screens. Gmail and other apps connect through their own sign-in screens. When you ask about connected data, selected results go to Impo and its AI service. Every connection is optional.")
                         noticeSection("Your Choice", text: "Continue only with information you want to include in the conversation. You can cancel to return to the welcome screen.")
                     }
@@ -202,7 +202,7 @@ struct OnboardingView: View {
                     .padding(.horizontal, 8)
                 }
                 .scrollIndicators(.visible)
-                Text("By tapping I Agree, you acknowledge how Impo processes your messages.")
+                Text("By tapping I Agree, you allow this AI processing of the information you choose to share.")
                     .font(.system(size: 11))
                     .foregroundStyle(InstantStyle.muted)
                     .multilineTextAlignment(.center)

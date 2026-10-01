@@ -42,6 +42,7 @@ fun openWeb(context: Context, raw: String) {
 @Composable fun ImpoApp(vm: AppViewModel) {
     val auth by vm.auth.state.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
+    AccountDeletionStatusDialog(vm)
     Surface(Modifier.fillMaxSize(), color = Paper) {
         when {
             auth.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -111,8 +112,17 @@ fun openWeb(context: Context, raw: String) {
     }
 }
 @Composable private fun OnboardingScreen(vm: AppViewModel, state: AppState) {
+    var consent by rememberSaveable { mutableStateOf(false) }
     var connections by rememberSaveable { mutableStateOf(false) }
-    if (connections) {
+    val context = LocalContext.current
+    if (!consent) Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Text("AI Data Processing Notice", style = MaterialTheme.typography.headlineLarge)
+        Text("Your messages and selected connected data go to Impo, Rebyte, and its AI model providers, including OpenAI, to answer requests. Google Gemini processes voice audio and creates memory search embeddings.")
+        Text("Saved messages, completed Echo transcripts and tasks may also be processed in background Brief and memory jobs. Every data connection is optional. Share only information you want processed.")
+        TextButton(onClick = { openWeb(context, "https://impo.ai/privacy/") }) { Text("Read the Privacy Policy") }
+        Button(onClick = { consent = true }, modifier = Modifier.fillMaxWidth()) { Text("I Agree") }
+        TextButton(onClick = vm::signOut) { Text("Cancel") }
+    } else if (connections) {
         ConnectionsScreen(vm, state, back = { connections = false }, onContinue = {
             vm.saveProfile(vm.state.value.profile.copy(onboarded = true))
         })

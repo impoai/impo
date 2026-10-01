@@ -75,7 +75,7 @@ struct SettingsView: View {
                                         .disabled(signingOut)
                                         .accessibilityIdentifier("settings.signout")
                                     divider
-                                    settingsRow("Delete account", detail: "Request deletion of your account and data", symbol: nil, destructive: true) { confirmDelete = true }
+                                    settingsRow("Delete account", detail: "Permanently delete your account and data", symbol: nil, destructive: true) { confirmDelete = true }
                                         .accessibilityIdentifier("settings.delete-account")
                                 }.padding(.horizontal, 18)
                             }
@@ -113,14 +113,7 @@ struct SettingsView: View {
         } message: {
             Text("Your conversations and memories stay in your account. Recordings still waiting to upload on this iPhone resume when you sign back in.")
         }
-        .confirmationDialog("Delete your Impo account?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Request deletion", role: .destructive) {
-                mail(subject: "Delete my Impo account", body: "Please delete my Impo account and all associated data.\n\nAccount: \(model.accountEmail ?? "")")
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently deletes your account, conversations, memories and Echo recordings. Send the prepared email from the address on your account and we will confirm when it's done.")
-        }
+        .sheet(isPresented: $confirmDelete) { DeleteAccountView() }
         .confirmationDialog("Restart the welcome experience?", isPresented: $showReset, titleVisibility: .visible) {
             Button("Restart") { ["instant.demo.notes", "instant.demo.tasks"].forEach(UserDefaults.standard.removeObject(forKey:)); model.resetDemo(); onBack() }
             Button("Cancel", role: .cancel) {}
