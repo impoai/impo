@@ -16,6 +16,17 @@ test('FCM uses generic APNs alerts and Android data messages with the shared rou
   assert.equal(android.android?.priority, 'high');
   assert.equal('notification' in android, false);
   assert.equal('apns' in android, false);
+  for (const category of ['chat', 'tasks', 'brief'] as const) {
+    for (const failed of [false, true]) {
+      const apple = fcmMessage({ ...input, category, failed });
+      const android = fcmMessage({ ...input, category, failed, platform: 'android' });
+      assert.ok('apns' in apple);
+      assert.deepEqual(apple.apns?.payload.aps.alert, { title: android.data.title, body: android.data.body });
+      assert.doesNotMatch(`${android.data.title} ${android.data.body}`, /impo|needs attention|has an update/i);
+      if (category === 'brief') assert.equal(android.data.title, 'You have a brief');
+      else if (failed) assert.match(android.data.title, /couldn't/i);
+    }
+  }
 });
 test('FCM signs a scoped JWT, reuses OAuth, distinguishes token invalidation and throttling', async () => {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

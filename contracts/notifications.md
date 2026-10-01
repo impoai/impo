@@ -43,12 +43,29 @@ a retry. A provider acceptance receipt is not proof of display on a device.
 
 Lock-screen copy is generic and contains no conversation, task or Brief content.
 Payload v1 contains `eventId`, `category`, `targetId`, `registrationId` and
-`expiresAt`. Clients validate their current registration before navigation and
+`expiresAt`, plus the server-authored `title` and `body`. iOS APNs alerts and
+Android data messages use the same copy. Android displays these fields directly
+and rejects an incomplete payload instead of substituting different wording.
+Clients validate their current registration before navigation and
 always fetch the destination through the authenticated Impo API. Android receives
 data messages and checks the account, preference, expiry and foreground state before
 display. iOS uses APNs alerts for reliable background delivery; its foreground
 delegate suppresses banners. Sign-out revokes registration before ending the session
 and clears local notifications; in-flight OS alerts can briefly survive revocation.
+
+| Event | Title | Body |
+| --- | --- | --- |
+| Brief ready | You have a brief | Tap to read it. |
+| Chat reply ready | You have a new reply | Tap to read it. |
+| Chat request failed | Couldn't complete your request | Tap to return to the chat. |
+| Task completed | Your task is complete | Tap to view the result. |
+| Task failed | Your task couldn't finish | Tap to open the task. |
+
+Use direct, calm wording without repeating the app name or implying that a
+failure needs unspecified user action. Completion means a finished turn; a
+follow-up in a task can produce another result. Each Android tap intent uses
+the full event ID as its identity so separate alerts cannot replace each
+other's destination when their integer hash codes collide.
 
 ## Authenticated API
 

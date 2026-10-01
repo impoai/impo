@@ -156,6 +156,9 @@ class PushNotifications(private val app: ImpoApplication) {
     fun consumeRoute() { mutableRoute.value = null }
     @Synchronized fun receive(data: Map<String, String>) {
         val route = PushRoute.parse(data) ?: return
+        // The server owns copy for both platforms, including success/failure wording.
+        val title = data["title"]?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val body = data["body"]?.trim()?.takeIf { it.isNotEmpty() } ?: return
         val seen = storage.getString("seen", "")!!.split(',').filter { it.isNotEmpty() }
         if (route.eventId in seen || !route.isCurrent(registration())) return
         check(storage.edit().putString("seen", (seen + route.eventId).takeLast(100).joinToString(",")).commit())
@@ -163,11 +166,13 @@ class PushNotifications(private val app: ImpoApplication) {
         if (foreground || !preferences.enabled(route.category) || storage.getString("scope", null) == null || !NotificationManagerCompat.from(app).areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(app, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val intent = Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            // Extras do not identify a PendingIntent; UUID hash codes can collide.
+            .setAction("ai.impo.NOTIFICATION.${route.eventId}")
             .putExtra("impo.push.route", ProtocolJson.encodeToString(route))
         val pending = PendingIntent.getActivity(app, route.eventId.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val title = when (route.category) { "chat" -> "Your chat has an update"; "tasks" -> "Your task has an update"; else -> "Your Brief is ready" }
         val notification = NotificationCompat.Builder(app, "impo_${route.category}").setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title).setContentText("Open Impo to see your update.").setAutoCancel(true).setContentIntent(pending)
+            .setContentTitle(title).setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setAutoCancel(true).setContentIntent(pending)
             .setGroup("impo_${route.category}").setOnlyAlertOnce(true).build()
         NotificationManagerCompat.from(app).notify(route.eventId, route.eventId.hashCode(), notification)
     }

@@ -26,7 +26,11 @@ export function settingsInput(value: Record<string, unknown>): Partial<Notificat
   return value;
 }
 export function notificationCopy(category: NotificationCategory, failed: boolean) {
-  if (category === 'brief') return { title: 'Your Brief is ready', body: 'Open Impo to read your latest Brief.' };
-  if (category === 'tasks') return { title: failed ? 'A task needs attention' : 'Your task has an update', body: 'Open Impo to view your task.' };
-  return { title: failed ? 'Your chat needs attention' : 'Your reply is ready', body: 'Open Impo to continue your conversation.' };
+  if (category === 'brief') return { title: 'You have a brief', body: 'Tap to read it.' };
+  if (category === 'tasks') return failed
+    ? { title: "Your task couldn't finish", body: 'Tap to open the task.' }
+    : { title: 'Your task is complete', body: 'Tap to view the result.' };
+  return failed
+    ? { title: "Couldn't complete your request", body: 'Tap to return to the chat.' }
+    : { title: 'You have a new reply', body: 'Tap to read it.' };
 }
