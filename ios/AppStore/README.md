@@ -16,11 +16,11 @@ The native privacy manifest describes these categories and required-reason uses 
 
 ## Account-deletion delivery
 
-Account deletion is committed as `9073c14`. It passed real PostgreSQL and Temporal integration checks, native iOS confirmation/isolation tests, both client build/test suites, and a production synthetic-account cleanup canary across PostgreSQL, S3, Turso, Rebyte and Temporal. The backend is live as `instant-api:46` / `instant-worker:44`. The native change is source-ready for the next build; it has not been added to an already-uploaded TestFlight binary.
+Account deletion is committed as `9073c14`. It passed real PostgreSQL and Temporal integration checks, native iOS confirmation/isolation tests, both client build/test suites, and a production synthetic-account cleanup canary across PostgreSQL, S3, Turso, Rebyte and Temporal. The initial backend rollout used `instant-api:46` / `instant-worker:44`; the subsequent file-download release is live as `instant-api:47` / `instant-worker:45`. The native change, explicit AI-processing consent, and delivered-file previews are included in **TestFlight 1.0 (48)**, source `c548657`. Apple processed this build as VALID and it is available to Team; it is attached to Impo Public Beta with external beta review pending. This is a TestFlight release, not an App Store submission.
 
 ## Checks before selecting the submission build
 
-- Build a **1.0** candidate containing account deletion and explicit AI-processing consent; existing **0.1.0 (47)** is not that submission candidate. Preserve manual release until the owner chooses a build.
+- Select the final **1.0** candidate only after owner review. TestFlight **1.0 (48)** contains account deletion, explicit AI-processing consent, and file downloads; **0.1.0 (47)** does not contain those additions. Preserve manual release until the owner chooses a build.
 - Resolve the App Store Content Rights declaration and confirm release territories/pricing with the owner. The Content Rights field was empty at final preparation; no unsupported rights declaration was made.
 - Resolve reviewer access. Apple/Google signup exists, but a dedicated reviewer account or a fully featured review mode has not been supplied or verified. No credentials are fabricated. Test a complete review path and replace the preparation text in review notes.
 - Verify two-step deletion with a disposable account on physical iOS and Android, including Apple authorization revocation or the documented manual fallback, stopping an active Echo recording, relaunch after a lost response, and completed cloud cleanup. Automated checks cover confirmation, ownership, receipts and cleanup retry; physical OAuth remains unverified.
