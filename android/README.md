@@ -366,7 +366,8 @@ Web remains planned.
 ## Remote notifications
 
 FCM data messages use three native channels: Chat replies, Task updates and
-Brief. Settings category switches sync to the per-user server JSON; Android's
+Brief. The server supplies the same title and body used by iOS, including
+clear completion/failure wording. Brief alerts say “You have a brief”. Settings category switches sync to the per-user server JSON; Android's
 notification permission and channel controls remain additional gates. The app
 reports foreground presence, suppresses foreground presentation, deduplicates
 events, rejects expired or old-account routes and revokes registration before
@@ -386,3 +387,17 @@ Run `npm run test:android:client` for route/transport checks and
 for category synchronization, native foreground/expiry/account suppression,
 deduplication and notification tap handling against the local fixture. Injected
 messages verify native behavior; they do not prove real FCM or physical delivery.
+
+### Notification polish release — 2026-10-01
+
+Android **0.1.4 (5)** is published at [impo.ai/android.apk](https://impo.ai/android.apk),
+with the original signing certificate. This version includes shared notification
+copy, independent notification tap destinations, account deletion with two
+confirmations, and delivered-file download/open/share support.
+
+Four emulator notification tests passed, including malformed payloads and two
+event IDs whose integer hashes collide. A real FCM message reached the synthetic
+Android emulator account and displayed “You have a brief” / “Tap to read it.”
+The signed APK cold-launched and both immutable and permanent download URLs
+passed complete SHA-256 verification. Physical-device and production-account
+acceptance remain unverified.
