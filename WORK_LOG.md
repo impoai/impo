@@ -222,3 +222,11 @@
 
 - Keep a recurring schedule's clock string independent from the one-time date picker. Choosing another time zone now preserves the requested local hour, matching Android and the server calendar contract.
 - Validation: the native clock regression passed for Shanghai, New York and fractional-offset zones; the iOS create/pause/relaunch/delete UI test passed again. Updated the feature guide to describe implemented scheduling.
+
+## 2026-10-02 — Scheduled tasks production and native releases
+
+- Released Server source `2fd0dc6` as immutable image `sha256:ceffa9b374d9c3619309ffa0ddcf6663da4a4fb656e53c66892281a878b3bee7`. API **instant-api:49** and Worker **instant-worker:48** are healthy and COMPLETED. The reviewed Drizzle push added schedule/history tables and the separate notification category without rewriting existing preferences.
+- Production canary verified 171 source/package hashes, owned HTTP operations, real Temporal timers, one atomic Task admission, autonomous Rebyte configuration and iOS/Android FCM validate-only delivery. Synthetic data rolled back and the test workflow history was deleted. A transient ECR pull failure occurred before the first schema-apply container started; retry succeeded with the same reviewed plan. No real user alerts were sent.
+- Published Android **0.1.8 (9)** at `https://impo.ai/android.apk`; immutable and permanent downloads match all 132,837,735 bytes and SHA-256 `d4ddd08b5164e70318b52b6ed94721284e1fb3f07d952269747bbf7f7c14827d`. The signed APK installed and cold-launched on API 35 with the original signing certificate.
+- Released iOS source `dc39c90` as **1.0 (52)**, build `da0a2c01-fe3c-4e94-aed2-d3b0aca5c404`: VALID / IN_BETA_TESTING for Team with verified English test notes. The IPA is 39,515,289 bytes, SHA-256 `9f9f5eb368042ce6f040628e3dc29c5ce1a38700193fd216ca8070e88e37f148`. Archive/export signatures, production API/Clerk/Firebase/APNs, Apple sign-in, privacy manifest and iOS 18 compatibility passed. External review and formal App Store submission were not changed.
+- Final public-file and reachable-history secret scans passed (60 commits at validation). Physical-device push presentation remains unverified. Private receipts are in `.local/scheduled-tasks-release/`, `.local/release52/` and `.local/android/releases/0.1.8-9/`.
