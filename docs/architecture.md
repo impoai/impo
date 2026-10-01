@@ -38,6 +38,10 @@ Hold-to-talk transcription is the one model call inside an API request: the
 user is waiting on a clip of at most two minutes, the call is bounded to 30 seconds and
 stores nothing, and the same request then accepts the text as durable work.
 Idempotency by `clientMessageId` makes a retried clip return the text that was already accepted.
+Both native clients use this route. Android records bounded AAC/MP4 clips and
+persists the exact command before acceptance; releasing the clip transfers its
+lifetime from the view to the signed-in account. Task and draft transcription
+uses a separate route that accepts no Chat message and follows the view lifecycle.
 
 Function calls pass through the application dispatcher. Device requests use an
 owned pending/claim/result flow; replayed stream events never authorize execution.
@@ -66,7 +70,8 @@ provide remote durability. See [features](features.md) for each data lifecycle.
 
 ## Native device capability selection
 
-Android advertises `impo_list_calendar_events` and `impo_get_health_summary`;
+Android advertises `impo_list_calendar_events`, `impo_get_health_summary` and
+`impo_search_contacts` when enabled;
 installed iOS clients keep their `ios_*` aliases. The API captures the attached,
 owned device's capabilities at admission. Agent tools are selected from that
 specific device, not the union of all devices owned by the user. Dispatch also

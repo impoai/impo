@@ -18,7 +18,6 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
-        <intent><action android:name="android.speech.RecognitionService" /></intent>
     </queries>
     <application android:name=".ImpoApplication" android:label="Impo" android:icon="@mipmap/impo_icon"
         android:theme="@style/Theme.Impo" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true"

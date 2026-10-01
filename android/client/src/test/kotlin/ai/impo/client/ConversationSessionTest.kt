@@ -43,7 +43,7 @@ class ConversationSessionTest {
             first.send("Hello")
             assertTrue(first.state.value.hasPendingMessage); assertNotNull(first.state.value.error)
             val original = store.load("alice", null)!!
-            assertNull(original.receipt); assertEquals("device", original.pending.deviceId)
+            assertNull(original.receipt); assertEquals("device", original.pending!!.deviceId)
             first.close()
             val reopened = ConversationSession(client(server), "alice", store = store, scope = scope)
             reopened.retryPending()

@@ -17,7 +17,7 @@ class DurableTaskCreator(
         assertOwner()
         require(text.length <= 4000) { "Task descriptions must be at most 4,000 characters" }
         val saved = store.load(accountId, CREATION_LANE)
-        if (saved != null && saved.pending.command.text != text)
+        if (saved != null && saved.pending?.command?.text != text)
             throw IllegalStateException("Recover your pending task before creating another task")
         val entry = saved ?: OutboxEntry(PendingMessage(accountId, MessageCommand.create(text), taskId = CREATION_LANE)).also { store.save(it) }
         submit(entry)
@@ -35,7 +35,7 @@ class DurableTaskCreator(
     private suspend fun submit(entry: OutboxEntry): TaskReceipt {
         assertOwner()
         entry.taskReceipt?.let { return it }
-        val receipt = client.createTask(entry.pending.command)
+        val receipt = client.createTask(entry.pending?.command ?: throw ProtocolException("Task outbox contains a voice command"))
         assertOwner()
         store.save(entry.copy(taskReceipt = receipt))
         return receipt

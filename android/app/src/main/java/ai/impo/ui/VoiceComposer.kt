@@ -25,9 +25,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -56,8 +58,16 @@ import ai.impo.nativebridge.*
     onCancel: () -> Unit,
     prefix: String,
     sessionKey: Any?,
+    onVoiceClip: (RecordedVoiceClip) -> Unit,
     isCurrent: () -> Boolean = { true },
-    recognizerFactory: VoiceRecognizerFactory? = null,
+    allowVoice: Boolean = true,
+    voicePending: Boolean = false,
+    voiceNotice: String? = null,
+    inputTag: String = "$prefix.input",
+    placeholder: String = "Tap to type · Hold to talk",
+    maxLength: Int = 32768,
+    showSendControl: Boolean = true,
+    recorderFactory: VoiceRecorderFactory? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -67,23 +77,22 @@ import ai.impo.nativebridge.*
     val focus = remember { FocusRequester() }
     val latestCurrent by rememberUpdatedState(isCurrent)
     val latestValue by rememberUpdatedState(value)
-    val latestCanSend by rememberUpdatedState(!busy && allowSend)
-    val latestChanged by rememberUpdatedState(onValueChange)
-    val latestSend by rememberUpdatedState(onSend)
-    val factory = recognizerFactory ?: remember(context) { AndroidVoiceRecognizerFactory(context.applicationContext) }
+    val latestCanRecord by rememberUpdatedState(allowVoice && !voicePending)
+    val latestClip by rememberUpdatedState(onVoiceClip)
+    val latestBusy by rememberUpdatedState(busy)
+    val factory = recorderFactory ?: remember(context) { AndroidVoiceRecorderFactory(context.applicationContext) }
     val controller = remember(sessionKey, factory) {
         VoiceInputController(scope, factory, startBlocked = {
             when {
                 !latestCurrent() -> "This conversation changed. Hold again to talk."
+                !latestCanRecord || latestValue.isNotEmpty() -> "Voice input is no longer available for this draft."
                 !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) -> "Open Impo to use voice input."
                 ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED -> "Allow Microphone access in Android settings to talk to Impo."
                 NativeBridge.recording.value.isRecording -> "Pause Echo before using voice input."
                 else -> null
             }
-        }, onTranscript = { text ->
-            if (latestCurrent() && latestValue.isEmpty()) {
-                if (latestCanSend) latestSend(text) else latestChanged(text)
-            }
+        }, onClip = { clip ->
+            if (latestCurrent() && latestCanRecord && latestValue.isEmpty()) latestClip(clip)
         })
     }
     val voice by controller.state.collectAsStateWithLifecycle()
@@ -98,13 +107,13 @@ import ai.impo.nativebridge.*
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); controller.close() }
     }
-    LaunchedEffect(echo.isRecording, value, busy, allowSend) {
-        if (voice.active && (echo.isRecording || value.isNotEmpty() || busy || !allowSend))
+    LaunchedEffect(echo.isRecording, value, allowVoice, voicePending) {
+        if (voice.active && (echo.isRecording || value.isNotEmpty() || !allowVoice || voicePending))
             controller.cancel(if (echo.isRecording) "Pause Echo before using voice input." else null)
     }
     BackHandler(voice.active) { controller.cancel() }
     fun begin() {
-        if (!latestCurrent() || !latestCanSend || latestValue.isNotEmpty()) return
+        if (!latestCurrent() || !latestCanRecord || latestValue.isNotEmpty()) return
         focusManager.clearFocus(); keyboard?.hide()
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (permissionHold == null) {
@@ -114,18 +123,24 @@ import ai.impo.nativebridge.*
         } else controller.begin()
     }
     fun submit() {
-        if (value.isNotBlank() && !busy && allowSend && isCurrent()) { onSend(value.trim()); onValueChange("") }
+        if (value.isNotBlank() && value.length <= maxLength && !busy && allowSend && isCurrent()) { onSend(value.trim()); onValueChange("") }
     }
-    val holdEnabled = value.isEmpty() && !busy && allowSend
+    val holdEnabled = value.isEmpty() && allowVoice && !voicePending
     val beginCurrent by rememberUpdatedState { begin() }
     val tapCurrent by rememberUpdatedState { focus.requestFocus(); keyboard?.show() }
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var cancelVoiceBounds by remember { mutableStateOf<Rect?>(null) }
+    var cancelReplyBounds by remember { mutableStateOf<Rect?>(null) }
+    val latestVoiceActive by rememberUpdatedState(voice.active)
     val cancelDistance = with(LocalDensity.current) { 65.dp.toPx() }
     val movementSlop = with(LocalDensity.current) { 12.dp.toPx() }
     val hold = if (!holdEnabled) Modifier else Modifier.pointerInput(controller, cancelDistance, movementSlop) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val start = coordinates?.takeIf { it.isAttached }?.localToWindow(down.position) ?: down.position
+            // A running reply remains independently cancellable, including during a voice hold.
+            if ((latestBusy && cancelReplyBounds?.contains(start) == true) ||
+                (latestVoiceActive && cancelVoiceBounds?.contains(start) == true)) return@awaitEachGesture
             down.consume()
             var position = start
             var released = false
@@ -165,22 +180,25 @@ import ai.impo.nativebridge.*
         }
     }
     Column(Modifier.fillMaxWidth().imePadding()) {
-        ErrorNotice(voice.message)
+        ErrorNotice(voice.message ?: voiceNotice)
+        if (voicePending) Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).testTag("$prefix.voice.transcribing"),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("Transcribing…")
+        }
         if (voice.active) Surface(color = if (voice.cancelArmed) MaterialTheme.colorScheme.errorContainer else Sage,
             shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp).testTag("$prefix.voice.preview")) {
             Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (voice.transcript.isNotBlank() && !voice.cancelArmed) Text(voice.transcript, maxLines = 4, modifier = Modifier.testTag("$prefix.voice.transcript"))
                 if (voice.phase == VoicePhase.Finishing) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.testTag("$prefix.voice.transcribing")) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("Transcribing…")
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("Finishing recording…")
                     }
                     TextButton(onClick = { controller.cancel() }) { Text("Cancel voice input") }
                 } else {
-                    Text(if (voice.cancelArmed) "Release to cancel" else if (voice.phase == VoicePhase.Starting) "Starting microphone…" else "Release to send · Slide up to cancel")
-                    Row(Modifier.height(34.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        voice.levels.forEach { level -> Box(Modifier.width(3.dp).height((4 + 30 * level).dp).clip(RoundedCornerShape(2.dp)).background(if (voice.cancelArmed) MaterialTheme.colorScheme.error else Forest)) }
+                    Text(if (voice.cancelArmed) "Release to cancel" else if (voice.limitReached) "Recording limit reached · Release to send" else if (voice.phase == VoicePhase.Starting) "Starting microphone…" else "Release to send · Slide up to cancel")
+                    Row(Modifier.widthIn(max = 237.dp).fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        voice.levels.forEach { level -> Box(Modifier.weight(1f).height((4 + 30 * level).dp).clip(RoundedCornerShape(2.dp)).background(if (voice.cancelArmed) MaterialTheme.colorScheme.error else Forest)) }
                     }
-                    Text(if (voice.onDevice) "On-device speech recognition" else "Your Android speech service may process audio online.", style = MaterialTheme.typography.labelSmall, color = Muted)
+                    Text("Up to 2 minutes · Sent to Impo and Google Gemini after release", style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
             }
         }
@@ -191,15 +209,24 @@ import ai.impo.nativebridge.*
                     CustomAccessibilityAction("Cancel voice input") { controller.cancel(); true },
                 ) else if (holdEnabled) listOf(CustomAccessibilityAction("Start voice input") { begin(); true }) else emptyList()
             }, verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value, { onValueChange(it.take(32768)) }, readOnly = voice.active,
-                placeholder = { Text("Tap to type · Hold to talk") }, modifier = Modifier.weight(1f).focusRequester(focus).testTag("$prefix.input"), maxLines = 6,
+            OutlinedTextField(value, {
+                if (it.length <= maxLength || it.length < value.length) onValueChange(it)
+                else if (value.length <= maxLength) onValueChange(it.take(maxLength))
+            }, readOnly = voice.active,
+                placeholder = { Text(placeholder) }, modifier = Modifier.weight(1f).focusRequester(focus).testTag(inputTag), maxLines = 6,
                 shape = RoundedCornerShape(26.dp), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { submit() }))
             if (holdEnabled && !voice.active) Surface(Modifier.size(52.dp).testTag("$prefix.voice"), shape = RoundedCornerShape(26.dp), color = Sage) {
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Mic, "Hold the empty input to talk") }
-            } else FilledIconButton(onClick = { if (voice.active) controller.cancel() else if (busy) onCancel() else submit() },
-                enabled = voice.active || busy || (value.isNotBlank() && allowSend), modifier = Modifier.size(52.dp).testTag(if (busy) "$prefix.cancel" else "$prefix.send")) {
-                Icon(if (voice.active) Icons.Outlined.Close else if (busy) Icons.Outlined.Stop else Icons.AutoMirrored.Outlined.Send,
-                    if (voice.active) "Cancel voice input" else if (busy) "Cancel reply" else "Send message")
+            } else if (voice.active) FilledIconButton(onClick = { controller.cancel() },
+                modifier = Modifier.size(52.dp).onGloballyPositioned { cancelVoiceBounds = it.boundsInWindow() }.testTag("$prefix.voice.cancel")) {
+                Icon(Icons.Outlined.Close, "Cancel voice input")
+            } else if (!busy && showSendControl) FilledIconButton(onClick = { submit() }, enabled = value.isNotBlank() && value.length <= maxLength && allowSend,
+                modifier = Modifier.size(52.dp).testTag("$prefix.send")) {
+                Icon(Icons.AutoMirrored.Outlined.Send, "Send message")
+            }
+            if (busy) FilledIconButton(onClick = onCancel,
+                modifier = Modifier.size(52.dp).onGloballyPositioned { cancelReplyBounds = it.boundsInWindow() }.testTag("$prefix.cancel")) {
+                Icon(Icons.Outlined.Stop, "Cancel reply")
             }
         }
     }

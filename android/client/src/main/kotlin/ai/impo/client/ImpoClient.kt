@@ -85,6 +85,17 @@ class ImpoClient(
         deviceId?.let { body["deviceId"] = JsonPrimitive(identifier(it)) }
         return send("POST", listOf("conversation", "messages"), JsonObject(body), expected = 202)
     }
+    suspend fun sendVoiceMessage(command: VoiceMessageCommand, deviceId: String? = null): VoiceMessageReceipt {
+        val body = ProtocolJson.encodeToJsonElement(command).jsonObject.toMutableMap()
+        deviceId?.let { body["deviceId"] = JsonPrimitive(identifier(it)) }
+        return send<VoiceMessageReceipt>("POST", listOf("conversation", "voice-messages"), JsonObject(body), expected = 202).also {
+            if (it.messageId.isBlank() || it.submissionId.isBlank()) throw ProtocolException("Voice response is missing its receipt")
+            validateVoiceText(it.text)
+        }
+    }
+    /** Draft-only transcription: no message or agent run is accepted by this route. */
+    suspend fun transcribeVoice(clip: VoiceClip): String = validateVoiceText(
+        send<VoiceTranscription>("POST", listOf("voice", "transcriptions"), ProtocolJson.encodeToJsonElement(clip)).text)
     suspend fun tasks(): List<TaskSummary> = get<TasksResponse>(listOf("tasks")).tasks
     suspend fun createTask(command: MessageCommand): TaskReceipt {
         require(command.text.length <= 4000)

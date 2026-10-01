@@ -508,7 +508,7 @@ fixture's older code). Other codes include `invocation_not_claimed`,
 
 ### Native capability boundary
 
-Registration accepts up to four unique names. New Android clients advertise the
+Registration accepts up to seven unique supported names. New Android clients advertise the
 neutral names below; installed iOS aliases remain compatible. A client registers
 only capabilities it implements and that the user enabled. Empty capability
 sets are valid, and core features work without `deviceId`.
@@ -517,8 +517,9 @@ sets are valid, and core features work without `deviceId`.
 | --- | --- | --- |
 | `impo_list_calendar_events` | `ios_list_calendar_events` | `start`, `end`, `time_zone`, `limit` (1–100) |
 | `impo_get_health_summary` | `ios_get_health_summary` | `start`, `end`, `time_zone`, `metrics` |
+| `impo_search_contacts` | — | See the [native tool contract](native-device-tools.md) for bounded contact search input. |
 
-Both are read-only. Ranges are `[start,end)`, positive and at most 31 days.
+All three are read-only. Calendar and Health ranges are `[start,end)`, positive and at most 31 days.
 Health metrics are 1–4 distinct entries from `steps`, `active_energy`,
 `heart_rate`, `sleep`. The [native tool output contract](native-device-tools.md)
 defines units, provenance, permission/unknown states, source identifiers and
@@ -587,6 +588,6 @@ Run existing checks from the root: `npm test` for host/Swift/fixture verificatio
 `npm run test:listening-batches`, `npm run test:today` and `npm run test:memory`
 for persistent boundaries. Android verification uses `npm run test:android`,
 `npm run build:android`, `npm run lint:android` and `npm run test:android:ui`.
-Android debug build, lint, 86 unit tests, the production-router integration and
-12 API 35 instrumentation tests passed on 2026-09-30. Physical-device validation
+Android debug build, lint, 149 unit tests, the production-router integration and
+29 API 35 instrumentation tests passed on 2026-10-01. Physical-device validation
 is still required before claiming microphone, location, health or background parity.

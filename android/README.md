@@ -148,7 +148,7 @@ Restore missing files from backup; do not replace an established release key.
 Build a signed, optimized APK, increasing the version code for each publication:
 
 ```sh
-IMPO_ANDROID_VERSION_CODE=2 IMPO_ANDROID_VERSION_NAME=0.1.1 npm run build:android:release
+IMPO_ANDROID_VERSION_CODE=3 IMPO_ANDROID_VERSION_NAME=0.1.2 npm run build:android:release
 ```
 
 The APK is `android/app/build/outputs/apk/release/app-release.apk`, with package
@@ -198,7 +198,7 @@ this is not a distributed lock.
 For the next release, increment the version code and keep the same signing key:
 
 ```sh
-IMPO_ANDROID_VERSION_CODE=3 IMPO_ANDROID_VERSION_NAME=0.1.2 npm run build:android:release
+IMPO_ANDROID_VERSION_CODE=4 IMPO_ANDROID_VERSION_NAME=0.1.3 npm run build:android:release
 npm run publish:android
 ```
 
@@ -224,7 +224,7 @@ included. APK-only releases do not need a website deployment.
 ```text
 app/ui/          Compose navigation/screens, native rich text and Brief export
 app/data/        Account-scoped settings, authentication and screen coordination
-app/nativebridge/ Speech input, microphone/VAD, durable Echo, location, device tools
+app/nativebridge/ AAC voice capture, microphone/VAD, durable Echo, location, device tools
 client/          Android-independent Kotlin protocol/recovery library and tests
 ```
 
@@ -274,8 +274,8 @@ Reviewed today's iOS additions through `caf5358` and shared backend changes in
 
 | iOS addition | Android behavior |
 | --- | --- |
-| Whole-composer hold-to-talk | Hold an empty composer for 350 ms, release to send once, or slide up 65 dp to cancel. A tap edits normally; nonempty drafts retain native selection. Partial text, audio levels and finalizing state are visible. |
-| Voice lifecycle fixes | Android `SpeechRecognizer`, with on-device recognition preferred when available. Permission approval requires a fresh hold; stale results, navigation, backgrounding and account changes cancel capture. Echo and voice input share microphone exclusion. |
+| Whole-composer hold-to-talk | Hold an empty composer for 350 ms, release to send once, or slide up 65 dp to cancel. A tap edits normally; nonempty drafts retain native selection. Audio levels and transcription status are visible. |
+| Voice lifecycle fixes | Native AAC recording. Permission approval requires a fresh hold; navigation, backgrounding and account changes cancel unreleased capture. Echo and voice input share microphone exclusion. Released Chat commands have their own account-scoped durable lifecycle. |
 | Returning account recovery | `GET/PATCH /profile` restores onboarding, assistant name and shared avatar indices. Display names use existing Brief settings. Pending writes survive process death; responses from old login sessions cannot update the new session. |
 | Optional native Contacts | Explicit read-only permission and account-specific opt-in; requested searches return bounded matching contact details, never a bulk address-book upload. Revocation stops capability advertisement and execution. |
 | Onboarding connections and slogan | “Meet Impo, an open assistant that captures everything around your life.” Echo and open source are prominent; native and external connections are optional before entering Chat. |
@@ -283,10 +283,25 @@ Reviewed today's iOS additions through `caf5358` and shared backend changes in
 | Apple Reminders | No universal Android provider. Android does not advertise the iOS reminder tools; external task services are available only when returned by the server's connector directory. |
 | iOS custom avatar photo | Photo bytes are device-local on iOS. Android preserves its available avatar for remote index 6; built-in avatars share identical wire indices and existing Android choices migrate once. |
 
-The Android speech service may process audio online when on-device recognition
-is unavailable; the recording UI says so. Recognition availability and languages
-depend on the installed Android speech service. Voice input sends recognized
-text through the ordinary Chat/Task command, separate from Echo audio uploads.
+### iOS parity update — 2026-10-01
+
+Reviewed iOS changes after Android 0.1.1 (`808a859`) through `b28f955`.
+
+| iOS addition | Android behavior |
+| --- | --- |
+| Server voice transcription | MediaRecorder captures mono 16 kHz AAC in MP4; both clients use the shared Gemini transcription routes. No installed speech recognition service is required. The composer displays a waveform while held, then a pending transcript bubble. |
+| Atomic Chat voice messages | Persist the exact clip, message ID, device and clock context before requesting acceptance. Retry the same command after an uncertain response or process restart; accepted transcript receipts replace the bubble without sending a second text message. Silence clears the rejected clip. |
+| Tasks and busy Chat drafts | Use transcription-only requests. Task input sends through the normal task command; busy Chat appends the transcript to the draft. Leaving the view cancels this draft request, while released Chat acceptance continues for the signed-in account. |
+| Stable empty Echo history | Show initial loading until a successful timeline fetch, then keep the confirmed empty state visible through refreshes and errors. |
+| Removed payment step; steady scenario pager | Android already has no payment step or scenario pager, so no corresponding change is needed. |
+
+Voice recordings stop at two minutes or the 2 MiB upload limit, release the
+microphone, and wait for the finger to release or cancel. Short or silent holds
+are discarded. Capture files are removed after conversion to immutable bytes;
+uncertain Chat commands remain in the private, account-scoped outbox until
+accepted history is recovered. Server voice audio is not retained or added to
+Echo. Transcription requires a network connection and the server's Gemini
+configuration; the composer discloses this processing.
 
 ## Validation
 
@@ -309,20 +324,23 @@ To isolate an instrumentation failure, set `IMPO_ANDROID_TEST_CLASS` to a fully
 qualified test class, optionally followed by `#methodName`, before running
 `npm run test:android:ui`. Omit it for the complete acceptance suite.
 
-Verified on 2026-09-30 with JDK 17 and `Impo_API_35` (Android 15, arm64):
+Verified on 2026-10-01 with JDK 17 and `Impo_API_35` (Android 15, arm64):
 
 - Debug APK build and Android lint passed.
-- 127 non-UI unit tests passed: 53 protocol/client and 74 app/native cases.
+- 149 non-UI unit tests passed: 69 protocol/client and 80 app/native cases.
 - The opt-in production-router contract integration passed separately.
-- All 20 instrumentation tests passed with no skips. They cover onboarding,
+- All 29 instrumentation tests passed with no skips. They cover onboarding,
   streamed chat/cancel, tasks/follow-ups, Brief evidence and complete PDF/PNG
   export, memory forgetting, Echo history/date jumps/labels/deletion, saved
   preferences, browser authorization return/disconnect, native text selection,
   Markdown/math, hold-to-talk gestures/cancellation/session teardown, server profile
   recovery after clearing the local cache, microphone notification controls,
   Calendar/Contacts permission and provider reads, immediate native opt-out, and
-  actual Silero inference on English/Mandarin audio and silence.
-- All 69 server unit tests, server typecheck and 9 download-handler tests passed.
+  actual Silero inference on English/Mandarin audio and silence. New voice checks
+  cover pending acceptance across navigation/recreation, silence cleanup,
+  transcription-only task flows, native AAC encoding and capture-file cleanup,
+  busy-reply cancellation, and task input. Empty Echo refreshes retain their layout.
+- All 81 server unit tests, server typecheck and 9 download-handler tests passed.
 
 The emulator uses the local synthetic fixture described above. It validates
 client transport and native UI behavior, not production OAuth, model responses
@@ -331,10 +349,11 @@ or real transcription. Test reports are generated under each module's
 
 Before claiming hardware parity, check a physical microphone, lock-screen
 capture, interruptions, long offline queues, geocoding/location, Calendar
-Provider data, Contacts matches, installed speech-service recognition/languages,
-Health Connect availability/grants and account switching. Voice UI tests inject a
-recognizer while exercising real Compose gestures and Android lifecycle; they do
-not prove physical speech recognition.
+Provider data, Contacts matches, server transcription/languages,
+Health Connect availability/grants and account switching. Voice gesture tests
+inject a recorder, and server-flow tests use deterministic synthetic clips.
+Separate instrumentation checks native AAC recording and temporary-file cleanup
+with emulator silence; none of these proves physical speech recognition.
 
 The Android app does not yet include attachments/camera uploads,
 billing/subscriptions, recurring user-created tasks, diary generation,

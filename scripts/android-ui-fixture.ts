@@ -5,14 +5,17 @@
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import type { UIMessageChunk } from 'ai';
 import { createApiServer, type ApiRepository, type ApiOptions } from '../server/src/http/api-server.js';
 import { ServiceError } from '../server/src/errors.js';
 import { parseUploadManifest } from '../server/src/listening/audio-upload.js';
 import { parseListeningBatch } from '../server/src/listening/batch-input.js';
+import { TranscriptionError } from '../server/src/listening/transcriber.js';
 import { validateTodaySettings } from '../server/src/today/repository.js';
-import { isDeviceTool, deviceHash } from '../server/src/tools/device-tools.js';
+import { isDeviceTool, deviceHash, deviceToolNames } from '../server/src/tools/device-tools.js';
+import type { Dictation } from '../server/src/voice/dictation.js';
 type Json = Record<string, any>;
 const id = (name: string) => {
   const hex = createHash('sha256').update(`android-fixture:${name}`).digest('hex');
@@ -23,10 +26,18 @@ const conflict = () =>
   new ServiceError(409, 'idempotency_conflict', 'Message ID already has different content');
 const stamp = '2026-09-30T08:00:00.000Z';
 const richText = `Hello Android 👋 — your native client is connected.\n\n## A little room for today\nKeep **one clear priority**, then take a walk.\n\n- Review the morning Brief\n- Try Echo and label a recording\n- Follow up on your task\n\n> Progress can be quiet. 你好，世界。\n\n\`\`\`kotlin\nval greeting = "Hello Android"\n\`\`\`\n\n[Visit Impo](https://impo.ai)\n\n| Plan | Time |\n| --- | --- |\n| Focus | 25 min |\n| Break | 5 min |`;
+/** Explicit synthetic payloads for local API/UI tests; these bytes are not real audio. */
+export const androidFixtureVoice = Object.freeze({
+  transcript: 'Android voice fixture transcript',
+  speech: Buffer.from('IMPO_ANDROID_FIXTURE_VOICE').toString('base64'),
+  silence: Buffer.from('IMPO_ANDROID_FIXTURE_SILENCE').toString('base64'),
+  unavailable: Buffer.from('IMPO_ANDROID_FIXTURE_VOICE_UNAVAILABLE').toString('base64'),
+});
 export function createAndroidFixture(
   options: {
     publicHost?: string;
     delayMs?: number;
+    voiceDelayMs?: number;
   } = {},
 ) {
   if (process.env.NODE_ENV === 'production') throw new Error('Android fixtures are local development only');
@@ -146,7 +157,7 @@ export function createAndroidFixture(
       data: { schemaVersion: 1, submissionId, status: 'running' },
     });
     const receipt = { messageId: userMessageId, submissionId };
-    keys.set(key, { hash, receipt });
+    keys.set(key, { hash, receipt, conversationId: conversation.conversationId });
     const timer = setTimeout(
       () => {
         timers.delete(timer);
@@ -384,6 +395,13 @@ export function createAndroidFixture(
       throw new Error('Fixture does not accept production authentication');
     },
     acceptMessage: async (userId: string, input: Json) => accept(userId, main(userId), input),
+    findUserMessage: async (userId: string, clientMessageId: string) => {
+      const accepted = keys.get(`${userId}:${clientMessageId}`);
+      if (!accepted) return undefined;
+      const conversation = own(conversations, userId, accepted.conversationId);
+      const message = conversation.messages.find((row: Json) => row.id === accepted.receipt.messageId && row.role === 'user');
+      return message ? { text: message.text } : undefined;
+    },
     getConversation: async (userId: string, after: number, limit: number) =>
       history(userId, main(userId), after, limit),
     getSubmission: async (userId: string, runId: string) => runView(own(submissions, userId, runId)),
@@ -433,7 +451,7 @@ export function createAndroidFixture(
     devices: {
       register: async (userId: string, input: Json) => {
         if (
-          input.tools.length > 4 ||
+          input.tools.length > deviceToolNames.length ||
           new Set(input.tools).size !== input.tools.length ||
           input.tools.some((tool: string) => !isDeviceTool(tool))
         )
@@ -499,11 +517,24 @@ export function createAndroidFixture(
           authorizations.delete(token);
     },
   };
+  const dictation: Dictation = {
+    model: 'synthetic-android-development-fixture',
+    async transcribe(audio, _mimeType, signal) {
+      // Preserve the real router's validation, cancellation, silence and provider-error
+      // paths. Never decode or send captured audio to an external transcription service.
+      await delay(options.voiceDelayMs ?? 700, undefined, { signal });
+      if (audio.equals(Buffer.from(androidFixtureVoice.silence, 'base64'))) return '';
+      if (audio.equals(Buffer.from(androidFixtureVoice.unavailable, 'base64')))
+        throw new TranscriptionError('Synthetic development voice failure', true, 'fixture_unavailable');
+      return androidFixtureVoice.transcript;
+    },
+  };
   const apiOptions = {
     auth: { mode: 'local-dev' },
     pollIntervalMs: 30,
     streamKeepAliveMs: 500,
     connectors,
+    dictation,
     profiles: {
       get: async (userId: string): Promise<Json> => ({
         onboarded: main(userId).messages.some((message: Json) => message.role === 'user'),

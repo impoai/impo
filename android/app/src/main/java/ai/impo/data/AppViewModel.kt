@@ -8,6 +8,7 @@ import ai.impo.client.*
 import ai.impo.nativebridge.NativeBridge
 import ai.impo.nativebridge.DeviceCoordinator
 import ai.impo.nativebridge.DeviceDataAdapter
+import ai.impo.nativebridge.RecordedVoiceClip
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
@@ -149,6 +150,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun send(text: String, task: Boolean = false) {
         val session = (if (task) mutable.value.taskSession else mutable.value.chat) ?: return
         launch(if (task) "task" else "chat") { session.send(text) }
+    }
+    /** Once released into Chat, acceptance belongs to the account, not the visible screen. */
+    suspend fun sendVoice(clip: RecordedVoiceClip, owner: String): Boolean {
+        requireVoiceOwner(owner)
+        val session = mutable.value.chat ?: throw AccountChangedException()
+        val value = VoiceClip.fromBytes(clip.bytes(), clip.mimeType)
+        return accountScope.async {
+            requireVoiceOwner(owner)
+            if (mutable.value.chat !== session) throw AccountChangedException()
+            session.sendVoice(value)
+        }.await()
+    }
+    /** Draft/task transcription does not accept a Chat message and follows the caller's lifecycle. */
+    suspend fun transcribeVoice(clip: RecordedVoiceClip, owner: String): String {
+        requireVoiceOwner(owner)
+        val client = api ?: throw AccountChangedException()
+        val text = client.transcribeVoice(VoiceClip.fromBytes(clip.bytes(), clip.mimeType))
+        currentCoroutineContext().ensureActive()
+        requireVoiceOwner(owner)
+        if (client !== api) throw AccountChangedException()
+        return text
+    }
+    private fun requireVoiceOwner(owner: String) {
+        if (state.value.account?.requestScope != owner || auth.state.value.account?.requestScope != owner)
+            throw AccountChangedException()
     }
     fun retryChat(task: Boolean = false) {
         val session = (if (task) mutable.value.taskSession else mutable.value.chat) ?: return

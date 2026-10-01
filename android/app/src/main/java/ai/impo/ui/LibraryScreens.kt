@@ -194,10 +194,12 @@ private data class TimelineRow(val key: String, val date: String? = null, val re
         Text("${recording.pendingBatches} recording batches waiting to upload", color = Muted, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = { NativeBridge.retryUploads(vm.app) }) { Text("Retry") }
     }
-    BusyLine("echo" in state.busy || requestedDate != null)
+    BusyLine(requestedDate != null)
     ErrorNotice(state.errors["echo"], { vm.refreshEcho() })
     LazyColumn(Modifier.fillMaxSize().testTag("echo.list"), state = list, contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (rows.isEmpty() && "echo" !in state.busy) item { EmptyState("Keep a passing thought", "Record a thought, a conversation, or an idea. Your transcribed Echoes will collect here.") }
+        if (rows.isEmpty()) item(key = "echo.placeholder") {
+            EchoTimelinePlaceholder(loaded = state.timeline != null, refreshing = "echo" in state.busy)
+        }
         items(rows, key = { it.key }, contentType = { if (it.date != null) "date" else "echo" }) { row ->
             if (row.date != null) SectionLabel(row.date) else {
                 val record = state.records[row.recordId]
@@ -209,6 +211,22 @@ private data class TimelineRow(val key: String, val date: String? = null, val re
                 else PaperCard(Modifier.fillMaxWidth()) { Text("Loading Echo…", color = Muted) }
             }
         }
+    }
+}
+
+/** A successful empty index stays visible while later refreshes run or fail. */
+@Composable internal fun EchoTimelinePlaceholder(loaded: Boolean, refreshing: Boolean) {
+    when {
+        loaded -> Box(Modifier.fillMaxWidth().testTag("echo.empty")) {
+            EmptyState("Keep a passing thought", "Record a thought, a conversation, or an idea. Your transcribed Echoes will collect here.")
+        }
+        refreshing -> Row(Modifier.fillMaxWidth().padding(vertical = 24.dp).testTag("echo.loading"),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CircularProgressIndicator(Modifier.size(22.dp), color = Forest, strokeWidth = 2.dp)
+            Text("Loading your timeline…", color = Muted)
+        }
+        // Before the first request, or after its failure, there is no confirmed empty
+        // result. The screen's existing error notice supplies the retry action.
     }
 }
 

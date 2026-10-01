@@ -6,14 +6,15 @@ Each user has one main conversation and current main Agent Session. One-shot
 tasks use isolated conversations and Sessions. Work survives a client disconnect;
 task rows show relative last-modified time. User-defined recurring tasks are planned.
 
-iOS chat supports hold-to-talk across the empty input field: tap to type,
+iOS and Android support hold-to-talk across the empty input field: tap to type,
 hold to record, release to send, or swipe up to cancel. The app records a short
 AAC clip (up to two minutes) and uploads it on release. A "…" bubble holds its
-place while the server transcribes it with Gemini (about one to two seconds);
+place while the server transcribes it with Gemini;
 the transcript then replaces the bubble and the reply starts from that same text
-without another client round trip. The audio is not stored. On the Tasks tab, or
-while a reply is still running, the transcript becomes composer text instead.
-This is separate from Echo. Android still uses the platform SpeechRecognizer.
+without another client round trip. The server does not retain the audio. Android
+keeps uncertain Chat clips in its private account-scoped outbox for exact-command
+retry until acceptance is recovered. Tasks and busy Chat use transcription-only
+requests, followed by task commands or a composer draft. This is separate from Echo.
 Physical microphone and language behavior still require device acceptance.
 
 Account profiles preserve the assistant's name, avatar selection and onboarding
