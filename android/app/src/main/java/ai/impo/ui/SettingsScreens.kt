@@ -99,8 +99,8 @@ import java.util.UUID
                 SectionLabel("Mode")
                 PaperCard {
                     listOf(
-                        "Balanced" to "DeepSeek V4.1 Flash · Fast and economical for everyday tasks.",
-                        "Power" to "GPT-6 Luna · GPT for reasoning and detailed work.",
+                        "Balanced" to "Fast and economical for everyday tasks.",
+                        "Power" to "More capable for reasoning and detailed work.",
                     ).forEach { (mode, description) ->
                         Row(Modifier.fillMaxWidth().selectable(
                             selected = state.profile.mode == mode,

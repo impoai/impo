@@ -27,6 +27,8 @@ export class FakeRebyte {
   historyReads = 0;
   failHistory = false;
   holdNextToolResult = false;
+  rejectNextAgentCreate = false;
+  rejectNextCreate = false;
   holdNextAgentCreate = false;
   holdNextCreate = false;
   holdNextInput = false;
@@ -195,6 +197,7 @@ export class FakeRebyte {
     const body = request.method === 'POST' ? await this.body(request) : undefined;
     this.requests.push({ method: request.method!, path, key, body });
     if (path === '/agents' && request.method === 'POST') {
+      if (this.rejectNextAgentCreate) { this.rejectNextAgentCreate = false; this.json(response, 400, { error: { message: 'Synthetic invalid reasoning', code: 'unsupported_parameter' } }); return; }
       assert.equal(typeof body?.model, 'string');
       assert.equal(typeof body?.instructions, 'string');
       assert.ok(body?.metadata && Object.keys(body.metadata).length, 'creation must carry recoverable Agent metadata');
@@ -211,6 +214,7 @@ export class FakeRebyte {
     }
     if (path === '/agents' && request.method === 'GET') { this.page(response, url, this.agents); return; }
     if (path === '/agents/sessions' && request.method === 'POST') {
+      if (this.rejectNextCreate) { this.rejectNextCreate = false; this.json(response, 400, { error: { message: 'Synthetic invalid reasoning', code: 'unsupported_parameter' } }); return; }
       // Chat and task Sessions run in a networked Rebyte Sandbox; background briefs need none.
       assert.deepEqual(body?.environment, ['main', 'task'].includes(body?.metadata?.instant_kind) ? { type: 'openai_hosted', network: { access: 'enabled' } } : { type: 'none' });
       assert.ok(body?.metadata && Object.keys(body.metadata).length, 'creation must carry recoverable binding metadata');
@@ -218,7 +222,8 @@ export class FakeRebyte {
       if (body?.agent_id) {
         const savedAgent = this.agents.find(value => value.id === body.agent_id);
         assert.ok(savedAgent, 'session references an existing saved Agent');
-        assert.ok(!body.agent || Object.keys(body.agent).every(key => ['model', 'instructions', 'tools'].includes(key)), 'a Session with agent_id may only override model/instructions/tools');
+        assert.ok(!body.agent || Object.keys(body.agent).every(key => ['model', 'instructions', 'tools', 'reasoning', 'service_tier', 'text'].includes(key)), 'a Session with agent_id accepts explicit model defaults');
+        if (body.agent?.model !== undefined) for (const key of ['reasoning', 'service_tier', 'text']) assert.equal(body.agent[key], null, 'Model changes reset inherited provider settings');
         agentView = { id: savedAgent.id, model: body.agent?.model ?? savedAgent.model, instructions: body.agent?.instructions ?? savedAgent.instructions, tools: body.agent?.tools ?? savedAgent.tools };
       } else {
         agentView = { id: 'agent_fake', ...body.agent };

@@ -47,6 +47,7 @@ occasion greetings independently from push notifications. Cards can be hidden
 indefinitely or for a week. Chat actions fill an editable draft, preserving existing
 text unless the user confirms replacement; they never send automatically.
 
-Model Settings synchronize `Balanced` (DeepSeek Flash) and `Power` (GPT-6 Luna).
+Mode Settings synchronize `Balanced` and `Power`. The UI describes each tier's
+benefit without exposing provider or model names.
 Current clients identify their catalog to the API; older builds keep their disabled
 preview instead of displaying the wrong model.

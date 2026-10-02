@@ -15,6 +15,8 @@ import pg from 'pg';
 import { FakeRebyte, type FakeSession, type JSONRecord } from './helpers/fake-rebyte.js';
 import { createDatabase } from '../src/db/client.js';
 import { RebyteRepository } from '../src/db/repositories/rebyte-repository.js';
+import { RebyteWorker } from '../src/worker/rebyte-worker.js';
+import { RebyteGateway } from '../src/rebyte/gateway.js';
 import { ServiceError } from '../src/errors.js';
 
 const directory = fileURLToPath(new URL('../', import.meta.url));
@@ -600,6 +602,44 @@ test('Rebyte SDK integration recovers remote side effects across local process f
         await assert.rejects(pool.query('UPDATE session_bindings SET context_token_estimate=-1 WHERE provider_session_id=$1', [replacement.id]), /session_bindings_context_token_estimate_check/);
       } finally { fake.failHistory = false; await stop(worker); }
     });
+    for (const resource of ['Agent', 'Session'] as const) {
+      await t.test(`definite ${resource} rejection ends waiting and permits a fresh submission`, async () => {
+        const connection = createDatabase(databaseURL!);
+        const gateway = new RebyteGateway({ apiKey: 'instant-fake-rebyte-key', baseURL: remoteURL, model: 'gpt-5.6-luna' });
+        const repository = new RebyteRepository(connection.db, { provider: 'rebyte', agentConfig: {
+          provider: 'rebyte', model: 'gpt-5.6-luna', instructions: 'Synthetic rejection test.', tools: [], useSavedAgent: true, baseURL: remoteURL,
+          environment: { type: 'openai_hosted', network: { access: 'enabled' } },
+        } });
+        const worker = new RebyteWorker(repository, gateway, { leaseMs: 2000, pollIntervalMs: 25, remotePollMs: 25 });
+        try {
+          const user = await repository.findOrCreateUser('local-dev', randomUUID(), 'Rejection test');
+          const text = `Rejected ${resource} input`;
+          const rejected = await repository.acceptMessage(user.id, { clientMessageId: randomUUID(), text });
+          const sessionsBefore = fake.sessions.length;
+          if (resource === 'Agent') fake.rejectNextAgentCreate = true;
+          else fake.rejectNextCreate = true;
+          assert.equal(await worker.tick(AbortSignal.timeout(10000)), true);
+          const row = (await pool.query(`SELECT s.status, s.error, b.is_current, b.status AS binding_status,
+            m.text, j.status AS job_status FROM runtime_submissions s
+            JOIN session_bindings b ON b.id=s.binding_id JOIN messages m ON m.id=s.user_message_id
+            JOIN outbox_jobs j ON j.submission_id=s.id WHERE s.id=$1`, [rejected.submissionId])).rows[0];
+          assert.equal(row.status, 'failed');
+          assert.equal(row.error.code, 'rebyte_creation_rejected');
+          assert.equal(row.is_current, false);
+          assert.equal(row.binding_status, 'failed');
+          assert.equal(row.text, text, 'input rejected before remote acceptance remains available');
+          assert.equal(row.job_status, 'completed');
+          assert.equal(fake.sessions.length, sessionsBefore, 'rejected creation has no Session or tool side effect');
+          assert.equal(await worker.tick(AbortSignal.timeout(10000)), false, 'a definite rejection must not loop');
+          const retried = await repository.acceptMessage(user.id, { clientMessageId: randomUUID(), text });
+          assert.equal(await worker.tick(AbortSignal.timeout(10000)), true);
+          assert.equal((await pool.query('SELECT status FROM runtime_submissions WHERE id=$1', [retried.submissionId])).rows[0].status, 'completed');
+          assert.equal(fake.sessions.length, sessionsBefore + 1);
+          const attempts = await pool.query(`SELECT status FROM ${resource === 'Agent' ? 'agent_creation_attempts' : 'session_creation_attempts'} WHERE user_id=$1 ORDER BY created_at`, [user.id]);
+          assert.deepEqual(attempts.rows.map(row => row.status), ['failed', 'succeeded']);
+        } finally { fake.rejectNextAgentCreate = false; fake.rejectNextCreate = false; await connection.close(); }
+      });
+    }
     assert.deepEqual(fake.errors, [], 'the real SDK must use the expected Agents API wire contract');
   } finally {
     await Promise.all([...processes].map(process => stop(process)));

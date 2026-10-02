@@ -19,6 +19,24 @@ export function toolResultPayload(result: Record<string, unknown>): { success: t
   return { success: false, error: `${error.code ?? 'device_tool_failed'}: ${error.message}` };
 }
 
+/** These HTTP responses prove creation was rejected before a resource was accepted. */
+export class RebyteCreationRejectedError extends Error {
+  constructor(readonly status: number, readonly providerCode?: string) {
+    super('Rebyte rejected resource creation');
+    this.name = 'RebyteCreationRejectedError';
+  }
+}
+async function creation<T>(request: () => Promise<T>): Promise<T> {
+  try { return await request(); }
+  catch (error) {
+    if (error instanceof Rebyte.APIError && error.status && [400, 401, 403, 404, 422].includes(error.status)) {
+      const code = (error.error as { code?: unknown } | undefined)?.code;
+      throw new RebyteCreationRejectedError(error.status, typeof code === 'string' && /^[a-z0-9_]{1,80}$/i.test(code) ? code : undefined);
+    }
+    throw error;
+  }
+}
+
 /** User input content parts; Instant sends device context and the user's own text as separate parts. */
 export type InputParts = Array<{ type: 'input_text'; text: string }>;
 
@@ -82,23 +100,28 @@ export class RebyteGateway {
   async createSession(input: { input: InputParts; metadata: Record<string, string>; agentId?: string; agent?: { model?: string; instructions?: string; tools?: AgentToolParam[] }; environment?: EnvironmentParam }, signal: AbortSignal): Promise<AgentSession> {
     signal.throwIfAborted();
     // With agentId, only pass explicit overrides; omitted fields inherit the saved Agent unchanged.
-    const override = input.agentId ? { ...(input.agent?.model !== undefined ? { model: input.agent.model } : {}), ...(input.agent?.instructions !== undefined ? { instructions: input.agent.instructions } : {}), ...(input.agent?.tools !== undefined ? { tools: input.agent.tools } : {}) } : undefined;
+    const override = input.agentId ? {
+      // Model-dependent defaults from a Saved Agent must not leak into another model.
+      ...(input.agent?.model !== undefined ? { model: input.agent.model, reasoning: null, service_tier: null, text: null } : {}),
+      ...(input.agent?.instructions !== undefined ? { instructions: input.agent.instructions } : {}),
+      ...(input.agent?.tools !== undefined ? { tools: input.agent.tools } : {}),
+    } : undefined;
     const agent = input.agentId
       ? (Object.keys(override!).length ? override : undefined)
       : { model: input.agent?.model ?? this.model, instructions: input.agent?.instructions ?? mainInstructions, tools: input.agent?.tools ?? [] };
-    return this.client.beta.agents.sessions.create({
+    return creation(() => this.client.beta.agents.sessions.create({
       environment: input.environment ?? { type: 'none' },
       ...(input.agentId ? { agent_id: input.agentId } : {}),
       ...(agent ? { agent } : {}),
       input: [{ role: 'user', content: input.input }],
       metadata: input.metadata,
-    }, { signal });
+    }, { signal }));
   }
 
   /** Not idempotent upstream: an uncertain response requires metadata reconciliation. */
   async createAgent(input: { model: string; instructions: string; tools: AgentToolParam[]; metadata: Record<string, string> }, signal: AbortSignal): Promise<Agent> {
     signal.throwIfAborted();
-    return this.client.beta.agents.create({ model: input.model, instructions: input.instructions, tools: input.tools, metadata: input.metadata }, { signal });
+    return creation(() => this.client.beta.agents.create({ model: input.model, instructions: input.instructions, tools: input.tools, metadata: input.metadata }, { signal }));
   }
 
   async findAgents(metadata: Record<string, string>, signal: AbortSignal): Promise<Agent[]> {

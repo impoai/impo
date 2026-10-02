@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { Rebyte } from '@rebyteai/agent-sdk';
-import { RebyteGateway, RebytePaginationLimitError, REBYTE_INSTRUCTIONS } from '../src/rebyte/gateway.js';
+import { RebyteGateway, RebyteCreationRejectedError, RebytePaginationLimitError, REBYTE_INSTRUCTIONS } from '../src/rebyte/gateway.js';
 import { deviceTools } from '../src/tools/device-tools.js';
 
 type Call = { url: URL; method: string; headers: Headers; body: unknown; signal: AbortSignal };
@@ -83,6 +83,31 @@ test('Rebyte Session creation with agentId and no override omits agent entirely,
   assert.equal(body.agent_id, 'agent-one');
   assert.equal('agent' in body, false);
 });
+
+test('changing a Saved Agent model clears provider-specific defaults', async t => {
+  const { gateway, calls } = fixture(t, () => json(session('sess-one')));
+  await gateway.createSession({ input: [{ type: 'input_text', text: 'hello' }], metadata: {}, agentId: 'agent-one', agent: { model: 'deepseek-flash' } }, signal());
+  assert.deepEqual((calls[0].body as { agent: unknown }).agent, { model: 'deepseek-flash', reasoning: null, service_tier: null, text: null });
+});
+
+for (const status of [400, 401, 403, 404, 422, 408, 409, 429, 500, 502]) {
+  test(`creation classifies HTTP ${status} without replaying the request`, async t => {
+    const { gateway, calls } = fixture(t, () => Response.json({ error: { message: 'Private provider details', code: 'unsupported_parameter' } }, { status }));
+    const definite = [400, 401, 403, 404, 422].includes(status);
+    for (const operation of [
+      () => gateway.createSession({ input: [{ type: 'input_text', text: 'hello' }], metadata: {} }, signal()),
+      () => gateway.createAgent({ model: 'deepseek-flash', instructions: 'test', tools: [], metadata: {} }, signal()),
+    ]) await assert.rejects(operation(), error => {
+      if (!definite) return error instanceof Rebyte.APIError && error.status === status;
+      assert.ok(error instanceof RebyteCreationRejectedError);
+      assert.equal(error.status, status);
+      assert.equal(error.providerCode, 'unsupported_parameter');
+      assert.ok(!error.message.includes('Private'));
+      return true;
+    });
+    assert.equal(calls.length, 2);
+  });
+}
 
 test('Rebyte recovery paginates and exactly matches every metadata field', async t => {
   const metadata = { instant_binding_id: 'binding-one', instant_attempt_id: 'attempt-one' };

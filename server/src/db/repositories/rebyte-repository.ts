@@ -72,11 +72,11 @@ export class RebyteRepository extends RuntimeRepository {
       }
       if (!userAgent) throw new Error('User Agent binding missing after insert');
       if (userAgent.status === 'active' && userAgent.providerAgentId) return { userAgent, attempt: undefined, mayCreate: false as const };
-      const [existing] = await tx.select().from(agentCreationAttempts).where(eq(agentCreationAttempts.userAgentId, userAgent.id)).orderBy(asc(agentCreationAttempts.createdAt)).limit(1);
+      const [existing] = await tx.select().from(agentCreationAttempts).where(and(eq(agentCreationAttempts.userAgentId, userAgent.id), ne(agentCreationAttempts.status, 'failed'))).orderBy(asc(agentCreationAttempts.createdAt)).limit(1);
       if (existing) return { userAgent, attempt: existing, mayCreate: false as const };
       const [attempt] = await tx.insert(agentCreationAttempts).values({
         userId: submission.userId, userAgentId: userAgent.id, status: 'unknown',
-        requestHash: createHash('sha256').update(userAgent.id).digest('hex'),
+        requestHash: createHash('sha256').update(`${userAgent.id}/${submission.id}`).digest('hex'),
       }).returning();
       await tx.update(userAgents).set({ status: 'unknown', updatedAt: new Date() }).where(eq(userAgents.id, userAgent.id));
       return { userAgent, attempt: attempt!, mayCreate: true as const };
@@ -386,6 +386,26 @@ export class RebyteRepository extends RuntimeRepository {
     });
   }
 
+  /** A definite provider rejection has no remote side effect to reconcile. */
+  async rejectCreation(job: ClaimedJob): Promise<void> {
+    await this.withLease(job, async (tx, submission) => {
+      const error = { code: 'rebyte_creation_rejected', message: 'The assistant could not start this reply. Please try again.', retryable: false };
+      const [binding] = await tx.select().from(sessionBindings).where(eq(sessionBindings.id, submission.bindingId));
+      if (!binding || binding.providerSessionId || submission.inputAcknowledged || submission.providerTurnId) throw new Error('Creation rejection cannot change accepted work');
+      await tx.update(sessionCreationAttempts).set({ status: 'failed', error, updatedAt: new Date() })
+        .where(and(eq(sessionCreationAttempts.bindingId, binding.id), eq(sessionCreationAttempts.status, 'unknown')));
+      const [agent] = await tx.select().from(userAgents).where(eq(userAgents.userId, submission.userId));
+      if (agent && !agent.providerAgentId) {
+        await tx.update(agentCreationAttempts).set({ status: 'failed', error, updatedAt: new Date() })
+          .where(and(eq(agentCreationAttempts.userAgentId, agent.id), eq(agentCreationAttempts.status, 'unknown')));
+        await tx.update(userAgents).set({ status: 'failed', updatedAt: new Date() }).where(eq(userAgents.id, agent.id));
+      }
+      await tx.update(sessionBindings).set({ status: 'failed', isCurrent: false, updatedAt: new Date() }).where(eq(sessionBindings.id, binding.id));
+      await this.finish(tx, submission, 'failed', [{ type: 'error', errorText: error.message }], error);
+      await this.completeJob(tx, job);
+    });
+  }
+
   async failSession(job: ClaimedJob): Promise<void> {
     await this.withLease(job, async (tx, submission) => {
       await tx.update(sessionBindings).set({ status: 'failed', updatedAt: new Date() }).where(eq(sessionBindings.id, submission.bindingId));
@@ -404,13 +424,16 @@ export class RebyteRepository extends RuntimeRepository {
   }
 
   /**
-   * A finished run keeps no chat content: Rebyte holds the conversation. Messages keep IDs,
+   * After remote acceptance, a finished run keeps no chat content: Rebyte holds the conversation. Messages keep IDs,
    * order and status; tool receipts keep hashes, status and outcome; a task keeps a placeholder title.
    * Stream events stay briefly for viewers still reading the tail (see sweepStreamEvents).
    */
   protected override async finish(tx: Transaction, submission: Submission, status: 'completed' | 'failed' | 'cancelled', chunks: UIMessageChunk[], error?: Submission['error']) {
     await super.finish(tx, submission, status, chunks, error);
-    await tx.update(messages).set({ text: '', parts: [], updatedAt: new Date() }).where(inArray(messages.id, [submission.userMessageId, submission.assistantMessageId]));
+    const [binding] = await tx.select({ sessionId: sessionBindings.providerSessionId }).from(sessionBindings).where(eq(sessionBindings.id, submission.bindingId));
+    // Before remote acceptance, PostgreSQL holds the only copy of the user's input.
+    const projected = binding?.sessionId ? [submission.userMessageId, submission.assistantMessageId] : [submission.assistantMessageId];
+    await tx.update(messages).set({ text: '', parts: [], updatedAt: new Date() }).where(inArray(messages.id, projected));
     // Keep only the outcome (ok and error code): no arguments, data or provider messages.
     await tx.update(toolInvocations).set({ arguments: {}, updatedAt: new Date(), result: sql`CASE WHEN ${toolInvocations.result} IS NULL THEN NULL
         ELSE jsonb_strip_nulls(jsonb_build_object('ok', ${toolInvocations.result}->'ok', 'error', CASE WHEN ${toolInvocations.result} ? 'error' THEN jsonb_build_object('code', ${toolInvocations.result}->'error'->'code') END)) END` })

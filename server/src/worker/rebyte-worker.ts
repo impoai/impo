@@ -4,7 +4,7 @@ import { dispatchTool } from '../tools/dispatcher.js';
 import { LeaseLostError } from '../errors.js';
 import { RebyteRepository } from '../db/repositories/rebyte-repository.js';
 import type { ClaimedJob } from '../db/repositories/runtime-repository.js';
-import { RebyteGateway, type AgentToolParam, type EnvironmentParam, type InputParts } from '../rebyte/gateway.js';
+import { RebyteCreationRejectedError, RebyteGateway, type AgentToolParam, type EnvironmentParam, type InputParts } from '../rebyte/gateway.js';
 import { appendDynamicContext } from '../prompts/index.js';
 import { turnFiles } from '../rebyte/files.js';
 
@@ -41,7 +41,11 @@ export class RebyteWorker {
     try { await this.drive(job, signal); }
     catch (error) {
       if (stop.aborted) throw error;
-      if (!(error instanceof LeaseLostError) && !signal.aborted) {
+      if (error instanceof RebyteCreationRejectedError && !signal.aborted) {
+        process.stderr.write(JSON.stringify({ event: 'rebyte_creation_rejected', jobId: job.id, status: error.status, code: error.providerCode }) + '\n');
+        try { await this.repository.rejectCreation(job); }
+        catch (writeError) { if (!(writeError instanceof LeaseLostError)) throw writeError; }
+      } else if (!(error instanceof LeaseLostError) && !signal.aborted) {
         // Never emit raw provider errors: they can contain prompts or credentials.
         process.stderr.write(JSON.stringify({ event: 'rebyte_reconcile_pending', jobId: job.id }) + '\n');
         try { await this.repository.defer(job, 'rebyte_reconciliation_pending', Math.min(30_000, 500 * 2 ** Math.min(job.attempts, 6))); }

@@ -59,8 +59,8 @@ struct SettingsView: View {
                         sectionLabel(model.modeLoaded ? "Mode" : "Mode preview")
                         LibraryCard {
                             VStack(alignment: .leading, spacing: 12) {
-                                modeChoice("Balanced", description: "DeepSeek V4.1 Flash · Fast and economical for everyday tasks.")
-                                modeChoice("Power", description: "GPT-6 Luna · GPT for reasoning and detailed work.")
+                                modeChoice("Balanced", description: "Fast and economical for everyday tasks.")
+                                modeChoice("Power", description: "More capable for reasoning and detailed work.")
                                 Text(model.modeLoaded
                                      ? "Applies to your next chat reply, task and Brief on all your devices. Work already running keeps its current model."
                                      : "Preview the upcoming model options. Switching is not available yet.")
