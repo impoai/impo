@@ -1,7 +1,7 @@
 # Brief content contract
 
-Status: proposed v2, 2026-10-02. This document defines the next implementation;
-the current production generator and native clients still use the legacy shape.
+Status: implemented v2, 2026-10-02. iOS build 55 and Android 0.1.9 render
+the shared actions and account preferences. Legacy editions retain their schema.
 
 Brief helps the user discover useful next steps, understand relevant updates, and
 get more value from Impo. A recap is one possible card, not the purpose of every
@@ -68,7 +68,7 @@ state and eligible action:
       "body": "Connect Gmail to ask Impo which messages need a reply and draft responses for you to review.",
       "bullets": [],
       "sourceIds": [],
-      "contextIds": ["connection:gmail:disconnected:v3"],
+      "contextIds": ["connection:gmail:disconnected"],
       "links": [],
       "action": {
         "id": "connect:gmail",
@@ -92,7 +92,7 @@ may not create records itself.
 
 | Context | What the server supplies and checks |
 | --- | --- |
-| Connections | Supported toolkit, authoritative connection state, verified usable permissions/capabilities, and freshness. Unknown or failed lookup is not disconnected. Google sign-in is not authorization to Gmail or Calendar. |
+| Connections | Supported toolkit, authoritative connection state and freshness. Actual tool permissions are checked when the user requests an action in Chat. Unknown or failed lookup is not disconnected. Google sign-in is not authorization to Gmail or Calendar. |
 | Features | Stable feature ID, actual behavior, release/enablement state, supported platforms and minimum builds, and known exposure/use state. Absence of analytics does not prove a user has never used a feature. |
 | External results | Results fetched through an authorized integration, with owned provenance, fetch time, scope and expiry. A connected account alone is not evidence of unread messages or an upcoming event. |
 | Occasions | Stable occasion ID, verified date/year/calendar, applicable region, local time zone and source. Language alone does not determine religion, cultural observance or holiday preference. |
@@ -103,10 +103,10 @@ The eligible action catalog uses a small fixed vocabulary:
 
 | Action kind | Behavior after a user tap |
 | --- | --- |
-| `chat_draft` | Open an editable Chat draft with its brief/source reference. Preserve an existing draft or ask the user before replacing it. Nothing is sent until the user presses Send. |
+| `chat_draft` | Open the card’s editable Chat draft. Preserve an existing draft or ask the user before replacing it. Nothing is sent until the user presses Send. |
 | `connect` | Open the existing connection detail/authorization flow for the server-selected toolkit. Never authorize silently. |
 | `open_feature` | Navigate to a registered feature, such as scheduled tasks, Echo speaker review or Echo reminder settings. |
-| `open_resource` | Open an owned task/result/source, or an allowlisted public reference. Recheck ownership at access. |
+| `open_resource` | Open the supplied owned task. Recheck ownership at access. |
 
 The model returns an action ID, not a URL, route, OAuth scope, API request, or
 executable command. The server resolves the ID to a structured client action and
@@ -121,7 +121,7 @@ implementation need not introduce automatic background inbox access.
 
 ## Composition and repetition
 
-Initial policy defaults, to be implemented server-side:
+Server policy defaults:
 
 - Prefer one to three relevant cards, at most five. Lead with a useful next step
   when one exists; do not require every edition to contain every type.
@@ -201,4 +201,20 @@ cross-device repetition and dismissal; source revocation; account switching;
 draft preservation; and backward-compatible rendering. Live model checks must
 show relevant next steps rather than relabeled summaries, without making any
 external changes. Publication and native releases follow implementation and
-validation; this contract alone changes no runtime behavior.
+validation.
+
+
+## Implemented API and initial catalogs
+
+- `POST /api/v1/today/client` with `{"version":2}` registers support for native actions without rewriting preferences. Settings updates can also include `briefClientVersion: 2`.
+- `PUT /api/v1/today/settings` accepts `contentPreferences: { categories: { suggestion, recap, connect, feature, occasion }, occasionCalendar }`. All category values are booleans; the calendar is `none`, `gregorian`, or `chinese`. Omitted preferences are preserved for older clients.
+- `POST /api/v1/today/briefs/:id/cards/:cardId/action` resolves an owned, visible, unexpired action after rechecking current eligibility.
+- `POST /api/v1/today/briefs/:id/cards/:cardId/feedback` accepts `{"action":"dismiss"}` or `{"action":"snooze"}` (seven days). `POST /api/v1/today/topics/reset` restores hidden suggestions; exposure cooldowns remain.
+
+Preferences and topic state are JSONB columns on `today_settings`. Publication locks this row while accepting exposure and content. Reads hide disabled categories and hidden topics; delivery rechecks these and card expiry. Historical cards may remain after expiry, but cannot perform expired actions.
+
+Initial connector candidates are Gmail, Google Calendar, Google Drive and Outlook. Features are scheduled tasks, Echo reminders and Echo speaker selection, with recorded adoption checks. Registration of a v2 client gates these suggestions. The generator has no external tools and does not read inbox contents in the background.
+
+Occasions require an explicit calendar choice (default `none`). The maintained catalog contains New Year and Mid-Autumn dates verified through 2027; this is not a universal holiday calendar. Each introduction has exactly one context. Actions open native destinations or editable drafts; they never send automatically.
+
+Run `npm run test:brief:live` for four isolated real Agent examples: a personal next step, a connection offer, an inbox-review offer and a greeting. The command deletes only its own provider Sessions and saves private review samples under `.local/brief-guidance/`.

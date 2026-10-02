@@ -342,8 +342,11 @@ public struct InstantClient: Sendable {
     public func todaySettings() async throws -> TodaySettingsResponse {
         try await send("GET", ["today", "settings"])
     }
-    public func configureToday(timeZone: String, locale: String, displayName: String, slots: [TodaySlot]? = nil, location: TodayLocation? = nil, clearLocation: Bool = false) async throws -> TodaySettingsResponse {
-        var body: [String: JSONValue] = ["timeZone": .string(timeZone), "locale": .string(locale), "displayName": .string(displayName)]
+    public func configureToday(timeZone: String, locale: String, displayName: String, slots: [TodaySlot]? = nil, location: TodayLocation? = nil, clearLocation: Bool = false, contentPreferences: TodayContentPreferences? = nil) async throws -> TodaySettingsResponse {
+        var body: [String: JSONValue] = ["timeZone": .string(timeZone), "locale": .string(locale), "displayName": .string(displayName), "briefClientVersion": .number(2)]
+        if let preferences = contentPreferences {
+            body["contentPreferences"] = .object(["categories": .object(preferences.categories.mapValues { .bool($0) }), "occasionCalendar": .string(preferences.occasionCalendar)])
+        }
         if let slots {
             body["slots"] = .array(slots.map { .object(["id": .string($0.id), "label": .string($0.label), "hour": .number(Double($0.hour)), "enabled": .bool($0.enabled)]) })
         }
@@ -366,6 +369,17 @@ public struct InstantClient: Sendable {
     public func deleteTodayBrief(_ id: String) async throws {
         struct Response: Decodable { let status: String }
         let _: Response = try await send("DELETE", ["today", "briefs", id])
+    }
+    public func todayCardAction(briefID: String, cardID: String) async throws -> TodayActionResponse {
+        try await send("POST", ["today", "briefs", briefID, "cards", cardID, "action"], body: .object([:]))
+    }
+    public func todayCardFeedback(briefID: String, cardID: String, action: String) async throws {
+        struct Response: Decodable { let status: String }
+        let _: Response = try await send("POST", ["today", "briefs", briefID, "cards", cardID, "feedback"], body: .object(["action": .string(action)]))
+    }
+    public func resetTodayTopics() async throws {
+        struct Response: Decodable { let status: String }
+        let _: Response = try await send("POST", ["today", "topics", "reset"], body: .object([:]))
     }
 
     public func memorySummary() async throws -> MemorySummary { try await send("GET", ["memories", "summary"]) }
@@ -619,6 +633,7 @@ public struct InstantClient: Sendable {
         request.timeoutInterval = 15
         let token = try await tokenProvider.token()
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("2", forHTTPHeaderField: "X-Impo-Model-Catalog")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return request
     }

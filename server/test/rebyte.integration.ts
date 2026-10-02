@@ -549,7 +549,7 @@ test('Rebyte SDK integration recovers remote side effects across local process f
     await t.test('account mode overrides the existing Saved Agent model and preserves main history', async () => {
       const before = fake.sessions.at(-1)!;
       const count = fake.agents.length;
-      const response = await fetch(`${baseURL}/api/v1/profile`, { method: 'PATCH', headers: { Authorization: 'Bearer instant-dev-bob', 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'Power' }) });
+      const response = await fetch(`${baseURL}/api/v1/profile`, { method: 'PATCH', headers: { Authorization: 'Bearer instant-dev-bob', 'Content-Type': 'application/json', 'X-Impo-Model-Catalog': '2' }, body: JSON.stringify({ mode: 'Power' }) });
       assert.equal(response.status, 200);
       fake.answers.push('Power mode reply');
       const accepted = await submit('Continue with Power mode', randomUUID(), 'bob');
@@ -557,7 +557,7 @@ test('Rebyte SDK integration recovers remote side effects across local process f
       try {
         await state(accepted.submissionId, 'completed', 'bob');
         const session = fake.sessions.find(s => s.turns.some(turn => turn.text === accepted.text))!;
-        assert.equal(session.agent.model, 'gpt-6-sol');
+        assert.equal(session.agent.model, 'gpt-6-luna');
         assert.equal(fake.agents.length, count, 'changing mode reuses the account Saved Agent');
         assert.equal(session.agent.id, before.agent.id);
         assert.notEqual(session.id, before.id);

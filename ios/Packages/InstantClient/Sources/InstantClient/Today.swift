@@ -21,6 +21,14 @@ public struct TodaySettings: Codable, Equatable, Sendable {
     public var displayName: String
     public var location: TodayLocation?
     public var slots: [TodaySlot]
+    public var contentPreferences: TodayContentPreferences?
+}
+public struct TodayContentPreferences: Codable, Equatable, Sendable {
+    public var categories: [String: Bool]
+    public var occasionCalendar: String
+    public init(categories: [String: Bool] = ["suggestion": true, "recap": true, "connect": true, "feature": true, "occasion": true], occasionCalendar: String = "none") {
+        self.categories = categories; self.occasionCalendar = occasionCalendar
+    }
 }
 public struct TodaySettingsResponse: Codable, Sendable { public let settings: TodaySettings? }
 public struct TodayPage: Codable, Sendable { public let briefs: [TodayBrief]; public let nextCursor: String? }
@@ -46,6 +54,10 @@ public struct TodayContent: Codable, Equatable, Sendable {
     public let cards: [TodayCard]
 }
 public struct TodayCard: Codable, Equatable, Sendable {
+    public let id: String?
+    public let type: String?
+    public let expiresAt: String?
+    public let action: TodayAction?
     public let style: String
     public let eyebrow: String
     public let title: String
@@ -54,6 +66,14 @@ public struct TodayCard: Codable, Equatable, Sendable {
     public let sourceIds: [String]
     public let links: [TodayLink]
 }
+public struct TodayAction: Codable, Equatable, Sendable {
+    public let id: String
+    public let kind: String
+    public let target: String
+    public let label: String
+    public let prompt: String?
+}
+public struct TodayActionResponse: Codable, Sendable { public let action: TodayAction }
 public struct TodayLink: Codable, Equatable, Sendable { public let title: String; public let url: String }
 public struct TodaySource: Codable, Equatable, Identifiable, Sendable {
     public let id: String

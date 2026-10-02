@@ -35,7 +35,7 @@ import java.time.LocalDate
     var filter by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Brief?>(null) }
     Column(Modifier.fillMaxSize()) {
-        PageHeader("Brief", "A fresh perspective on your day.", actions = {
+        PageHeader("Brief", "A useful next step for your day.", actions = {
             IconButton(onClick = { filter = !filter }) { Icon(Icons.Outlined.DateRange, "Filter Brief by date") }
             IconButton(onClick = { go("brief-settings") }, modifier = Modifier.testTag("brief.settings")) { Icon(Icons.Outlined.Tune, "Brief settings") }
             IconButton(onClick = { vm.refreshBriefs(date = date.ifBlank { null }) }) { Icon(Icons.Outlined.Refresh, "Refresh Brief") }
@@ -46,16 +46,20 @@ import java.time.LocalDate
         }
         BusyLine("briefs" in state.busy)
         ErrorNotice(state.errors["briefs"], { vm.refreshBriefs(date = date.ifBlank { null }) })
+        ErrorNotice(state.errors["briefAction"])
         LazyColumn(Modifier.fillMaxSize().testTag("brief.list"), contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
             if (state.briefs.isEmpty() && "briefs" !in state.busy) item { EmptyState("A little perspective, when it's time", "Your editions will appear here at the times you choose.", "Set up Brief", { go("brief-settings") }) }
-            items(state.briefs, key = { it.id }) { brief -> BriefEdition(brief, go, { deleting = brief }) }
+            items(state.briefs, key = { it.id }) { brief -> BriefEdition(brief, go, { deleting = brief }, "briefAction" in state.busy,
+                { card -> card.id?.let { vm.briefAction(brief.id, it, go) } },
+                { card, action -> card.id?.let { vm.briefFeedback(brief.id, it, action) } }) }
             if (state.briefCursor != null) item { TextButton(onClick = { vm.refreshBriefs(more = true, date = date.ifBlank { null }) }, enabled = "briefs" !in state.busy) { Text("Earlier editions") } }
         }
     }
     deleting?.let { brief -> ConfirmRemoval("Delete this Brief?", "This edition will be removed from your history.", { deleting = null }) { vm.deleteBrief(brief.id); deleting = null } }
 }
 
-@Composable private fun BriefEdition(brief: Brief, go: (String) -> Unit, remove: () -> Unit) {
+@Composable private fun BriefEdition(brief: Brief, go: (String) -> Unit, remove: () -> Unit, busy: Boolean,
+    act: (BriefCard) -> Unit, feedback: (BriefCard, String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var exporting by remember { mutableStateOf(false) }
@@ -99,6 +103,20 @@ import java.time.LocalDate
                 Text(card.title, style = MaterialTheme.typography.titleLarge)
                 RichResponse(card.body, showActions = false)
                 card.bullets.forEach { RichResponse("• $it", showActions = false) }
+                if (card.id != null) {
+                    var options by remember(card.id) { mutableStateOf(false) }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        card.action?.let { action -> Button(onClick = { act(card) }, enabled = !busy, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("brief.action.${card.id}")) { Text(action.label) } }
+                        Spacer(Modifier.weight(if (card.action == null) 1f else .05f))
+                        Box {
+                            IconButton(onClick = { options = true }, modifier = Modifier.testTag("brief.options.${card.id}")) { Icon(Icons.Outlined.MoreHoriz, "Suggestion options") }
+                            DropdownMenu(options, { options = false }) {
+                                DropdownMenuItem(text = { Text("Hide for a week") }, onClick = { options = false; feedback(card, "snooze") })
+                                DropdownMenuItem(text = { Text("Hide this suggestion") }, onClick = { options = false; feedback(card, "dismiss") })
+                            }
+                        }
+                    }
+                }
                 card.links.forEach { link -> if (link.url.startsWith("https://") || link.url.startsWith("http://")) TextButton(onClick = { openWeb(context, link.url) }) { Text(link.title) } }
                 brief.sources.filter { it.id in card.sourceIds }.forEach { source ->
                     TextButton(onClick = { go("source/${brief.id}/${source.recordId}") }, modifier = Modifier.testTag("brief.source.${source.recordId}")) { Icon(Icons.Outlined.FormatQuote, null); Spacer(Modifier.width(6.dp)); Text(source.title) }

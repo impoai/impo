@@ -1,4 +1,6 @@
 import { modelModes } from './model-modes.js';
+import { ConnectorService } from './composio/connector-service.js';
+import { ConnectorRepository } from './db/repositories/connector-repository.js';
 import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
 import { scheduledTaskActivities, ScheduledTaskProvisioner } from './scheduling/worker.js';
 import { ListeningBatchRepository } from './db/repositories/listening-batch-repository.js';
@@ -78,7 +80,7 @@ try {
         ...(config.notificationsEnabled ? echoScheduleActivities(new EchoScheduleRepository(database.db)) : {}),
         ...(config.notificationsEnabled && config.fcm ? notificationActivities(new NotificationRepository(database.db), new FCMSender(config.fcm)) : {}),
         ...createBackgroundActivities(users, config.rebyte ? [
-          todayStep(new TodayRepository(database.db, archive, new RebyteGateway(config.rebyte)), new RebyteGateway(config.rebyte), config.rebyte.model, 2000, modelModes),
+          todayStep(new TodayRepository(database.db, archive, new RebyteGateway(config.rebyte), { connectors: config.composio ? new ConnectorService(new ConnectorRepository(database.db), config.composio) : undefined, schedulingEnabled: true }), new RebyteGateway(config.rebyte), config.rebyte.model, 2000, modelModes),
           ...(memoryStore ? [memoryStep(new MemoryRepository(database.db, archive, new RebyteGateway(config.rebyte)), memoryStore, new RebyteGateway(config.rebyte), { model: config.rebyte.model })] : []),
         ] : []),
         ...(transcriber ? createListeningActivities(new ListeningBatchRepository(database.db), transcriber, archive, audioObjects) : {}),

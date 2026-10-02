@@ -27,6 +27,7 @@ data class AppState(
     val recordErrors: Set<String> = emptySet(), val selectedRecord: EchoRecord? = null,
     val source: BriefSource? = null, val busy: Set<String> = emptySet(), val errors: Map<String, String> = emptyMap(),
     val pendingTask: String? = null,
+    val pendingBriefDraft: String? = null,
     val schedules: List<ScheduledTask> = emptyList(), val selectedSchedule: ScheduledTask? = null,
     val scheduleRuns: List<ScheduledTaskRun> = emptyList(), val scheduleCursor: String? = null,
 )
@@ -161,7 +162,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshAll() {
         launch("chat") { mutable.value.chat?.refresh() }
         refreshTasks(); refreshBriefs(); refreshMemories(); refreshEcho(); refreshConnectors()
-        launch("briefSettings") { client -> val settings = client.briefSettings(); ensureCurrentAccount(); mutable.update { it.copy(briefSettings = settings) } }
+        launch("briefSettings") { client -> client.registerBriefClient(); val settings = client.briefSettings(); ensureCurrentAccount(); mutable.update { it.copy(briefSettings = settings) } }
     }
     fun resumed() { devices.start(); launch("chat") { mutable.value.chat?.refresh() }; retryProfile(); refreshTasks(); refreshConnectors() }
     fun paused() { devices.stop() }
@@ -277,11 +278,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun deleteBrief(id: String) { launch("briefs") { it.deleteBrief(id); ensureCurrentAccount(); refreshBriefs() } }
+    fun briefAction(briefId: String, cardId: String, go: (String) -> Unit) { launch("briefAction") { client ->
+        val action = client.briefAction(briefId, cardId); ensureCurrentAccount()
+        when (action.kind) {
+            "chat_draft" -> { mutable.update { it.copy(pendingBriefDraft = action.prompt) }; go("chat") }
+            "connect" -> go("connections/${action.target}")
+            "open_resource" -> go("task/${action.target}")
+            "open_feature" -> when (action.target) {
+                "scheduled-tasks" -> go("scheduled-tasks")
+                "echo-schedule" -> go("echo-schedule")
+                "echo-speakers" -> go("memories")
+            }
+        }
+    } }
+    fun consumeBriefDraft() { mutable.update { it.copy(pendingBriefDraft = null) } }
+    fun briefFeedback(briefId: String, cardId: String, action: String) { launch("briefAction") { client ->
+        client.briefFeedback(briefId, cardId, action); ensureCurrentAccount(); refreshBriefs()
+    } }
+    fun resetBriefTopics() { launch("briefSettings") { client -> client.resetBriefTopics(); ensureCurrentAccount(); refreshBriefs() } }
     fun loadSource(briefId: String, recordId: String) {
         mutable.update { it.copy(source = null) }
         launch("source", replacePrevious = true) { client -> val source = client.briefSource(briefId, recordId); ensureCurrentAccount(); mutable.update { it.copy(source = source) } }
     }
-    fun saveBriefSettings(value: BriefSettings, done: () -> Unit) { launch("briefSettings") { client -> val saved = client.updateBriefSettings(value); ensureCurrentAccount(); mutable.update { it.copy(briefSettings = saved) }; done() } }
+    fun saveBriefSettings(value: BriefSettings, done: () -> Unit) { launch("briefSettings") { client -> val saved = client.updateBriefSettings(value); ensureCurrentAccount(); mutable.update { it.copy(briefSettings = saved) }; refreshBriefs(); done() } }
     fun defaultBriefSettings() = BriefSettings(ZoneId.systemDefault().id, Locale.getDefault().toLanguageTag(), mutable.value.profile.displayName,
         slots = listOf(BriefSlot("morning", "Morning Brief", 8, true), BriefSlot("midday", "Midday Brief", 13, true), BriefSlot("evening", "Evening Brief", 20, true)))
     fun refreshMemories(category: String? = mutable.value.memoryCategory, more: Boolean = false) {

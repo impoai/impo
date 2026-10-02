@@ -31,10 +31,12 @@ test('profile mode is authenticated, account-owned, validated and preserved by l
   const server = createApiServer(runtime, { profiles });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1/profile`;
-  const request = (token: string, body?: unknown) => fetch(url, { method: body ? 'PATCH' : 'GET', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const request = (token: string, body?: unknown) => fetch(url, { method: body ? 'PATCH' : 'GET', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Impo-Model-Catalog': '2' }, ...(body ? { body: JSON.stringify(body) } : {}) });
   try {
     assert.equal((await request('wrong', { mode: 'Power' })).status, 401);
     assert.equal((await (await request('instant-dev-alice')).json()).mode, 'Balanced');
+    const legacy = await fetch(url, { headers: { Authorization: 'Bearer instant-dev-alice' } });
+    assert.equal((await legacy.json()).mode, undefined, 'older clients must not label the new GPT route as Sol');
     for (const mode of ['power', 'gpt-6-sol', '', null, 1]) assert.equal((await request('instant-dev-alice', { mode })).status, 400);
     assert.equal((await request('instant-dev-alice', { mode: 'Power', userId: randomUUID() })).status, 400);
     assert.equal((await (await request('instant-dev-alice', { mode: 'Power' })).json()).mode, 'Power');

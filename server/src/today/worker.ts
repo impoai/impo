@@ -5,7 +5,8 @@ import { RebyteGateway } from '../rebyte/gateway.js';
 import { briefConfigVersion, briefInstructions, parseBriefContent } from './contract.js';
 import { TodayRepository } from '../db/repositories/today-repository.js';
 import { appendDynamicContext } from '../prompts/index.js';
-import { todayRepairPrompt } from '../prompts/today.js';
+import { todayRepairPrompt, todayGuidanceInstructions } from '../prompts/today.js';
+import { parseBriefContentV2 } from './content.js';
 
 export const todayLog = (event: string, fields: Record<string, unknown>) => console.log(JSON.stringify({ event: `today.${event}`, at: new Date().toISOString(), ...fields }));
 
@@ -31,11 +32,11 @@ export function todayStep(repository: TodayRepository, gateway: RebyteGateway, m
           const selectedModel = modes ? await repository.selectedModel(row.userId, modes) : model;
           row = await repository.patch(row, { creationStartedAt: new Date(), model: selectedModel, configVersion: briefConfigVersion });
           // The durable intent precedes the network request. Unknown outcomes must be found, never blindly re-created.
-          const instructions = appendDynamicContext(briefInstructions, {
+          const instructions = appendDynamicContext(input.guidance ? todayGuidanceInstructions : briefInstructions, {
             profile: input.profile, locale: input.locale, localDate: input.localDate, timeZone: input.timeZone,
             trigger: { kind: input.kind, label: input.label, cutoff: input.cutoff },
           });
-          session = await gateway.createSession({ input: [{ type: 'input_text', text: JSON.stringify(input) }], metadata, agent: { model: selectedModel, instructions, tools: [{ type: 'web_search', context_size: 'low', mode: 'live' }] } }, signal);
+          session = await gateway.createSession({ input: [{ type: 'input_text', text: JSON.stringify(input) }], metadata, agent: { model: selectedModel, instructions, tools: input.guidance ? [] : [{ type: 'web_search', context_size: 'low', mode: 'live' }] } }, signal);
         } else {
           const matches = await gateway.findSessions(metadata, signal);
           if (matches.length !== 1) throw new Error('today_creation_reconciliation_pending');
@@ -62,7 +63,7 @@ export function todayStep(repository: TodayRepository, gateway: RebyteGateway, m
           if (!item || item.type !== 'message' || !item.id) throw new Error('today_output_not_ready');
           const text = item.content.map(p => p.type === 'output_text' ? p.text : '').join('');
           let content;
-          try { content = parseBriefContent(text, input.sources, items.some(i => i.type === 'web_search_call' && i.status === 'completed')); }
+          try { content = input.guidance ? parseBriefContentV2(text, input) : parseBriefContent(text, input.sources, items.some(i => i.type === 'web_search_call' && i.status === 'completed')); }
           catch {
             if (!row.repairCount) { row = await repository.patch(row, { repairCount: 1 }); continue; }
             await repository.fail(row, 'invalid_output'); todayLog('failed', { briefId: row.id, code: 'invalid_output' }); return;

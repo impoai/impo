@@ -2,12 +2,16 @@ import { sql } from 'drizzle-orm';
 import { check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { users } from './chat.js';
 import type { BriefContent, BriefInput, BriefSlot, BriefLocation } from '../../today/contract.js';
+import { defaultBriefPreferences, type BriefPreferences, type BriefTopics } from '../../today/content.js';
 
 export const todaySettings = pgTable('today_settings', {
   userId: uuid('user_id').primaryKey().references(() => users.id),
   timeZone: text('time_zone').notNull(), locale: text('locale').notNull(),
   displayName: text('display_name').notNull().default(''), location: jsonb('location').$type<BriefLocation>(),
   slots: jsonb('slots').$type<BriefSlot[]>().notNull(),
+  contentPreferences: jsonb('content_preferences').$type<BriefPreferences>().notNull().default(defaultBriefPreferences),
+  topics: jsonb('topics').$type<BriefTopics>().notNull().default({}),
+  briefClientVersion: integer('brief_client_version').notNull().default(1),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [check('today_settings_slots_array', sql`jsonb_typeof(${t.slots}) = 'array'`)]);
 

@@ -14,14 +14,16 @@ import { FakeRebyte } from './helpers/fake-rebyte.js';
 import { ProfileRepository } from '../src/db/repositories/profile-repository.js';
 import { modelModes } from '../src/model-modes.js';
 import { briefConfigVersion } from '../src/today/contract.js';
+import type { BriefContextProvider } from '../src/today/context.js';
+import { defaultBriefPreferences } from '../src/today/content.js';
 
 const slots = [{ id: 'morning', label: 'Morning Brief', hour: 0, enabled: true }];
 const context = (userId: string) => ({ userId, scheduledAt: Date.now(), tickId: randomUUID(), idempotencyKey: randomUUID(), signal: AbortSignal.timeout(20000) });
 const quiet = JSON.stringify({ title: 'A little room for your day', summary: 'There is not enough shared information for personal suggestions yet.', cards: [] });
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, provider: BriefContextProvider = {}) {
   const db = createDatabase(process.env.DATABASE_URL!);
-  const repository = new TodayRepository(db.db);
+  const repository = new TodayRepository(db.db, undefined, undefined, provider);
   const userId = randomUUID(); const otherId = randomUUID();
   await db.db.insert(users).values([userId, otherId].map(id => ({ id, authProvider: 'today-test', authSubject: id, name: 'Test user' })));
   await repository.configure(userId, { timeZone: 'Asia/Shanghai', locale: 'en', slots });
@@ -69,6 +71,61 @@ test('Brief only receives confirmed self speech and withdraws after a speaker co
   assert.equal(withdrawn.status, 'withdrawn'); assert.equal(withdrawn.content, null); assert.deepEqual(withdrawn.sources, []);
 });
 
+test('Brief guidance persists preferences and cooldowns, fences actions and feedback by owner and current state', { timeout: 30000 }, async t => {
+  let status: 'disconnected' | 'connected' = 'disconnected';
+  const f = await fixture(t, { connectors: {
+    list: async () => [{ toolkit: 'gmail', name: 'Gmail', featured: true, status }],
+    getStatus: async () => ({ status }), refresh: async () => ({ status }),
+  } });
+  await f.repository.configure(f.userId, { timeZone: 'Asia/Shanghai', locale: 'en', briefClientVersion: 2, contentPreferences: defaultBriefPreferences });
+  const card = { type: 'connect', eyebrow: 'Email', title: 'Get help reviewing email', body: 'Connect Gmail to ask Impo for help reviewing your inbox.', sourceIds: [], contextIds: ['connection:gmail:disconnected'], action: { id: 'connect:gmail', label: 'Connect Gmail', prompt: null } };
+  f.fake.answers.push(JSON.stringify({ title: 'A useful next step', summary: 'Bring email into Impo when you are ready.', cards: [card] }));
+  const step = todayStep(f.repository, f.gateway, 'test-model', 15);
+  await step.run(context(f.userId));
+  const first = (await f.repository.list(f.userId, 1)).briefs[0]!;
+  assert.equal(first.content!.schemaVersion, 2); const cardId = first.content!.cards[0]!.id!;
+  assert.equal((await f.repository.cardAction(f.userId, first.id, cardId)).action.kind, 'connect');
+  assert.ok((await f.repository.settings(f.userId))!.topics['connection:gmail']!.shownAt);
+  await assert.rejects(f.repository.cardAction(f.otherId, first.id, cardId), { code: 'not_found' });
+  await assert.rejects(f.repository.feedback(f.otherId, first.id, cardId, { action: 'dismiss' }), { code: 'not_found' });
+  const notifications = await f.db.db.select().from(notificationEvents).where(eq(notificationEvents.userId, f.userId));
+  assert.equal(notifications.length, 1, 'one nonempty edition records one notification event');
+  await step.run(context(f.userId));
+  assert.equal(f.fake.sessions.length, 1);
+  await f.repository.configure(f.userId, { timeZone: 'Asia/Shanghai', locale: 'en', contentPreferences: { ...defaultBriefPreferences, categories: { ...defaultBriefPreferences.categories, connect: false } } });
+  assert.equal((await f.repository.list(f.userId, 1)).briefs[0]!.content!.cards.length, 0);
+  await f.repository.configure(f.userId, { timeZone: 'Asia/Shanghai', locale: 'en', contentPreferences: defaultBriefPreferences });
+  status = 'connected';
+  await assert.rejects(f.repository.cardAction(f.userId, first.id, cardId), { code: 'brief_action_expired' });
+  status = 'disconnected';
+  await f.repository.feedback(f.userId, first.id, cardId, { action: 'snooze' });
+  assert.equal((await f.repository.list(f.userId, 1)).briefs[0]!.content!.cards.length, 0);
+  await f.repository.resetTopics(f.userId);
+  assert.equal((await f.repository.list(f.userId, 1)).briefs[0]!.content!.cards.length, 1);
+  await f.repository.feedback(f.userId, first.id, cardId, { action: 'dismiss' });
+  assert.equal((await f.repository.settings(f.userId))!.topics['connection:gmail']!.dismissed, true);
+  await f.repository.configure(f.userId, { timeZone: 'Asia/Shanghai', locale: 'en', slots: [{ id: 'later', label: 'Later', hour: 0, enabled: true }] });
+  await f.repository.ensureDue(f.userId); const next = (await f.repository.claim(f.userId))!;
+  const input = await f.repository.input(next);
+  assert.equal(input.guidance!.contexts.length, 0, 'dismissal and cooldown persist across slots and workers');
+  assert.deepEqual((await f.repository.settings(f.userId))!.contentPreferences, defaultBriefPreferences, 'legacy context sync preserves category preferences');
+  await f.repository.release(next);
+});
+
+test('Brief publication rechecks connection changes after generation starts', async t => {
+  let status: 'disconnected' | 'connected' = 'disconnected';
+  const f = await fixture(t, { connectors: { list: async () => [{ toolkit: 'gmail', name: 'Gmail', featured: true, status }], getStatus: async () => ({ status }), refresh: async () => ({ status }) } });
+  await f.repository.configure(f.userId, { timeZone: 'Asia/Shanghai', locale: 'en', briefClientVersion: 2 });
+  await f.repository.ensureDue(f.userId); const row = (await f.repository.claim(f.userId))!;
+  const input = await f.repository.input(row);
+  const { parseBriefContentV2 } = await import('../src/today/content.js');
+  const content = parseBriefContentV2(JSON.stringify({ title: 'Email help', summary: 'Connect when useful.', cards: [{ type: 'connect', eyebrow: 'Email', title: 'Connect Gmail', body: 'Ask Impo to help review email.', sourceIds: [], contextIds: ['connection:gmail:disconnected'], action: { id: 'connect:gmail', label: 'Connect Gmail', prompt: null } }] }), input);
+  status = 'connected';
+  await f.repository.complete({ ...row, input }, content, { providerAgentId: null, providerTurnId: 'turn', providerItemId: 'item' });
+  assert.equal((await f.repository.owned(f.userId, row.id)).status, 'withdrawn');
+  assert.equal((await f.db.db.select().from(notificationEvents).where(eq(notificationEvents.userId, f.userId))).length, 0);
+});
+
 test('Today editions: concurrent workers, cross-tick dedup, history pagination, API ownership and deletion', { timeout: 30000 }, async t => {
   const f = await fixture(t); f.fake.answers.push(quiet);
   const step = todayStep(f.repository, f.gateway, 'test-model', 15);
@@ -78,9 +135,7 @@ test('Today editions: concurrent workers, cross-tick dedup, history pagination, 
   const first = (await f.repository.list(f.userId, 1)).briefs[0]!;
   assert.equal(first.status, 'completed'); assert.ok(first.content);
   const notifications = await f.db.db.select().from(notificationEvents).where(eq(notificationEvents.userId, f.userId));
-  assert.equal(notifications.length, 1, 'Concurrent/retried hourly steps create only one notification event');
-  assert.equal(notifications[0]!.category, 'brief'); assert.equal(notifications[0]!.targetId, first.id);
-  assert.equal(notifications[0]!.status, 'suppressed', 'No registered installation means no historical delivery');
+  assert.equal(notifications.length, 0, 'Empty editions must not send contentless notifications');
   const stored = await f.repository.owned(f.userId, first.id);
   assert.ok(stored.providerSessionId); assert.ok(stored.providerTurnId); assert.ok(stored.providerItemId);
   const session = f.fake.sessions[0]!;
@@ -154,7 +209,7 @@ test('source changes and deletion during generation cannot publish stale content
   await assert.rejects(f.repository.patch(row, { content: { title: 'Stale', summary: 'Should never appear', cards: [] }, status: 'completed' }));
   // A new edition cites the owned source, then disappears if that source is edited.
   await f.repository.configure(f.userId, { timeZone: 'Asia/Shanghai', locale: 'en', slots: [{ id: 'midday', label: 'Midday Brief', hour: 0, enabled: true }] });
-  f.fake.answers.push(JSON.stringify({ title: 'A follow-up', summary: 'A proposal was mentioned.', cards: [{ style: 'plan', eyebrow: 'Follow-up', title: 'Review the proposal', body: 'Your message mentions a proposal.', bullets: [], sourceIds: [`message:${messageId}`], links: [] }] }));
+  f.fake.answers.push(JSON.stringify({ title: 'A follow-up', summary: 'Prepare your next step.', cards: [{ type: 'suggestion', eyebrow: 'Follow-up', title: 'Review the proposal', body: 'Read the proposal once before sending it tomorrow.', bullets: [], sourceIds: [`message:${messageId}`], contextIds: [], links: [], action: null }] }));
   await todayStep(f.repository, f.gateway, 'test-model', 15).run(context(f.userId));
   const brief = (await f.repository.list(f.userId, 10)).briefs[0]!; assert.equal(brief.status, 'completed');
   await f.db.db.update(messages).set({ text: 'Corrected note' }).where(eq(messages.id, messageId));

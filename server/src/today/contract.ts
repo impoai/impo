@@ -1,4 +1,5 @@
 import type { EchoLocationContext } from '../listening/location.js';
+import type { BriefGuidance, BriefResolvedAction, BriefType } from './content.js';
 export interface BriefSlot { id: string; label: string; hour: number; enabled: boolean }
 export const defaultBriefSlots: BriefSlot[] = [
   { id: 'early', label: 'Early Brief', hour: 6, enabled: false },
@@ -15,6 +16,7 @@ export interface BriefInput {
   localDate: string; timeZone: string; locale: string; kind: string; label: string;
   cutoff: string; sources: BriefSource[]; truncated: boolean;
   profile: { displayName: string; location: BriefLocation | null };
+  guidance?: BriefGuidance;
 }
 export interface BriefLocation { city: string; country: string; capturedAt: string; source?: 'device' | 'manual' }
 export function currentBriefLocation(location: BriefLocation | null, now: Date): BriefLocation | null {
@@ -23,11 +25,13 @@ export function currentBriefLocation(location: BriefLocation | null, now: Date):
 }
 export interface BriefLink { title: string; url: string }
 export interface BriefCard {
+  id?: string; type?: BriefType; contextIds?: string[]; topicKey?: string; expiresAt?: string;
+  action?: BriefResolvedAction | null;
   eyebrow: string; title: string; body: string; bullets: string[]; sourceIds: string[];
   style: 'focus' | 'plan' | 'reflection' | 'discovery'; links: BriefLink[];
 }
-export interface BriefContent { title: string; summary: string; cards: BriefCard[] }
-export const briefConfigVersion = 'today.v4';
+export interface BriefContent { schemaVersion?: number; generatedAt?: string; title: string; summary: string; cards: BriefCard[] }
+export const briefConfigVersion = 'today.v5';
 
 export function localClock(at: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(at);

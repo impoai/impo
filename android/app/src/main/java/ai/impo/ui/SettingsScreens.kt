@@ -100,7 +100,7 @@ import java.util.UUID
                 PaperCard {
                     listOf(
                         "Balanced" to "DeepSeek V4.1 Flash · Fast and economical for everyday tasks.",
-                        "Power" to "GPT-6 Sol · Stronger reasoning for complex work.",
+                        "Power" to "GPT-6 Luna · GPT for reasoning and detailed work.",
                     ).forEach { (mode, description) ->
                         Row(Modifier.fillMaxWidth().selectable(
                             selected = state.profile.mode == mode,
@@ -203,10 +203,10 @@ import java.util.UUID
         dismissButton = { TextButton(onClick = { debug = false }) { Text("Cancel") } })
 }
 
-@Composable fun ConnectionsScreen(vm: AppViewModel, state: AppState, back: () -> Unit, onContinue: (() -> Unit)? = null) {
+@Composable fun ConnectionsScreen(vm: AppViewModel, state: AppState, back: () -> Unit, onContinue: (() -> Unit)? = null, initialToolkit: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var search by rememberSaveable { mutableStateOf("") }
+    var search by rememberSaveable(initialToolkit) { mutableStateOf(initialToolkit.orEmpty()) }
     var calendarGranted by remember { mutableStateOf(vm.deviceAdapter.calendarGranted) }
     var contactsGranted by remember { mutableStateOf(vm.deviceAdapter.contactsGranted) }
     var healthGrants by remember { mutableStateOf(emptySet<String>()) }
@@ -246,7 +246,7 @@ import java.util.UUID
         ErrorNotice(error)
         if (onContinue != null) ErrorNotice(state.errors["profile"], if ("profile" !in state.busy) vm::retryProfile else null)
         LazyColumn(Modifier.weight(1f).testTag("connections.list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
+            if (initialToolkit == null) item {
                 SectionLabel("On this Android device")
                 PaperCard {
                     SettingsToggle("Calendar", when {
@@ -351,6 +351,8 @@ import java.util.UUID
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val initial = state.briefSettings ?: vm.defaultBriefSettings()
+    var content by rememberSaveable(initial, stateSaver = Saver<ai.impo.client.BriefContentPreferences, String>(
+        save = { ProtocolJson.encodeToString(it) }, restore = { ProtocolJson.decodeFromString(it) })) { mutableStateOf(initial.contentPreferences ?: ai.impo.client.BriefContentPreferences()) }
     var name by rememberSaveable(initial) { mutableStateOf(initial.displayName) }
     var zone by rememberSaveable(initial) { mutableStateOf(initial.timeZone) }
     var locale by rememberSaveable(initial) { mutableStateOf(initial.locale) }
@@ -378,6 +380,22 @@ import java.util.UUID
         PageHeader("Brief preferences", "A little perspective, at your pace.", back)
         BusyLine("briefSettings" in state.busy)
         Column(Modifier.weight(1f).imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            PaperCard {
+                Text("What appears in Brief", style = MaterialTheme.typography.titleLarge)
+                listOf("suggestion" to "Next steps", "recap" to "Useful updates", "connect" to "Connection suggestions", "feature" to "Feature tips", "occasion" to "Occasion greetings").forEach { (key, label) ->
+                    SettingsToggle(label, "", content.categories[key] != false, "briefSettings.category.$key") { value -> content = content.copy(categories = content.categories + (key to value)) }
+                }
+                if (content.categories["occasion"] != false) {
+                    Text("Occasion calendar", style = MaterialTheme.typography.titleSmall)
+                    listOf("none" to "None", "gregorian" to "New Year", "chinese" to "New Year and Mid-Autumn").forEach { (key, label) ->
+                        Row(Modifier.fillMaxWidth().clickable { content = content.copy(occasionCalendar = key) }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(content.occasionCalendar == key, { content = content.copy(occasionCalendar = key) }); Text(label)
+                        }
+                    }
+                }
+                Text("Push notifications are controlled separately. Mid-Autumn dates are verified through 2027.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { vm.resetBriefTopics() }, enabled = "briefSettings" !in state.busy) { Text("Restore hidden suggestions") }
+            }
             PaperCard {
                 Text("Your context", style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(name, { name = it.take(100) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("briefSettings.name"))
@@ -424,7 +442,7 @@ import java.util.UUID
                         chosenLocation?.let { city.trim() == it.city && country.trim() == it.country } == true -> chosenLocation
                         else -> BriefLocation(city.trim(), country.trim(), wireTimestamp(Instant.now()), "manual")
                     }
-                    vm.saveBriefSettings(BriefSettings(zone.trim(), locale.trim(), name.trim(), location, slots.map { it.copy(label = it.label.trim()) }), back)
+                    vm.saveBriefSettings(BriefSettings(zone.trim(), locale.trim(), name.trim(), location, slots.map { it.copy(label = it.label.trim()) }, content), back)
                 }
             }, enabled = "briefSettings" !in state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("briefSettings.save")) { Text("Save preferences") }
             Spacer(Modifier.height(20.dp))

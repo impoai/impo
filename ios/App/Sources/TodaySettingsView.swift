@@ -6,6 +6,7 @@ struct TodaySettingsView: View {
     @Environment(TodayModel.self) private var today
     @Environment(\.dismiss) private var dismiss
     @State private var slots: [TodaySlot] = []
+    @State private var content = TodayContentPreferences()
     @State private var busy = false
     @State private var error: String?
     @Environment(ClientPermissions.self) private var permissions
@@ -14,6 +15,22 @@ struct TodaySettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    ForEach([("suggestion", "Next steps"), ("recap", "Useful updates"), ("connect", "Connection suggestions"), ("feature", "Feature tips"), ("occasion", "Occasion greetings")], id: \.0) { key, label in
+                        Toggle(label, isOn: Binding(get: { content.categories[key] ?? true }, set: { content.categories[key] = $0 }))
+                            .accessibilityIdentifier("today.category.\(key)")
+                    }
+                    if content.categories["occasion"] != false {
+                        Picker("Occasion calendar", selection: $content.occasionCalendar) {
+                            Text("None").tag("none")
+                            Text("New Year").tag("gregorian")
+                            Text("New Year and Mid-Autumn").tag("chinese")
+                        }
+                    }
+                    Button("Restore hidden suggestions") {
+                        Task { busy = true; defer { busy = false }; do { try await today.resetSuggestions() } catch { self.error = error.localizedDescription } }
+                    }.disabled(busy || !today.isLive)
+                } header: { Text("What appears in Brief") } footer: { Text("Choose useful next steps, updates and tips. Push notifications are controlled separately in Notifications. Mid-Autumn dates are verified through 2027.") }
                 Section {
                     ForEach($slots) { $slot in
                         VStack(alignment: .leading, spacing: 8) {
@@ -62,11 +79,11 @@ struct TodaySettingsView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { Task { busy = true; do { try await today.save(slots: slots); dismiss() } catch { self.error = error.localizedDescription; busy = false } } }
+                        Button("Save") { Task { busy = true; do { try await today.save(slots: slots, contentPreferences: content); dismiss() } catch { self.error = error.localizedDescription; busy = false } } }
                             .disabled(busy || slots.isEmpty || !today.isLive).accessibilityIdentifier("today.settings-save")
                     }
                 }
-        }.onAppear { slots = today.settings?.slots ?? [] }
+        }.onAppear { slots = today.settings?.slots ?? []; content = today.settings?.contentPreferences ?? TodayContentPreferences() }
             .task { await permissions.refreshStatus() }
             .sheet(isPresented: $showManualCity) { ManualCityView().swipeToDismiss() }
     }

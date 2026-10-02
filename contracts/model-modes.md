@@ -20,7 +20,7 @@ the server preference. Signing out clears the previous account's visible choice.
 | Mode | Intended model | Rebyte ID |
 | --- | --- | --- |
 | Balanced | DeepSeek V4.1 Flash | `deepseek-flash` |
-| Power | GPT-6 Sol | `gpt-6-sol` |
+| Power | GPT-6 Luna | `gpt-6-luna` |
 
 Clients cannot submit arbitrary model IDs or provider credentials. Main Chat,
 direct and delegated Tasks, scheduled occurrences and Brief all use the account
@@ -36,26 +36,10 @@ retryable `409 config_upgrade_pending` until that work ends. Brief creation reco
 the selected model before the remote request; recovery reconciles that same Session
 regardless of subsequent preference edits.
 
-## Deployment status and prerequisites
+## Availability and compatibility
 
-Implemented and locally verified on 2026-10-02; production rollout is blocked by
-paid-model access. A repeat live test on 2026-10-02 completed with the official
-`deepseek-flash` ID using the same key and endpoint as production. The earlier
-unsupported-model response is no longer reproducible. `gpt-6-sol` Session
-creation still fails with HTTP 403; the provider requires purchased credits or
-an active subscription for that model. The existing production GPT Luna route
-previously completed a control probe. No credentials, billing entitlements or
-production services were changed during these checks.
+Real Agent Session probes passed for both routes on 2026-10-02 using the production key and endpoint. GPT-6 Sol requires paid access on that account; this release uses the available GPT-6 Luna route with matching native labels. No billing entitlement was changed.
 
-Before deploying this feature, resolve paid GPT access or agree on a supported
-replacement with truthful native labels, then run `npm run test:model-modes:live` for real Session acceptance with both
-modes. This uses the configured Rebyte credentials, runs synthetic prompts, and
-removes only its own test Sessions. Offline verification is
-`npm run test:model-modes` and the native account/profile and UI suites. Push the additive Drizzle
-profile column and check constraint before releasing API/Worker and native clients.
-Do not deploy the new default routing while either mode is unavailable.
+Clients send `X-Impo-Model-Catalog: 2` on authenticated API requests. Only those clients receive `mode` and may change it. Earlier builds receive the legacy profile shape and retain their disabled preview instead of labeling Luna as Sol. A legacy mode update returns `409 model_catalog_upgrade_required`.
 
-The iOS client can be distributed ahead of the model-routing backend: a legacy
-profile response without `mode` shows a disabled **Mode preview**, with neither
-choice presented as active. This does not enable model switching or change the
-production model. Keep the backend rollout prerequisites above in place.
+Run `npm run test:model-modes:live` before release. It uses synthetic prompts and deletes only its own Sessions. Offline validation is `npm run test:model-modes` plus native account/profile and interaction tests. Deploy the additive `user_profiles.mode` column and check before releasing API/Worker, then iOS build 55 and Android 0.1.9.

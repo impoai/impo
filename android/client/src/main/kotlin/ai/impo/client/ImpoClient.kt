@@ -247,9 +247,12 @@ class ImpoClient(
     }
 
     suspend fun briefSettings(): BriefSettings? = get<SettingsResponse>(listOf("today", "settings")).settings
+    suspend fun registerBriefClient() { send<JsonObject>("POST", listOf("today", "client"), buildJsonObject { put("version", 2) }) }
     /** Full replacement of editable fields; null location explicitly clears it. */
     suspend fun updateBriefSettings(settings: BriefSettings): BriefSettings {
         val body = ProtocolJson.encodeToJsonElement(settings).jsonObject.toMutableMap()
+        body["briefClientVersion"] = JsonPrimitive(2)
+        if (settings.contentPreferences == null) body.remove("contentPreferences")
         if (settings.location == null) body["location"] = JsonNull
         return send<SettingsResponse>("PUT", listOf("today", "settings"), JsonObject(body)).settings
             ?: throw ProtocolException("Settings response is missing settings")
@@ -262,6 +265,13 @@ class ImpoClient(
     suspend fun briefSource(briefId: String, recordId: String): BriefSource =
         get(listOf("today", "briefs", identifier(briefId), "sources", identifier(recordId)))
     suspend fun deleteBrief(briefId: String) { delete(listOf("today", "briefs", identifier(briefId)), "deleted") }
+    suspend fun briefAction(briefId: String, cardId: String): BriefAction =
+        send<BriefActionResponse>("POST", listOf("today", "briefs", identifier(briefId), "cards", identifier(cardId), "action"), JsonObject(emptyMap())).action
+    suspend fun briefFeedback(briefId: String, cardId: String, action: String) {
+        require(action in setOf("dismiss", "snooze"))
+        send<JsonObject>("POST", listOf("today", "briefs", identifier(briefId), "cards", identifier(cardId), "feedback"), buildJsonObject { put("action", action) })
+    }
+    suspend fun resetBriefTopics() { send<JsonObject>("POST", listOf("today", "topics", "reset"), JsonObject(emptyMap())) }
     suspend fun memorySummary(): MemorySummary = get(listOf("memories", "summary"))
     suspend fun memories(category: String? = null, cursor: String? = null, limit: Int = 30): MemoryPage {
         require(limit in 1..100)
@@ -351,7 +361,7 @@ class ImpoClient(
             path.forEach { addPathSegment(it) }
             query.forEach { (key, value) -> addQueryParameter(key, value) }
         }.build()
-        return Request.Builder().url(url).method(method, if (method == "GET" || (method == "DELETE" && body == null)) null else (body ?: JsonObject(emptyMap())).toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        return Request.Builder().url(url).header("X-Impo-Model-Catalog", "2").method(method, if (method == "GET" || (method == "DELETE" && body == null)) null else (body ?: JsonObject(emptyMap())).toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
     }
     private data class AuthorizedResponse(val call: Call, val response: Response)
     private suspend fun authorizedResponse(request: Request, session: SessionToken): AuthorizedResponse {

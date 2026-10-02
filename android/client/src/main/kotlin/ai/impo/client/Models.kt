@@ -116,12 +116,20 @@ fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
 @Serializable data class BriefSettings(
     val timeZone: String, val locale: String, val displayName: String = "",
     val location: BriefLocation? = null, val slots: List<BriefSlot> = emptyList(),
+    val contentPreferences: BriefContentPreferences? = null,
 )
+@Serializable data class BriefContentPreferences(
+    val categories: Map<String, Boolean> = mapOf("suggestion" to true, "recap" to true, "connect" to true, "feature" to true, "occasion" to true),
+    val occasionCalendar: String = "none",
+)
+@Serializable data class BriefAction(val id: String, val kind: String, val target: String, val label: String, val prompt: String? = null)
+@Serializable internal data class BriefActionResponse(val action: BriefAction)
 @Serializable data class BriefLink(val title: String, val url: String)
 @Serializable data class BriefCard(
     val style: String, val eyebrow: String, val title: String, val body: String,
     val bullets: List<String> = emptyList(), val sourceIds: List<String> = emptyList(),
     val links: List<BriefLink> = emptyList(),
+    val id: String? = null, val type: String? = null, val expiresAt: String? = null, val action: BriefAction? = null,
 )
 @Serializable data class BriefContent(val title: String, val summary: String, val cards: List<BriefCard>)
 @Serializable data class BriefSource(

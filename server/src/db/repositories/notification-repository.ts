@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNull, lt, or, sql, gt, isNotNull } from 'drizzle-orm';
 import type { Database } from '../client.js';
-import { notificationSettings, notificationEvents, notificationDeliveries, pushInstallations, todayBriefs } from '../schema.js';
+import { notificationSettings, notificationEvents, notificationDeliveries, pushInstallations, todayBriefs, todaySettings } from '../schema.js';
 import type { Transaction } from './runtime-repository.js';
 import { ServiceError } from '../../errors.js';
 import { categories, defaultNotificationSettings, notificationLifetimeMs, presenceWindowMs, type NotificationCategory, type NotificationSettings, type Registration, type Revocation } from '../../notifications/contract.js';
+import { briefCardVisible, defaultBriefPreferences } from '../../today/content.js';
 import { parseEchoSchedule } from '../../echo/schedule.js';
 
 type Query = Database | Transaction;
@@ -91,8 +92,13 @@ export class NotificationRepository {
       let valid = event && installation && event.expiresAt.getTime() > Date.now() && installation.userId === event.userId && installation.registrationId === delivery.registrationId
         && installation.tokenHash === delivery.tokenHash && installation.token && installation.enabled && !installation.revoked && await allowed(tx, event.userId, event.category);
       if (valid && event!.category === 'brief') {
-        const [brief] = await tx.select({ id: todayBriefs.id }).from(todayBriefs).where(and(eq(todayBriefs.userId, event!.userId), eq(todayBriefs.id, event!.targetId), eq(todayBriefs.status, 'completed')));
+        const [brief] = await tx.select({ content: todayBriefs.content }).from(todayBriefs).where(and(eq(todayBriefs.userId, event!.userId), eq(todayBriefs.id, event!.targetId), eq(todayBriefs.status, 'completed')));
         valid = !!brief;
+        if (brief?.content?.schemaVersion === 2) {
+          const [settings] = await tx.select().from(todaySettings).where(eq(todaySettings.userId, event!.userId));
+          valid = brief.content.cards.some(c => briefCardVisible(c, settings?.contentPreferences ?? defaultBriefPreferences, settings?.topics ?? {})
+            && (!c.expiresAt || Date.parse(c.expiresAt) > Date.now()));
+        }
       }
       if (valid && event!.category === 'echo') {
         const [settings] = await tx.select().from(notificationSettings).where(eq(notificationSettings.userId, event!.userId));

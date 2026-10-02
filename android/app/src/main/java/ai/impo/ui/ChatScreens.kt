@@ -140,6 +140,18 @@ import ai.impo.data.AppViewModel
 @Composable private fun MessageComposer(vm: AppViewModel, conversation: ConversationState, send: (String) -> Unit, cancel: () -> Unit,
     prefix: String, available: Boolean, sessionKey: Any?, isCurrent: () -> Boolean) {
     var text by rememberSaveable(sessionKey) { mutableStateOf("") }
+    val appState by vm.state.collectAsStateWithLifecycle()
+    val suggestion = appState.pendingBriefDraft.takeIf { prefix == "chat" }
+    var chooseDraft by remember(sessionKey) { mutableStateOf(false) }
+    LaunchedEffect(suggestion) {
+        if (suggestion != null && isCurrent()) {
+            if (text.isBlank()) { text = suggestion; vm.consumeBriefDraft() } else chooseDraft = true
+        }
+    }
+    if (chooseDraft && suggestion != null) AlertDialog(onDismissRequest = { chooseDraft = false; vm.consumeBriefDraft() },
+        title = { Text("Use this Brief suggestion?") }, text = { Text("You already have a message in progress. Nothing will be sent automatically.") },
+        confirmButton = { TextButton(onClick = { if (isCurrent()) text = suggestion; chooseDraft = false; vm.consumeBriefDraft() }) { Text("Replace draft") } },
+        dismissButton = { TextButton(onClick = { chooseDraft = false; vm.consumeBriefDraft() }) { Text("Keep current draft") } })
     ServerVoiceComposer(vm, text, { text = it }, conversation.activeSubmissionIds.isNotEmpty() || (conversation.busy && conversation.pendingVoice == null),
         !conversation.hasPendingMessage && available && !conversation.loading, send, cancel, prefix, sessionKey, isCurrent,
         sendVoiceToChat = prefix == "chat", allowVoice = available, admissionPending = conversation.pendingVoice?.transcribing == true)

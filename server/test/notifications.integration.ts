@@ -4,7 +4,7 @@ import { after, test } from 'node:test';
 import { once } from 'node:events';
 import { eq } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
-import { users, notificationEvents, notificationDeliveries, pushInstallations } from '../src/db/schema.js';
+import { users, notificationEvents, notificationDeliveries, pushInstallations, todayBriefs, todaySettings } from '../src/db/schema.js';
 import { NotificationRepository, enqueueNotification } from '../src/db/repositories/notification-repository.js';
 import { notificationActivities, NotificationProvisioner } from '../src/notifications/worker.js';
 import { TestWorkflowEnvironment } from '@temporalio/testing';
@@ -144,4 +144,21 @@ test('Temporal outbox discovery deduplicates workflows and resumes a retryable d
       assert.equal((await repository.pending()).length, 0);
     });
   } finally { await worker.close(); await env.teardown(); }
+});
+
+
+test('Brief delivery suppresses cards hidden or disabled after generation, and expired cards', async () => {
+  const { defaultBriefPreferences } = await import('../src/today/content.js');
+  for (const reason of ['dismissed', 'disabled', 'expired']) {
+    const f = await fixture(); const id = randomUUID();
+    await database.db.insert(todaySettings).values({ userId: f.alice, timeZone: 'UTC', locale: 'en', slots: [],
+      contentPreferences: { ...defaultBriefPreferences, categories: { ...defaultBriefPreferences.categories, suggestion: reason !== 'disabled' } },
+      topics: reason === 'dismissed' ? { test: { dismissed: true } } : {} });
+    await database.db.insert(todayBriefs).values({ id, userId: f.alice, localDate: '2026-10-02', timeZone: 'UTC', slotId: 'test', slotLabel: 'Test', scheduledAt: new Date(), status: 'completed', configVersion: 'test', providerSessionId: 'session', providerTurnId: 'turn', providerItemId: 'item',
+      content: { schemaVersion: 2, title: 'Test', summary: 'Test', cards: [{ id: 'a', type: 'suggestion', topicKey: 'test', style: 'plan', eyebrow: 'Test', title: 'Test', body: 'Test', bullets: [], sourceIds: [], links: [], expiresAt: new Date(Date.now() + (reason === 'expired' ? -60000 : 60000)).toISOString() }] } });
+    await database.db.transaction(tx => enqueueNotification(tx, { userId: f.alice, sourceKey: id, category: 'brief', targetId: id }));
+    const [event] = await database.db.select().from(notificationEvents).where(eq(notificationEvents.sourceKey, id));
+    const [delivery] = await f.repo.deliveries(event!.id);
+    assert.ok(delivery); assert.equal(await f.repo.claim(delivery.id), undefined, reason);
+  }
 });

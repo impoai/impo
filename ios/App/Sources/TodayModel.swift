@@ -78,13 +78,35 @@ final class TodayModel {
             ListeningDiagnostics.shared.record(event, ["code": api.code, "status": String(api.statusCode), "requestId": api.requestId ?? ""])
         } else { ListeningDiagnostics.shared.error(event, error) }
     }
-    func save(slots: [TodaySlot]? = nil, location: TodayLocation? = nil, clearLocation: Bool = false) async throws {
+    func save(slots: [TodaySlot]? = nil, location: TodayLocation? = nil, clearLocation: Bool = false, contentPreferences: TodayContentPreferences? = nil) async throws {
         guard let client else { throw TodayError.offline }
         let token = revision
         let response = try await client.configureToday(timeZone: TimeZone.current.identifier, locale: Locale.preferredLanguages.first ?? Locale.current.identifier,
-            displayName: settings?.displayName ?? "", slots: slots, location: location, clearLocation: clearLocation)
+            displayName: settings?.displayName ?? "", slots: slots, location: location, clearLocation: clearLocation, contentPreferences: contentPreferences)
         guard token == revision else { throw CancellationError() }
         settings = response.settings
+    }
+    func action(brief: TodayBrief, card: TodayCard) async throws -> TodayAction {
+        guard let client, let id = card.id else { throw TodayError.offline }
+        let token = revision
+        let response = try await client.todayCardAction(briefID: brief.id, cardID: id)
+        guard token == revision else { throw CancellationError() }
+        return response.action
+    }
+    func feedback(brief: TodayBrief, card: TodayCard, action: String) async throws {
+        guard let client, let id = card.id else { throw TodayError.offline }
+        let token = revision
+        try await client.todayCardFeedback(briefID: brief.id, cardID: id, action: action)
+        guard token == revision else { throw CancellationError() }
+        let updated = try await client.todayBrief(brief.id)
+        guard token == revision else { throw CancellationError() }
+        if let index = briefs.firstIndex(where: { $0.id == brief.id }) { briefs[index] = updated }
+    }
+    func resetSuggestions() async throws {
+        guard let client else { throw TodayError.offline }
+        let token = revision; try await client.resetTodayTopics()
+        guard token == revision else { throw CancellationError() }
+        await refresh()
     }
     func source(for brief: TodayBrief, source: TodaySource) async throws -> TodaySource {
         guard let client else { throw TodayError.offline }

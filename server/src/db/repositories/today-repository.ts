@@ -2,9 +2,11 @@ import { personalTranscript } from '../../listening/speakers.js';
 import type { ModelModes } from '../../model-modes.js';
 import { userProfiles } from '../schema.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql, ne, isNull } from 'drizzle-orm';
 import type { Database } from '../client.js';
-import { actions, conversations, listeningBatches, listeningSegments, messages, todayBriefs, todaySettings } from '../schema.js';
+import { actions, conversations, listeningBatches, listeningSegments, messages, todayBriefs, todaySettings, scheduledTasks, notificationSettings } from '../schema.js';
+import { parseBriefPreferences, briefCardVisible, defaultBriefPreferences, topicBlocked, topicCooldown, type BriefTopics } from '../../today/content.js';
+import { buildBriefGuidance, type BriefContextProvider } from '../../today/context.js';
 import { ServiceError } from '../../errors.js';
 import { hydrateTranscripts, type TranscriptArchive } from '../../listening/transcript-archive.js';
 import { echoLocationContext, type EchoLocationContext } from '../../listening/location.js';
@@ -20,7 +22,7 @@ const validZone = (value: unknown): value is string => {
   try { new Intl.DateTimeFormat('en', { timeZone: value }).format(); return true; } catch { return false; }
 };
 export function validateTodaySettings(raw: Record<string, unknown>) {
-  if (Object.keys(raw).some(k => !['timeZone', 'locale', 'slots', 'displayName', 'location'].includes(k)) || !validZone(raw.timeZone)
+  if (Object.keys(raw).some(k => !['timeZone', 'locale', 'slots', 'displayName', 'location', 'contentPreferences', 'briefClientVersion'].includes(k)) || !validZone(raw.timeZone)
     || typeof raw.locale !== 'string' || !/^[A-Za-z0-9_-]{2,40}$/.test(raw.locale)) throw new ServiceError(400, 'invalid_request', 'A valid time zone and locale are required');
   let slots: BriefSlot[] | undefined;
   if (raw.slots !== undefined) {
@@ -47,11 +49,30 @@ export function validateTodaySettings(raw: Record<string, unknown>) {
       || typeof v.capturedAt !== 'string' || !Number.isFinite(Date.parse(v.capturedAt)) || Date.parse(v.capturedAt) > Date.now() + 300000) throw new ServiceError(400, 'invalid_request', 'Invalid city snapshot');
     location = { city: v.city.trim(), country: v.country, capturedAt: v.capturedAt, ...(v.source !== undefined ? { source: v.source as 'device' | 'manual' } : {}) };
   }
-  return { timeZone: raw.timeZone, locale: raw.locale, slots, ...(raw.displayName !== undefined ? { displayName: raw.displayName as string } : {}), ...(location !== undefined ? { location } : {}) };
+  let contentPreferences;
+  if (raw.contentPreferences !== undefined) {
+    try { contentPreferences = parseBriefPreferences(raw.contentPreferences); }
+    catch { throw new ServiceError(400, 'invalid_request', 'Choose valid Brief content preferences'); }
+  }
+  if (raw.briefClientVersion !== undefined && raw.briefClientVersion !== 2) throw new ServiceError(400, 'invalid_request', 'Invalid Brief client version');
+  return { timeZone: raw.timeZone, locale: raw.locale, slots, ...(raw.displayName !== undefined ? { displayName: raw.displayName as string } : {}), ...(location !== undefined ? { location } : {}),
+    ...(contentPreferences ? { contentPreferences } : {}), ...(raw.briefClientVersion === 2 ? { briefClientVersion: 2 } : {}) };
 }
 
 export class TodayRepository {
-  constructor(private readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
+  constructor(private readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader, private readonly contextProvider: BriefContextProvider = {}) {}
+
+  private async guidance(userId: string, input: BriefInput, editionId: string, ignoreCooldown = false) {
+    const settings = (await this.settings(userId))!;
+    const [schedules, reviews, notifications] = await Promise.all([
+      this.db.select({ id: scheduledTasks.id }).from(scheduledTasks).where(and(eq(scheduledTasks.userId, userId), isNull(scheduledTasks.deletedAt))).limit(1),
+      this.db.select({ id: listeningBatches.id }).from(listeningBatches).where(and(eq(listeningBatches.userId, userId), sql`${listeningBatches.speakerReview}->>'status' = 'confirmed'`)).limit(1),
+      this.db.select().from(notificationSettings).where(eq(notificationSettings.userId, userId)),
+    ]);
+    const echoSchedule = notifications[0]?.preferences.echoSchedule as { enabled?: boolean } | undefined;
+    return buildBriefGuidance(userId, input, editionId, settings.contentPreferences, ignoreCooldown ? {} : settings.topics, settings.briefClientVersion,
+      { scheduledTasks: schedules.length > 0, echoSchedule: echoSchedule?.enabled === true, echoSpeakers: reviews.length > 0 }, this.contextProvider);
+  }
 
   async selectedModel(userId: string, models: ModelModes): Promise<string> {
     const [profile] = await this.db.select({ mode: userProfiles.mode }).from(userProfiles).where(eq(userProfiles.userId, userId));
@@ -60,6 +81,11 @@ export class TodayRepository {
   async settings(userId: string) {
     const [settings] = await this.db.select().from(todaySettings).where(eq(todaySettings.userId, userId));
     return settings ?? null;
+  }
+  async registerClient(userId: string, raw: Record<string, unknown>) {
+    if (Object.keys(raw).length !== 1 || raw.version !== 2) throw new ServiceError(400, 'invalid_request', 'Invalid Brief client version');
+    await this.db.update(todaySettings).set({ briefClientVersion: 2 }).where(eq(todaySettings.userId, userId));
+    return { status: 'saved' };
   }
   async configure(userId: string, raw: Record<string, unknown>) {
     const settings = validateTodaySettings(raw);
@@ -151,6 +177,8 @@ export class TodayRepository {
     }
     const location = currentBriefLocation(settings.location, cutoff);
     const input: BriefInput = { localDate: row.localDate, timeZone: row.timeZone, locale: settings.locale, kind: row.slotId, label: row.slotLabel, cutoff: cutoff.toISOString(), sources, truncated, profile: { displayName: settings.displayName, location } };
+    input.guidance = await this.guidance(row.userId, input, row.id);
+    input.sources = input.sources.filter(s => !input.guidance!.blockedTopics.includes(`source:${s.id}`));
     await this.patch(row, { input });
     return input;
   }
@@ -181,12 +209,70 @@ export class TodayRepository {
   }
   async complete(row: BriefRow, content: BriefContent, provenance: { providerAgentId: string | null; providerTurnId: string; providerItemId: string }) {
     if (!await this.sourcesValid(row)) { await this.patch(row, { status: 'withdrawn', input: null, content: null }); return; }
+    if (content.schemaVersion === 2 && !await this.contextValid(row, content.cards)) {
+      await this.patch(row, { status: 'withdrawn', input: null, content: null }); return;
+    }
     await this.db.transaction(async tx => {
-      const [saved] = await tx.update(todayBriefs).set({ status: 'completed', content, ...provenance, completedAt: new Date(), errorCode: null,
+      const [settings] = await tx.select().from(todaySettings).where(eq(todaySettings.userId, row.userId)).for('update');
+      if (!settings) throw new Error('today_settings_missing');
+      const now = new Date();
+      if (content.schemaVersion === 2 && content.cards.some(c => !settings.contentPreferences.categories[c.type!]
+        || topicBlocked(settings.topics[c.topicKey!], now, topicCooldown(c.topicKey!)))) {
+        await tx.update(todayBriefs).set({ status: 'withdrawn', input: null, content: null }).where(this.fence(row)); return;
+      }
+      const [saved] = await tx.update(todayBriefs).set({ status: 'completed', content: content.schemaVersion === 2 ? { ...content, generatedAt: now.toISOString() } : content, ...provenance, completedAt: new Date(), errorCode: null,
         input: row.input ? { ...row.input, sources: row.input.sources.map(s => ({ ...s, text: '' })) } : null }).where(this.fence(row)).returning();
       if (!saved) throw new Error('today_lease_lost');
-      await enqueueNotification(tx, { userId: row.userId, sourceKey: `brief/${row.id}`, category: 'brief', targetId: row.id });
+      if (content.schemaVersion === 2) {
+        const topics: BriefTopics = Object.fromEntries(Object.entries(settings.topics).filter(([, t]) => t.dismissed || Date.parse(t.snoozedUntil ?? '') > now.getTime() || Date.parse(t.shownAt ?? '') > now.getTime() - 30 * 86400_000));
+        for (const card of content.cards) topics[card.topicKey!] = { ...topics[card.topicKey!], shownAt: now.toISOString() };
+        await tx.update(todaySettings).set({ topics }).where(eq(todaySettings.userId, row.userId));
+      }
+      if (content.cards.length) await enqueueNotification(tx, { userId: row.userId, sourceKey: `brief/${row.id}`, category: 'brief', targetId: row.id });
     });
+  }
+
+  private async contextValid(row: BriefRow, cards: BriefContent['cards']): Promise<boolean> {
+    if (!row.input?.guidance) return false;
+    const now = new Date();
+    const fresh = await this.guidance(row.userId, { ...row.input, cutoff: now.toISOString(), localDate: localClock(now, row.timeZone).date }, row.id, true);
+    return cards.every(c => (!c.expiresAt || Date.parse(c.expiresAt) > now.getTime())
+      && fresh.preferences.categories[c.type!]
+      && (c.contextIds ?? []).every(id => fresh.contexts.some(v => v.id === id))
+      && (!c.action || fresh.actions.some(a => a.id === c.action!.id && a.kind === c.action!.kind && a.target === c.action!.target)));
+  }
+  async cardAction(userId: string, id: string, cardId: string) {
+    const row = await this.owned(userId, id);
+    const visible = await this.view(row);
+    const card = visible.content?.cards.find(c => c.id === cardId);
+    if (!card?.action) throw new ServiceError(404, 'not_found', 'This suggestion is no longer available');
+    if (!await this.contextValid(row, [card])) throw new ServiceError(409, 'brief_action_expired', 'This suggestion has changed. Refresh your Brief.');
+    return { action: card.action };
+  }
+  async feedback(userId: string, id: string, cardId: string, raw: Record<string, unknown>) {
+    if (Object.keys(raw).length !== 1 || !['dismiss', 'snooze'].includes(String(raw.action))) throw new ServiceError(400, 'invalid_request', 'Choose dismiss or snooze');
+    const row = await this.owned(userId, id);
+    if (row.status !== 'completed' || !await this.sourcesValid(row)) throw new ServiceError(404, 'not_found', 'Suggestion not found');
+    const card = row.content?.cards.find(c => c.id === cardId);
+    if (!card?.topicKey) throw new ServiceError(404, 'not_found', 'Suggestion not found');
+    await this.db.transaction(async tx => {
+      const [settings] = await tx.select().from(todaySettings).where(eq(todaySettings.userId, userId)).for('update');
+      if (!settings) throw new ServiceError(404, 'not_found', 'Brief preferences not found');
+      if (Object.keys(settings.topics).length >= 1000 && !settings.topics[card.topicKey!]) throw new ServiceError(409, 'brief_topic_limit', 'Restore hidden suggestions in Brief preferences first');
+      const topics = { ...settings.topics, [card.topicKey!]: { ...settings.topics[card.topicKey!],
+        ...(raw.action === 'dismiss' ? { dismissed: true } : { snoozedUntil: new Date(Date.now() + 7 * 86400_000).toISOString() }) } };
+      await tx.update(todaySettings).set({ topics }).where(eq(todaySettings.userId, userId));
+    });
+    return { status: 'saved' };
+  }
+  async resetTopics(userId: string) {
+    await this.db.transaction(async tx => {
+      const [settings] = await tx.select().from(todaySettings).where(eq(todaySettings.userId, userId)).for('update');
+      if (!settings) throw new ServiceError(404, 'not_found', 'Brief preferences not found');
+      const topics = Object.fromEntries(Object.entries(settings.topics).map(([key, t]) => [key, t.shownAt ? { shownAt: t.shownAt } : {}]));
+      await tx.update(todaySettings).set({ topics }).where(eq(todaySettings.userId, userId));
+    });
+    return { status: 'saved' };
   }
   async fail(row: BriefRow, code: string) { await this.patch(row, { status: 'failed', errorCode: code, input: row.input ? { ...row.input, sources: row.input.sources.map(s => ({ ...s, text: '' })) } : null }); }
   async owned(userId: string, id: string) {
@@ -198,6 +284,10 @@ export class TodayRepository {
     if (row.status === 'completed' && !await this.sourcesValid(row)) {
       await this.db.update(todayBriefs).set({ status: 'withdrawn', input: null, content: null }).where(and(eq(todayBriefs.id, row.id), eq(todayBriefs.status, 'completed')));
       row = { ...row, status: 'withdrawn', input: null, content: null };
+    }
+    if (row.content?.schemaVersion === 2) {
+      const settings = await this.settings(row.userId);
+      row = { ...row, content: { ...row.content, cards: row.content.cards.filter(c => briefCardVisible(c, settings?.contentPreferences ?? defaultBriefPreferences, settings?.topics ?? {})) } };
     }
     return { id: row.id, localDate: row.localDate, timeZone: row.timeZone, kind: row.slotId, label: row.slotLabel,
       scheduledAt: row.scheduledAt.toISOString(), createdAt: row.createdAt.toISOString(), completedAt: row.completedAt?.toISOString() ?? null,

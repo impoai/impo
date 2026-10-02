@@ -82,6 +82,7 @@ final class AppModel {
     }
     nonisolated private static let debugModeKey = "instant.debugMode"
     var selectedTab = 0
+    var pendingBriefDraft: String?
     var notificationBriefID: String?
     var transcriptNavigationID = UUID()
     var messages: [ChatMessage] = []
@@ -205,6 +206,7 @@ final class AppModel {
 
     /// Drop another account's profile, pending input, device consent and visible chat.
     private func clearAccountState() {
+        pendingBriefDraft = nil
         invalidateOperation()
         stopDeviceConnection()
         for key in defaults.dictionaryRepresentation().keys
@@ -455,6 +457,7 @@ final class AppModel {
     }
 
     func resetDemo() {
+        pendingBriefDraft = nil
         invalidateOperation()
         stopDeviceConnection()
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && !key.hasPrefix("instant.listening.") && key != "instant.installationID" && key != Self.debugModeKey { defaults.removeObject(forKey: key) }

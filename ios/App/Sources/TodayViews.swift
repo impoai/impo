@@ -36,8 +36,11 @@ enum TodayPresentation {
 struct TodayView: View {
     @Environment(TodayModel.self) private var today
     @Environment(AppModel.self) private var app
+    @Environment(TasksModel.self) private var tasks
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
+    @State private var destination: BriefDestination?
+    @State private var actionBusy = false
     @State private var capture: TodayCaptureRoute?
     @State private var source: TodaySourceRoute?
     @State private var deleting: TodayBrief?
@@ -85,9 +88,14 @@ struct TodayView: View {
                                 } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
                                 .accessibilityLabel("Brief options")
                             }
-                            TodayBriefBody(brief: brief, exporting: false) { selected in source = TodaySourceRoute(brief: brief, source: selected) }
+                            TodayBriefBody(brief: brief, exporting: false, actionBusy: actionBusy,
+                                onAction: { card in open(brief, card) },
+                                onFeedback: { card, action in
+                                    Task { do { try await today.feedback(brief: brief, card: card, action: action) } catch { today.error = error.localizedDescription } }
+                                }, onSource: { selected in source = TodaySourceRoute(brief: brief, source: selected) })
                         }
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("todayFeed")).minY } action: { positions[brief.id] = $0 }
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("today.brief.\(brief.id)")
                         .id(brief.id)
                     }
@@ -143,8 +151,15 @@ struct TodayView: View {
             try? await Task.sleep(for: .seconds(9))
             if !Task.isCancelled { screenshotOffer = false }
         }
-        .sheet(isPresented: $showSettings) { TodaySettingsView().swipeToDismiss() }
-        .onChange(of: app.listeningScope) { _, _ in capture = nil; source = nil; showSettings = false; positions = [:] }
+        .sheet(isPresented: $showSettings, onDismiss: { Task { await today.refresh() } }) { TodaySettingsView().swipeToDismiss() }
+        .sheet(item: $destination) { value in
+            switch value.kind {
+            case "connect": ConnectorDetailSheet(toolkit: value.target)
+            case "echo-schedule": EchoScheduleView()
+            default: ScheduledTaskEditor(initial: nil)
+            }
+        }
+        .onChange(of: app.listeningScope) { _, _ in capture = nil; source = nil; destination = nil; showSettings = false; positions = [:] }
         .sheet(item: $source) { TodaySourceView(route: $0).swipeToDismiss() }
         .fullScreenCover(item: $capture) { TodayCaptureView(initialDate: $0.date).swipeToDismiss() }
         .confirmationDialog("Delete this brief?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
@@ -155,11 +170,31 @@ struct TodayView: View {
         .alert("Couldn't complete that", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) { Button("OK") { actionError = nil } } message: { Text(actionError ?? "") }
     }
         }
+    private func open(_ brief: TodayBrief, _ card: TodayCard) {
+        guard !actionBusy else { return }
+        actionBusy = true
+        Task {
+            defer { actionBusy = false }
+            do {
+                let action = try await today.action(brief: brief, card: card)
+                switch action.kind {
+                case "chat_draft": app.selectedTab = 0; app.pendingBriefDraft = action.prompt
+                case "connect": destination = BriefDestination(kind: "connect", target: action.target)
+                case "open_resource": app.selectedTab = 2; tasks.route = .detail(action.target)
+                case "open_feature":
+                    if action.target == "echo-speakers" { app.selectedTab = 3 }
+                    else if ["scheduled-tasks", "echo-schedule"].contains(action.target) { destination = BriefDestination(kind: action.target, target: action.target) }
+                default: today.error = "Update Impo to open this suggestion."
+                }
+            } catch is CancellationError { }
+            catch { today.error = error.localizedDescription }
+        }
+    }
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack { Image(systemName: "sun.horizon").font(.system(size: 36, weight: .light)); Spacer(); Image("JournalRobin").resizable().scaledToFit().frame(width: 100, height: 95) }
-            Text(today.isLoading ? "Gathering your briefs…" : "A little perspective, throughout your day.").font(InstantStyle.serif(28))
-            Text(today.isLive ? "Morning, midday, and evening briefs will arrive here. Each one stays, so you can scroll back whenever you like." : "Sign in to see personal briefs made from your conversations and listening.")
+            Text(today.isLoading ? "Gathering your briefs…" : "A useful next step, throughout your day.").font(InstantStyle.serif(28))
+            Text(today.isLive ? "Ideas for what to do next, useful updates, and tips shaped by what you share. Each edition stays in your timeline." : "Sign in for useful next steps shaped by your conversations and Echo.")
                 .font(.system(size: 16)).foregroundStyle(InstantStyle.muted).lineSpacing(4)
             if let settings = today.settings {
                 Text(settings.slots.filter(\.enabled).map { "\($0.label) · \(String(format: "%02d:00", $0.hour))" }.joined(separator: "\n"))
@@ -175,6 +210,9 @@ struct TodayView: View {
 struct TodayBriefBody: View {
     let brief: TodayBrief
     var exporting = false
+    var actionBusy = false
+    var onAction: ((TodayCard) -> Void)?
+    var onFeedback: ((TodayCard, String) -> Void)?
     var onSource: ((TodaySource) -> Void)?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -201,6 +239,23 @@ struct TodayBriefBody: View {
                                 }
                             }.font(.system(size: 15)).padding(15).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(TodayPresentation.tint(card.style).opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        if !exporting, card.id != nil {
+                            HStack {
+                                if let action = card.action {
+                                    Button { onAction?(card) } label: {
+                                        Label(action.label, systemImage: action.kind == "chat_draft" ? "text.bubble" : "arrow.up.right")
+                                            .font(.system(size: 15, weight: .semibold)).frame(minHeight: 44)
+                                    }.buttonStyle(.borderedProminent).tint(InstantStyle.forest).disabled(actionBusy)
+                                        .accessibilityIdentifier("today.action.\(card.id!)")
+                                }
+                                Spacer(minLength: 8)
+                                Menu {
+                                    Button("Hide for a week") { onFeedback?(card, "snooze") }
+                                    Button("Hide this suggestion") { onFeedback?(card, "dismiss") }
+                                } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
+                                    .accessibilityLabel("Suggestion options").accessibilityIdentifier("today.card-options.\(card.id!)")
+                            }
                         }
                         ForEach(brief.sources.filter { card.sourceIds.contains($0.id) }) { source in
                             if exporting {
@@ -240,6 +295,11 @@ struct TodayBriefBody: View {
     private var statusDetail: String { switch brief.status { case "withdrawn": "A source was removed or changed."; case "failed": "Your earlier briefs are still here. The next scheduled brief will run as usual."; default: "You can close the app. It will appear here when it's ready." } }
 }
 
+private struct BriefDestination: Identifiable {
+    let id = UUID()
+    let kind: String
+    let target: String
+}
 struct TodayCaptureRoute: Identifiable { let id = UUID(); let date: String }
 struct TodaySourceRoute: Identifiable { let id = UUID(); let brief: TodayBrief; let source: TodaySource }
 private struct TodaySourceView: View {

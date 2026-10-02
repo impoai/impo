@@ -354,6 +354,8 @@ export function createAndroidFixture(
           summary: 'A clear priority, a little fresh air, and time for the things that matter.',
           cards: [
             {
+              id: 'a'.repeat(24), type: 'suggestion',
+              action: { id: 'chat', kind: 'chat_draft', target: 'chat', label: 'Plan my next step', prompt: 'Help me choose the smallest useful next step for my project.' },
               style: 'focus',
               eyebrow: 'YOUR FOCUS',
               title: 'Start with the smallest useful version',
@@ -655,6 +657,21 @@ export function createAndroidFixture(
       },
     },
     today: {
+      registerClient: async () => ({ status: 'saved' }),
+      resetTopics: async () => ({ status: 'saved' }),
+      cardAction: async (userId: string, briefId: string, cardId: string) => {
+        const row = own(briefs, userId, briefId);
+        const card = row.content?.cards.find((c: Json) => c.id === cardId);
+        if (row.deleted || !card?.action) throw missing();
+        return { action: card.action };
+      },
+      feedback: async (userId: string, briefId: string, cardId: string, raw: Json) => {
+        const row = own(briefs, userId, briefId);
+        if (row.deleted || !row.content?.cards.some((c: Json) => c.id === cardId)) throw missing();
+        if (!['dismiss', 'snooze'].includes(raw.action)) throw new ServiceError(400, 'invalid_request', 'Invalid suggestion feedback');
+        row.content.cards = row.content.cards.filter((c: Json) => c.id !== cardId);
+        return { status: 'saved' };
+      },
       settings: async (userId: string) => settings.get(userId),
       configure: async (userId: string, value: Json) => {
         const validated = validateTodaySettings(value);

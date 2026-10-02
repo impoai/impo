@@ -38,7 +38,7 @@ async function main(): Promise<void> {
   const uploads = config.transcriptArchive && batchService ? new ListeningUploadService(batches,
     new S3AudioObjectStore(config.transcriptArchive.bucket, config.transcriptArchive.region), batchService) : undefined;
   const files = config.rebyte ? new FileDownloads(repository, new RebyteGateway(config.rebyte)) : undefined;
-  const server = createApiServer(repository, { files, profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
+  const server = createApiServer(repository, { files, profiles: new ProfileRepository(database.db), uploads, memories, today: new TodayRepository(database.db, archive, config.rebyte ? new RebyteGateway(config.rebyte) : undefined, { connectors, schedulingEnabled: Boolean(config.temporal) }), batches, batchService, pollIntervalMs: config.pollIntervalMs, streamKeepAliveMs: config.streamKeepAliveMs, runtime: config.runtime, connectors, auth, listening: new ListeningRepository(database.db, archive), listeningEnabled: Boolean(config.listening) || config.runtime === 'development',
     notifications: new NotificationRepository(database.db),
     scheduledTasks: config.temporal ? new ScheduledTaskRepository(database.db, repository.runtime) : undefined,
     echoSchedules: config.temporal ? new EchoScheduleRepository(database.db) : undefined,

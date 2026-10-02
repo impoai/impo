@@ -39,6 +39,7 @@
     "dev:worker": "npm --workspace @instant/server run dev:worker",
     "test:db": "node scripts/test-db.mjs",
     "test:model-modes:live": "node --env-file-if-exists=.env --import tsx --test server/test/model-modes.live.ts",
+    "test:brief:live": "node --env-file-if-exists=.env --import tsx --test server/test/brief-guidance.live.ts",
     "test:model-modes": "node scripts/test-db.mjs --model-modes",
     "test:scheduled-tasks": "node scripts/test-db.mjs --scheduled-tasks",
     "test:devices": "node scripts/test-db.mjs --devices",

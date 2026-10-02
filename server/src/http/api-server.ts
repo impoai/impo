@@ -237,16 +237,42 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
     if (path === '/api/v1/profile') {
       if (!options.profiles) throw new ServiceError(503, 'profile_unavailable', 'Profile is temporarily unavailable', true);
       if (url.search) throw new ServiceError(400, 'invalid_request', 'Profile does not accept query parameters');
-      if (method === 'GET') { sendJSON(res, 200, await options.profiles.get(user.id)); return; }
-      if (method === 'PATCH') { sendJSON(res, 200, await options.profiles.update(user.id, await readJSON(req, requestTimeoutMs))); return; }
+      const catalogCurrent = req.headers['x-impo-model-catalog'] === '2';
+      const profileView = (profile: Awaited<ReturnType<typeof options.profiles.get>>) => {
+        if (catalogCurrent) return profile;
+        const { mode: _, ...legacy } = profile; return legacy;
+      };
+      if (method === 'GET') { sendJSON(res, 200, profileView(await options.profiles.get(user.id))); return; }
+      if (method === 'PATCH') {
+        const body = await readJSON(req, requestTimeoutMs);
+        if (body.mode !== undefined && !catalogCurrent) throw new ServiceError(409, 'model_catalog_upgrade_required', 'Update Impo to choose a model');
+        sendJSON(res, 200, profileView(await options.profiles.update(user.id, body))); return;
+      }
     }
     if (path.startsWith('/api/v1/today/')) {
       if (!options.today) throw new ServiceError(503, 'today_unavailable', 'Today is temporarily unavailable', true);
+      if (path === '/api/v1/today/client' && method === 'POST') {
+        sendJSON(res, 200, await options.today.registerClient(user.id, await readJSON(req, requestTimeoutMs))); return;
+      }
       if (path === '/api/v1/today/settings' && method === 'GET') {
         sendJSON(res, 200, { settings: await options.today.settings(user.id) }); return;
       }
       if (path === '/api/v1/today/settings' && method === 'PUT') {
         sendJSON(res, 200, { settings: await options.today.configure(user.id, await readJSON(req, requestTimeoutMs)) }); return;
+      }
+      if (path === '/api/v1/today/topics/reset' && method === 'POST') {
+        const body = await readJSON(req, requestTimeoutMs);
+        if (Object.keys(body).length) throw new ServiceError(400, 'invalid_request', 'Expected an empty request');
+        sendJSON(res, 200, await options.today.resetTopics(user.id)); return;
+      }
+      const cardRoute = /^\/api\/v1\/today\/briefs\/([^/]+)\/cards\/([a-f0-9]{24})\/(action|feedback)$/.exec(path);
+      if (cardRoute && method === 'POST') {
+        const body = await readJSON(req, requestTimeoutMs); const id = uuid(cardRoute[1]);
+        if (cardRoute[3] === 'action') {
+          if (Object.keys(body).length) throw new ServiceError(400, 'invalid_request', 'Expected an empty request');
+          sendJSON(res, 200, await options.today.cardAction(user.id, id, cardRoute[2]!));
+        } else sendJSON(res, 200, await options.today.feedback(user.id, id, cardRoute[2]!, body));
+        return;
       }
       if (path === '/api/v1/today/briefs' && method === 'GET') {
         if ([...url.searchParams.keys()].some(k => !['limit', 'cursor', 'date'].includes(k))

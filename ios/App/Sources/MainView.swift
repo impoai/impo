@@ -13,6 +13,7 @@ struct MainView: View {
     @State private var search = ""
     @State private var voice = VoiceInput()
     @State private var composerFocused = false
+    @State private var chooseBriefDraft = false
 
     var body: some View {
         @Bindable var model = model
@@ -50,6 +51,17 @@ struct MainView: View {
         .sheet(isPresented: $listening.showIntroduction) { ListeningIntroduction().swipeToDismiss() }
         .task { permissions.enteredToday(model.selectedTab == 1); await model.restoreConversation() }
         .onChange(of: model.selectedTab) { _, tab in permissions.enteredToday(tab == 1) }
+        .onChange(of: model.listeningScope) { _, _ in composer = ""; chooseBriefDraft = false; model.pendingBriefDraft = nil }
+        .onChange(of: model.pendingBriefDraft) { _, draft in
+            guard let draft else { return }
+            if composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                composer = draft; model.pendingBriefDraft = nil; composerFocused = true
+            } else { chooseBriefDraft = true }
+        }
+        .alert("Use this Brief suggestion?", isPresented: $chooseBriefDraft) {
+            Button("Replace draft") { composer = model.pendingBriefDraft ?? composer; model.pendingBriefDraft = nil; composerFocused = true }
+            Button("Keep current draft", role: .cancel) { model.pendingBriefDraft = nil }
+        } message: { Text("You already have a message in progress. Nothing will be sent automatically.") }
         .sheet(item: $permissions.presentation, onDismiss: { permissions.offerNotificationsIfNeeded() }) { sheet in
             Group {
                 switch sheet {
