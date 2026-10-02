@@ -241,3 +241,8 @@
 
 - Made the model selector safe to distribute before backend rollout: a profile without `mode` shows a disabled Mode preview, neither tier is marked active, and no model update is sent. Added a reproducible legacy-profile fixture and kept English availability copy explicit.
 - Validation: 3 native account/profile tests, both model-mode UI flows (including legacy-server preview), 69 Swift package tests (10 live-only skips), legacy fixture HTTP checks, and secret inventory/history checks passed. Regenerated the Xcode project and advanced build 52 to 53. Production model routing remains unchanged; this release targets the existing internal TestFlight Team group.
+
+## 2026-10-02 — iOS 1.0 (53) available in TestFlight
+
+- Uploaded source `f31b80987db9044f815122b66cd91018003159db`; Apple build `2fa03f27-20c4-45f6-8992-f675062e6816` is VALID and IN_BETA_TESTING for the existing internal Team group. English test notes and group association were read back successfully. Model switching remains an explicitly disabled preview against the current production API.
+- Archive/export signatures, production Clerk/API/Firebase configuration, APNs, Apple sign-in, HealthKit, privacy manifest, framework minimum OS versions and packaged resources passed verification. IPA: 39,531,577 bytes; SHA-256 `781086b320340b5ca18e282fa2a2d4ffd2c451f0c5379ebe6d9f96f953e29682`. Private receipts: `.local/release53/`. No server, Android, external beta review, App Store submission or public update pointer changes were made.
