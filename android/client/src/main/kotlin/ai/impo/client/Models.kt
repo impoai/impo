@@ -23,17 +23,20 @@ fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
     val displayName: String? = null,
     val assistantName: String? = null,
     val avatarIndex: Int? = null,
+    val mode: String? = null,
 )
 /** Account fields only. Display name comes from Brief settings; device permissions stay local. */
 @Serializable data class ProfileUpdate(
     val assistantName: String? = null,
     val avatarIndex: Int? = null,
     val onboarded: Boolean? = null,
+    val mode: String? = null,
 ) {
     init {
         require(assistantName == null || (assistantName.trim().isNotEmpty() && assistantName.trim().length <= 30 && '\u0000' !in assistantName))
         require(avatarIndex == null || avatarIndex in 0..6)
         require(onboarded == null || onboarded)
+        require(mode == null || mode in setOf("Balanced", "Power"))
     }
 }
 

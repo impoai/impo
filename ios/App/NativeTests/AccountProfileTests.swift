@@ -21,9 +21,16 @@ final class AccountProfileTests: XCTestCase {
         XCTAssertEqual(model.assistantName, "Robin")
         XCTAssertEqual(model.avatarIndex, 2)
         XCTAssertEqual(model.displayName, "Alex")
+        XCTAssertEqual(model.mode, "Power")
+        await model.refreshMode()
+        XCTAssertTrue(model.modeLoaded)
+        await model.selectMode("Balanced")
+        XCTAssertEqual(model.mode, "Balanced")
+        XCTAssertNil(model.modeError)
         let reopened = AppModel(defaults: defaults, session: session)
         XCTAssertTrue(reopened.isOnboarded)
         XCTAssertEqual(reopened.assistantName, "Robin")
+        XCTAssertEqual(reopened.mode, "Balanced")
     }
 
     func testUnavailableProfileDoesNotCompleteOnboarding() async throws {
@@ -40,6 +47,9 @@ final class AccountProfileTests: XCTestCase {
         let restored = await model.restoreAccountProfile()
         XCTAssertFalse(restored)
         XCTAssertFalse(model.isOnboarded)
+        await model.refreshMode()
+        XCTAssertFalse(model.modeLoaded)
+        XCTAssertNotNil(model.modeError)
     }
 }
 
@@ -48,9 +58,10 @@ private final class AccountProfileProtocol: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let available = request.url?.port == 39201 && request.url?.path == "/api/v1/profile"
-        let body = available
-            ? #"{"onboarded":true,"displayName":"Alex","assistantName":"Robin","avatarIndex":2}"#
+        var body = available
+            ? #"{"onboarded":true,"displayName":"Alex","assistantName":"Robin","avatarIndex":2,"mode":"Power"}"#
             : #"{"error":{"code":"profile_unavailable","message":"Unavailable","retryable":true}}"#
+        if available && request.httpMethod == "PATCH" { body = #"{"onboarded":true,"mode":"Balanced"}"# }
         let response = HTTPURLResponse(url: request.url!, statusCode: available ? 200 : 503, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))

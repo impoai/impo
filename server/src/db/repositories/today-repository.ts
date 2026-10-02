@@ -1,3 +1,5 @@
+import type { ModelModes } from '../../model-modes.js';
+import { userProfiles } from '../schema.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, gte, inArray, lt, or, sql, ne } from 'drizzle-orm';
 import type { Database } from '../client.js';
@@ -49,6 +51,11 @@ export function validateTodaySettings(raw: Record<string, unknown>) {
 
 export class TodayRepository {
   constructor(private readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
+
+  async selectedModel(userId: string, models: ModelModes): Promise<string> {
+    const [profile] = await this.db.select({ mode: userProfiles.mode }).from(userProfiles).where(eq(userProfiles.userId, userId));
+    return models[profile?.mode ?? 'Balanced'];
+  }
   async settings(userId: string) {
     const [settings] = await this.db.select().from(todaySettings).where(eq(todaySettings.userId, userId));
     return settings ?? null;

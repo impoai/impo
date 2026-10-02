@@ -5,12 +5,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test, { type TestContext } from 'node:test';
 import { and, eq } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
-import { conversations, messages, todayBriefs, todaySettings, users, notificationEvents } from '../src/db/schema.js';
+import { conversations, messages, todayBriefs, todaySettings, users, notificationEvents, userProfiles } from '../src/db/schema.js';
 import { TodayRepository } from '../src/db/repositories/today-repository.js';
 import { todayStep } from '../src/today/worker.js';
 import { RebyteGateway } from '../src/rebyte/gateway.js';
 import { createApiServer, type ApiRepository } from '../src/http/api-server.js';
 import { FakeRebyte } from './helpers/fake-rebyte.js';
+import { ProfileRepository } from '../src/db/repositories/profile-repository.js';
+import { modelModes } from '../src/model-modes.js';
 import { briefConfigVersion } from '../src/today/contract.js';
 
 const slots = [{ id: 'morning', label: 'Morning Brief', hour: 0, enabled: true }];
@@ -31,6 +33,7 @@ async function fixture(t: TestContext) {
     await db.db.delete(todaySettings).where(eq(todaySettings.userId, userId));
     await db.db.delete(messages).where(eq(messages.userId, userId));
     await db.db.delete(conversations).where(eq(conversations.userId, userId));
+    await db.db.delete(userProfiles).where(eq(userProfiles.userId, userId));
     await db.db.delete(users).where(eq(users.id, userId)); await db.db.delete(users).where(eq(users.id, otherId));
     await db.close();
   });
@@ -91,12 +94,19 @@ test('Today editions: concurrent workers, cross-tick dedup, history pagination, 
 
 test('Today recovers unknown Session creation without a second model run and repairs invalid JSON once', { timeout: 30000 }, async t => {
   const f = await fixture(t); f.fake.answers.push('not json', quiet); f.fake.holdNextCreate = true;
+  const profiles = new ProfileRepository(f.db.db);
+  await profiles.update(f.userId, { mode: 'Power' });
   const impatient = new RebyteGateway({ apiKey: 'instant-fake-rebyte-key', baseURL: f.baseURL, model: 'test-model', timeoutMs: 150 });
-  await assert.rejects(todayStep(f.repository, impatient, 'test-model', 15).run(context(f.userId)));
+  await assert.rejects(todayStep(f.repository, impatient, 'test-model', 15, modelModes).run(context(f.userId)));
   assert.equal(f.fake.sessions.length, 1);
+  assert.equal(f.fake.sessions[0]!.agent.model, modelModes.Power);
+  await profiles.update(f.userId, { mode: 'Balanced' });
   f.fake.releaseCreateResponses();
-  await todayStep(f.repository, f.gateway, 'test-model', 15).run(context(f.userId));
+  await todayStep(f.repository, f.gateway, 'test-model', 15, modelModes).run(context(f.userId));
   assert.equal(f.fake.sessions.length, 1);
+  assert.equal(f.fake.sessions[0]!.agent.model, modelModes.Power, 'recovery keeps the model from the durable creation intent');
+  const brief = (await f.repository.list(f.userId, 10)).briefs[0]!;
+  assert.equal((await f.repository.owned(f.userId, brief.id)).model, modelModes.Power);
   assert.equal(f.fake.sessions[0]!.turns.length, 2);
   assert.equal((await f.repository.list(f.userId, 10)).briefs[0]!.status, 'completed');
 });

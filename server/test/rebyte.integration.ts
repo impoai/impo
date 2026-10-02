@@ -546,6 +546,27 @@ test('Rebyte SDK integration recovers remote side effects across local process f
       } finally { await stop(worker); }
     });
 
+    await t.test('account mode overrides the existing Saved Agent model and preserves main history', async () => {
+      const before = fake.sessions.at(-1)!;
+      const count = fake.agents.length;
+      const response = await fetch(`${baseURL}/api/v1/profile`, { method: 'PATCH', headers: { Authorization: 'Bearer instant-dev-bob', 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'Power' }) });
+      assert.equal(response.status, 200);
+      fake.answers.push('Power mode reply');
+      const accepted = await submit('Continue with Power mode', randomUUID(), 'bob');
+      const worker = start('src/worker-main.ts');
+      try {
+        await state(accepted.submissionId, 'completed', 'bob');
+        const session = fake.sessions.find(s => s.turns.some(turn => turn.text === accepted.text))!;
+        assert.equal(session.agent.model, 'gpt-6-sol');
+        assert.equal(fake.agents.length, count, 'changing mode reuses the account Saved Agent');
+        assert.equal(session.agent.id, before.agent.id);
+        assert.notEqual(session.id, before.id);
+        assert.ok(session.agent.instructions.includes('bounded turn 10'), 'the new Session carries recent context');
+        const history = await request('/conversation?limit=100', undefined, 'bob');
+        assert.ok((history.body.messages as JSONRecord[]).some(message => message.text === 'bounded turn 1'));
+      } finally { await stop(worker); }
+    });
+
     await t.test('large tool output triggers the context budget and history outages do not strand creation', async () => {
       const user = 'bob';
       fake.answers.push('Short final answer');

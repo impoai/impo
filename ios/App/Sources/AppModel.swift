@@ -52,6 +52,10 @@ final class AppModel {
     var nameOrYou: String { displayName.isEmpty ? "you" : displayName }
     var connectedServices: Set<String> = []
     var mode = "Balanced"
+    var modeBusy = false
+    var modeLoaded = false
+    var modeError: String?
+    private var modeRevision = 0
     var backendURL = "http://127.0.0.1:3001" {
         didSet {
             if oldValue != backendURL { configureConnectors() }
@@ -208,6 +212,7 @@ final class AppModel {
             defaults.removeObject(forKey: key)
         }
         isOnboarded = false; selectedTab = 0
+        modeRevision += 1; modeBusy = false; modeLoaded = false; modeError = nil
         assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; mode = "Balanced"
         messages = []; liveSteps = []; selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil
         DeliveredFileCache.clear()
@@ -342,7 +347,7 @@ final class AppModel {
         displayName = defaults.string(forKey: "instant.displayName").flatMap { $0 == "Demo" ? nil : $0 } ?? ""
         avatarIndex = defaults.object(forKey: "instant.avatar") as? Int ?? 3
         connectedServices = Set(defaults.stringArray(forKey: "instant.connections") ?? [])
-        mode = defaults.string(forKey: "instant.mode") ?? "Balanced"
+        mode = defaults.string(forKey: "instant.mode").flatMap { ["Balanced", "Power"].contains($0) ? $0 : nil } ?? "Balanced"
         backendURL = defaults.string(forKey: "instant.backend") ?? "http://127.0.0.1:3001"
         useLiveBackend = defaults.bool(forKey: "instant.live")
         #if DEBUG
@@ -391,12 +396,14 @@ final class AppModel {
     /// A returning account skips onboarding: restore what the server remembers and report
     /// whether this account already finished it. Offline or Demo returns false.
     func restoreAccountProfile() async -> Bool {
+        let restoringModeRevision = modeRevision
         guard let scope = listeningScope, let client = liveClient(), let profile = try? await client.profile(),
               !Task.isCancelled, listeningScope == scope else { return false }
         if let name = profile.assistantName { assistantName = name }
         // Index 6 is a photo kept only on the device that chose it.
         if let index = profile.avatarIndex, index != 6 || defaults.data(forKey: "instant.avatarPhoto") != nil { avatarIndex = index }
         if let name = profile.displayName, !name.isEmpty { displayName = name }
+        if let selected = profile.mode, ["Balanced", "Power"].contains(selected), !modeBusy, modeRevision == restoringModeRevision { mode = selected }
         if profile.onboarded { isOnboarded = true }
         persistProfile()
         return profile.onboarded
@@ -407,6 +414,44 @@ final class AppModel {
         guard let client = liveClient() else { return }
         let name = assistantName, avatar = avatarIndex
         Task { _ = try? await client.updateProfile(assistantName: name, avatarIndex: avatar, onboarded: onboarded ? true : nil) }
+    }
+
+    /// Only acknowledged account preferences are shown as saved model choices.
+    func refreshMode() async {
+        guard !modeBusy, let scope = listeningScope, let client = liveClient() else { return }
+        modeRevision += 1
+        let revision = modeRevision
+        modeBusy = true; modeError = nil
+        defer { if modeRevision == revision { modeBusy = false } }
+        do {
+            let profile = try await client.profile()
+            guard !Task.isCancelled, listeningScope == scope, modeRevision == revision else { return }
+            guard let selected = profile.mode, ["Balanced", "Power"].contains(selected) else {
+                modeLoaded = false; modeError = "Model selection is not available on this server yet."; return
+            }
+            mode = selected; modeLoaded = true; persistProfile()
+        } catch {
+            guard !Task.isCancelled, listeningScope == scope, modeRevision == revision else { return }
+            modeLoaded = false; modeError = "Couldn't load your mode. Please try again."
+        }
+    }
+
+    func selectMode(_ selected: String) async {
+        guard ["Balanced", "Power"].contains(selected), modeLoaded, !modeBusy,
+              let scope = listeningScope, let client = liveClient() else { return }
+        modeRevision += 1
+        let revision = modeRevision
+        modeBusy = true; modeError = nil
+        defer { if modeRevision == revision { modeBusy = false } }
+        do {
+            let profile = try await client.updateProfile(mode: selected)
+            guard !Task.isCancelled, listeningScope == scope, modeRevision == revision else { return }
+            guard profile.mode == selected else { modeError = "Your mode wasn't saved. Please try again."; return }
+            mode = selected; persistProfile()
+        } catch {
+            guard !Task.isCancelled, listeningScope == scope, modeRevision == revision else { return }
+            modeError = "Couldn't confirm your mode. Retry to check your saved preference."
+        }
     }
 
     func resetDemo() {

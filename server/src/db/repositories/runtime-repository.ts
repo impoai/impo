@@ -12,12 +12,14 @@ import { clientContext, deviceHash, selectDeviceTools, type ClientContext } from
 import { CONNECTOR_TOOL_NAMES } from '../../tools/connector-tools.js';
 import { hydrateMessages, taskTitles, type HistoryReader } from './conversation-history.js';
 import { accountDeletions, scheduledTaskRuns } from '../schema.js';
+import type { ModelModes } from '../../model-modes.js';
+import { userProfiles } from '../schema.js';
 import { identityHash } from '../../accounts/contract.js';
 
 export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Query = Database | Transaction;
 export type Submission = typeof runtimeSubmissions.$inferSelect;
-export interface RuntimeOptions { provider: 'development' | 'rebyte'; agentConfig?: Record<string, unknown>; taskAgentConfig?: Record<string, unknown>; deviceToolTimeoutMs?: number; serverTools?: ToolRegistry;
+export interface RuntimeOptions { modelModes?: ModelModes; provider: 'development' | 'rebyte'; agentConfig?: Record<string, unknown>; taskAgentConfig?: Record<string, unknown>; deviceToolTimeoutMs?: number; serverTools?: ToolRegistry;
   /** Rebyte history: the source of finished chat text, which PostgreSQL does not keep. */
   history?: HistoryReader }
 export type ClaimedJob = typeof outboxJobs.$inferSelect;
@@ -106,7 +108,12 @@ export class RuntimeRepository {
    * are fixed, so connecting a second or third app does not rotate the Session.
    */
   protected async userAgentConfig(tx: Transaction, userId: string, config: Record<string, unknown> | undefined, capabilities: readonly string[] = []) {
-    if (!config || !Array.isArray(config.tools)) return config;
+    if (!config) return config;
+    if (this.runtime.modelModes) {
+      const [preference] = await tx.select({ mode: userProfiles.mode }).from(userProfiles).where(eq(userProfiles.userId, userId));
+      config = { ...config, model: this.runtime.modelModes[preference?.mode ?? 'Balanced'] };
+    }
+    if (!Array.isArray(config.tools)) return config;
     const [connected] = await tx.select({ id: connectorConnections.id }).from(connectorConnections)
       .where(and(eq(connectorConnections.userId, userId), eq(connectorConnections.status, 'connected'), eq(connectorConnections.disconnectRequested, false))).limit(1);
     const tools = selectDeviceTools(config.tools as Array<{ name?: unknown }>, capabilities).filter(tool => {
@@ -213,7 +220,7 @@ export class RuntimeRepository {
       // jsonb reorders object keys; compare canonical JSON, not wire property order.
       if (deviceHash(previous?.config ?? null) !== deviceHash(agentConfig)) {
         const [active] = await tx.select({ id: runtimeSubmissions.id }).from(runtimeSubmissions).where(and(eq(runtimeSubmissions.conversationId, conversation.id), inArray(runtimeSubmissions.status, ['queued', 'running', 'waiting_device']))).limit(1);
-        if (active) throw new ServiceError(409, 'config_upgrade_pending', 'Wait for the current reply before updating assistant tools', true);
+        if (active) throw new ServiceError(409, 'config_upgrade_pending', 'Wait for the current reply before applying the new assistant settings', true);
         // Rebyte 0.2.4 cannot update inline Session tools. Preserve product history
         // and perform this configuration change only after the old queue ends.
         await tx.update(sessionBindings).set({ isCurrent: false, status: 'retired', updatedAt: new Date() }).where(eq(sessionBindings.id, binding.id));

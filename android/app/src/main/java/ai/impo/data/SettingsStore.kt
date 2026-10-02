@@ -20,6 +20,7 @@ import java.security.MessageDigest
 private val Context.settingsDataStore by preferencesDataStore("impo_settings")
 @Serializable data class UserSettings(
     val displayName: String = "", val assistantName: String = "Momo", val avatar: Int = 3,
+    val mode: String = "Balanced",
     val onboarded: Boolean = false, val wifiOnly: Boolean = false, val recordingLocation: Boolean = false,
     val calendarEnabled: Boolean = false, val healthEnabled: Boolean = false, val contactsEnabled: Boolean = false,
 )

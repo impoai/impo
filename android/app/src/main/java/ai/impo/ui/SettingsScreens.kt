@@ -42,6 +42,7 @@ import ai.impo.client.BriefLocation
 import ai.impo.client.BriefSettings
 import ai.impo.client.BriefSlot
 import ai.impo.client.Connector
+import androidx.compose.foundation.selection.selectable
 import ai.impo.client.ProtocolJson
 import ai.impo.client.wireTimestamp
 import ai.impo.data.AppState
@@ -57,6 +58,7 @@ import java.util.UUID
 
 @Composable fun SettingsScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit, back: () -> Unit) {
     val context = LocalContext.current
+    LaunchedEffect(state.account?.id) { vm.retryProfile() }
     val scope = rememberCoroutineScope()
     val recording by NativeBridge.recording.collectAsStateWithLifecycle()
     var signOut by remember { mutableStateOf(false) }
@@ -81,7 +83,7 @@ import java.util.UUID
     fun launch(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { error = "No app is available to open this action." } }
     Column(Modifier.fillMaxSize()) {
         PageHeader("Settings", back = back)
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        LazyColumn(Modifier.weight(1f).testTag("settings.list"), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             item {
                 PaperCard(Modifier.fillMaxWidth()) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -91,6 +93,31 @@ import java.util.UUID
                             Text(state.account?.email ?: if (state.account?.development == true) "Local development account" else "Signed in", color = Muted)
                         }
                     }
+                }
+            }
+            item {
+                SectionLabel("Mode")
+                PaperCard {
+                    listOf(
+                        "Balanced" to "DeepSeek V4.1 Flash · Fast and economical for everyday tasks.",
+                        "Power" to "GPT-6 Sol · Stronger reasoning for complex work.",
+                    ).forEach { (mode, description) ->
+                        Row(Modifier.fillMaxWidth().selectable(
+                            selected = state.profile.mode == mode,
+                            enabled = "profile" !in state.busy,
+                            role = androidx.compose.ui.semantics.Role.RadioButton,
+                            onClick = { vm.saveProfile(state.profile.copy(mode = mode)) },
+                        ).testTag("settings.mode.${mode.lowercase()}").padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = state.profile.mode == mode, onClick = null)
+                            Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                                Text(mode, style = MaterialTheme.typography.titleMedium)
+                                Text(description, style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
+                        }
+                    }
+                    Text("Applies to your next chat reply, task and Brief on all your devices. Work already running keeps its current model.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    if ("profile" in state.busy) Text("Syncing your mode…", color = Muted)
+                    ErrorNotice(state.errors["profile"], if ("profile" !in state.busy) vm::retryProfile else null)
                 }
             }
             item {

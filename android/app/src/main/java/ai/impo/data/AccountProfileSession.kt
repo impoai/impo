@@ -69,7 +69,7 @@ internal class AccountProfileSession(
         val policyChanged = value.wifiOnly != baseline.wifiOnly || value.recordingLocation != baseline.recordingLocation ||
             value.calendarEnabled != baseline.calendarEnabled || value.healthEnabled != baseline.healthEnabled || value.contactsEnabled != baseline.contactsEnabled
         val profileChanged = value.assistantName != baseline.assistantName || value.displayName != baseline.displayName ||
-            value.avatar != baseline.avatar || (value.onboarded && !baseline.onboarded)
+            value.mode != baseline.mode || value.avatar != baseline.avatar || (value.onboarded && !baseline.onboarded)
         if (policyChanged && !profileChanged) {
             checkCurrent()
             return try {
@@ -89,6 +89,7 @@ internal class AccountProfileSession(
                 val changed = previous.settings.copy(
                     assistantName = value.assistantName.takeIf { it != baseline.assistantName } ?: previous.settings.assistantName,
                     displayName = value.displayName.takeIf { it != baseline.displayName } ?: previous.settings.displayName,
+                    mode = value.mode.takeIf { it != baseline.mode } ?: previous.settings.mode,
                     avatar = value.avatar.takeIf { it != baseline.avatar } ?: previous.settings.avatar,
                     onboarded = previous.settings.onboarded || value.onboarded,
                 ).withPolicies(value, baseline)
@@ -101,8 +102,9 @@ internal class AccountProfileSession(
                 val patch = ProfileUpdate(
                     assistantName = next.assistantName.takeIf { completing || it != previous.settings.assistantName } ?: previous.pending?.assistantName,
                     avatarIndex = next.avatar.takeIf { completing || it != previous.settings.avatar } ?: previous.pending?.avatarIndex,
+                    mode = next.mode.takeIf { it != previous.settings.mode } ?: previous.pending?.mode,
                     onboarded = true.takeIf { completing || previous.pending?.onboarded == true },
-                ).takeUnless { it.assistantName == null && it.avatarIndex == null && it.onboarded == null }
+                ).takeUnless { it.assistantName == null && it.avatarIndex == null && it.onboarded == null && it.mode == null }
                 ProfileCache(next, patch, next.displayName.takeIf { completing || it != previous.settings.displayName } ?: previous.pendingDisplayName)
             }
             // Local persistence precedes HTTP, including onboarding completion.
@@ -148,6 +150,7 @@ internal class AccountProfileSession(
 
     private fun merge(local: UserSettings, remote: AccountProfile) = local.copy(
         onboarded = local.onboarded || remote.onboarded,
+        mode = remote.mode?.takeIf { it in setOf("Balanced", "Power") } ?: local.mode,
         assistantName = remote.assistantName?.trim()?.takeIf { it.isNotEmpty() }?.take(30) ?: local.assistantName,
         displayName = remote.displayName?.trim()?.takeIf { it.isNotEmpty() }
             ?: local.displayName.ifBlank { fallbackName.trim().take(100) },

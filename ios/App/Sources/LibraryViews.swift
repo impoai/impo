@@ -11,7 +11,6 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     var onBack: () -> Void
     @State private var sheet: SettingsSheet?
-    @State private var modeExpanded = false
     @State private var showReset = false
     @State private var confirmSignOut = false
     @State private var confirmDelete = false
@@ -57,6 +56,20 @@ struct SettingsView: View {
                                     .accessibilityIdentifier("settings.echo-schedule")
                             }.padding(.horizontal, 18)
                         }
+                        sectionLabel("Mode")
+                        LibraryCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                modeChoice("Balanced", description: "DeepSeek V4.1 Flash · Fast and economical for everyday tasks.")
+                                modeChoice("Power", description: "GPT-6 Sol · Stronger reasoning for complex work.")
+                                Text("Applies to your next chat reply, task and Brief on all your devices. Work already running keeps its current model.")
+                                    .font(.caption).foregroundStyle(libraryMuted)
+                                if model.modeBusy { ProgressView("Saving or loading mode…").font(.caption) }
+                                if let error = model.modeError {
+                                    Text(error).font(.caption).foregroundStyle(libraryMuted)
+                                    Button("Retry") { Task { await model.refreshMode() } }.disabled(model.modeBusy)
+                                }
+                            }.padding(18)
+                        }
                         sectionLabel("About")
                         LibraryCard {
                             VStack(spacing: 0) {
@@ -97,6 +110,7 @@ struct SettingsView: View {
             }
             .accessibilityHidden(sheet != nil)
         }
+        .task { await model.refreshMode() }
         .foregroundStyle(libraryInk).tint(libraryAction)
         .sheet(item: $sheet) { route in
             Group {
@@ -218,25 +232,6 @@ struct SettingsView: View {
                         .padding(.horizontal, 17).padding(.vertical, 11).background(InstantStyle.forest, in: Capsule())
                         .accessibilityIdentifier("settings.manage")
                 }
-                Button { withAnimation(.easeInOut(duration: 0.2)) { modeExpanded.toggle() } } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Mode (Demo)").font(InstantStyle.serif(21))
-                            Text("Choose your preferred style.").font(.footnote).foregroundStyle(libraryMuted)
-                        }
-                        Spacer()
-                        Text(model.mode).foregroundStyle(libraryMuted)
-                        Image(systemName: modeExpanded ? "chevron.down" : "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(libraryMuted)
-                    }.contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("settings.mode")
-                if modeExpanded {
-                    VStack(spacing: 10) {
-                        modeChoice("Balanced", description: "A thoughtful pace for everyday things.")
-                        modeChoice("Power", description: "Space for more involved questions.")
-                    }
-                    Text("Preview preference · Model selection is not connected yet.")
-                        .font(.caption).foregroundStyle(libraryMuted)
-                }
                 settingsRow("Monthly Usage (Demo)", detail: "Available when plans launch") { sheet = .usage }
                 settingsRow("Billing (Demo)") { sheet = .plan }
             }.padding(18)
@@ -292,8 +287,7 @@ struct SettingsView: View {
 
     private func modeChoice(_ name: String, description: String) -> some View {
         Button {
-            model.mode = name
-            model.persistProfile()
+            Task { await model.selectMode(name) }
         } label: {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -306,7 +300,8 @@ struct SettingsView: View {
             }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
                 .background(model.mode == name ? InstantStyle.sage.opacity(0.3) : InstantStyle.paper, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(model.mode == name ? InstantStyle.forest.opacity(0.4) : InstantStyle.border, lineWidth: 0.7))
-        }.buttonStyle(.plain).accessibilityIdentifier("settings.mode.\(name.lowercased())")
+        }.buttonStyle(.plain).disabled(model.modeBusy || !model.modeLoaded)
+            .accessibilityIdentifier("settings.mode.\(name.lowercased())")
             .accessibilityAddTraits(model.mode == name ? .isSelected : [])
     }
 

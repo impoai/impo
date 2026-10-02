@@ -402,8 +402,9 @@ public struct InstantClient: Sendable {
     }
 
     /// Partial update; omitted fields are unchanged. `onboarded` can only become true.
-    public func updateProfile(assistantName: String? = nil, avatarIndex: Int? = nil, onboarded: Bool? = nil) async throws -> AccountProfile {
+    public func updateProfile(assistantName: String? = nil, avatarIndex: Int? = nil, onboarded: Bool? = nil, mode: String? = nil) async throws -> AccountProfile {
         var body: [String: JSONValue] = [:]
+        if let mode { body["mode"] = .string(mode) }
         if let assistantName { body["assistantName"] = .string(assistantName) }
         if let avatarIndex { body["avatarIndex"] = .number(Double(avatarIndex)) }
         if let onboarded { body["onboarded"] = .bool(onboarded) }

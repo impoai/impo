@@ -1,3 +1,4 @@
+import type { ModelModes } from '../model-modes.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BackgroundStep } from '../background/registry.js';
 import { RebyteGateway } from '../rebyte/gateway.js';
@@ -9,7 +10,7 @@ import { todayRepairPrompt } from '../prompts/today.js';
 export const todayLog = (event: string, fields: Record<string, unknown>) => console.log(JSON.stringify({ event: `today.${event}`, at: new Date().toISOString(), ...fields }));
 
 /** Uses a real isolated Rebyte Agent Session. All retries reconcile the same durable edition. */
-export function todayStep(repository: TodayRepository, gateway: RebyteGateway, model: string, pollMs = 2000): BackgroundStep {
+export function todayStep(repository: TodayRepository, gateway: RebyteGateway, model: string, pollMs = 2000, modes?: ModelModes): BackgroundStep {
   return { key: 'today.v1', async run(context) {
     await repository.ensureDue(context.userId);
     let row = await repository.claim(context.userId);
@@ -27,13 +28,14 @@ export function todayStep(repository: TodayRepository, gateway: RebyteGateway, m
       if (!row.providerSessionId) {
         let session;
         if (!row.creationStartedAt) {
-          row = await repository.patch(row, { creationStartedAt: new Date(), model, configVersion: briefConfigVersion });
+          const selectedModel = modes ? await repository.selectedModel(row.userId, modes) : model;
+          row = await repository.patch(row, { creationStartedAt: new Date(), model: selectedModel, configVersion: briefConfigVersion });
           // The durable intent precedes the network request. Unknown outcomes must be found, never blindly re-created.
           const instructions = appendDynamicContext(briefInstructions, {
             profile: input.profile, locale: input.locale, localDate: input.localDate, timeZone: input.timeZone,
             trigger: { kind: input.kind, label: input.label, cutoff: input.cutoff },
           });
-          session = await gateway.createSession({ input: [{ type: 'input_text', text: JSON.stringify(input) }], metadata, agent: { model, instructions, tools: [{ type: 'web_search', context_size: 'low', mode: 'live' }] } }, signal);
+          session = await gateway.createSession({ input: [{ type: 'input_text', text: JSON.stringify(input) }], metadata, agent: { model: selectedModel, instructions, tools: [{ type: 'web_search', context_size: 'low', mode: 'live' }] } }, signal);
         } else {
           const matches = await gateway.findSessions(metadata, signal);
           if (matches.length !== 1) throw new Error('today_creation_reconciliation_pending');

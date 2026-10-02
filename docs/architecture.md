@@ -37,6 +37,10 @@ Session before unsent input after six idle hours, eight turns, or an estimated
 12,000-token context. It carries two completed turns (up to 3,000 text characters),
 adds the profile, and keeps Memory retrieval first. Historical Session mappings
 preserve the complete conversation for clients. Rotation adds no summarization call.
+Account-level `mode` selects a server-owned model for Chat, Tasks, scheduled
+occurrences and Brief. Accepted work retains its model snapshot; changes apply
+after active work ends. See [model modes](../contracts/model-modes.md) for rollout
+prerequisites and current provider limitations.
 One-shot tasks have independent conversations and Sessions. Stable IDs,
 leases and reconciliation prevent duplicate work during retries and recovery.
 English prompt modules live in `server/src/prompts/`; clients do not compose

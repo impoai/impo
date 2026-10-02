@@ -22,6 +22,7 @@ for reads, writes, streams, device requests, uploads and artifact access.
 | Delivered files | `server/src/rebyte/files.ts`, `DeliveredFilesView.swift`, `DeliveredFiles.kt` |
 | Echo batches, receipts and history | `server/src/listening/`, `Listening.swift` |
 | Brief configuration and editions | `server/src/today/`, `Today.swift` |
+| Account profile and model mode | `server/src/db/repositories/profile-repository.ts`, [model modes](../contracts/model-modes.md) |
 | Memory summary, list and forgetting | `server/src/memory/`, `Memories.swift` |
 
 Source files under `ios/Packages/InstantClient/Sources/InstantClient/` define the

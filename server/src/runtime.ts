@@ -1,3 +1,4 @@
+import { modelModes } from './model-modes.js';
 import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
 import { scheduledTaskToolRegistry } from './tools/scheduled-task-tools.js';
 import { ServiceError } from './errors.js';
@@ -42,6 +43,6 @@ export function createRuntimeRepository(db: Database, config: ReturnType<typeof 
     provider: 'rebyte', model: config.rebyte.model, baseURL: config.rebyte.baseURL, instructions: taskInstructions, promptVersion, useSavedAgent: false,
     environment, tools: [...(connectors ? connectors.functionDefinitions() : []), webSearch],
   };
-  repository = new RebyteRepository(db, { provider: 'rebyte', serverTools, deviceToolTimeoutMs: config.deviceToolTimeoutMs, agentConfig, taskAgentConfig, history: new RebyteGateway(config.rebyte) });
+  repository = new RebyteRepository(db, { provider: 'rebyte', modelModes, serverTools, deviceToolTimeoutMs: config.deviceToolTimeoutMs, agentConfig, taskAgentConfig, history: new RebyteGateway(config.rebyte) });
   return repository;
 }

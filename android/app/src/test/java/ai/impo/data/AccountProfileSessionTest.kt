@@ -41,7 +41,7 @@ class AccountProfileSessionTest {
             beforeUpdate(value)
             patches += value
             profile = profile.copy(onboarded = profile.onboarded || value.onboarded == true,
-                assistantName = value.assistantName ?: profile.assistantName, avatarIndex = value.avatarIndex ?: profile.avatarIndex)
+                assistantName = value.assistantName ?: profile.assistantName, avatarIndex = value.avatarIndex ?: profile.avatarIndex, mode = value.mode ?: profile.mode)
             afterUpdate()
             if (loseProfileResponse) { loseProfileResponse = false; throw IOException("Response was lost") }
             return profile
@@ -53,6 +53,28 @@ class AccountProfileSessionTest {
             if (loseNameResponse) { loseNameResponse = false; throw IOException("Name response was lost") }
             return value
         }
+    }
+
+    @Test fun modelModeSyncsAcrossDevicesAndRetriesWithoutOverwritingOtherProfileFields() = runTest {
+        val preferences = Preferences()
+        val api = Api().apply { profile = AccountProfile(true, assistantName = "Robin", mode = "Power") }
+        val first = AccountProfileSession("alice", preferences, api, { true })
+        first.restore()
+        assertEquals("Power", first.state.value.settings.mode)
+        api.loseProfileResponse = true
+        assertFalse(first.save(first.state.value.settings.copy(mode = "Balanced")))
+        assertEquals(ProfileUpdate(mode = "Balanced"), preferences.read("alice").pending)
+        val reopened = AccountProfileSession("alice", preferences, api, { true })
+        reopened.restore()
+        assertEquals("Balanced", reopened.state.value.settings.mode)
+        assertNull(preferences.read("alice").pending)
+        assertEquals("Robin", reopened.state.value.settings.assistantName)
+        val secondDevice = AccountProfileSession("alice", Preferences(), api, { true })
+        secondDevice.restore()
+        assertEquals("Balanced", secondDevice.state.value.settings.mode)
+        val other = AccountProfileSession("bob", preferences, Api(), { true })
+        other.restore()
+        assertEquals("Balanced", other.state.value.settings.mode)
     }
 
     @Test fun returningAccountRestoresItsServerProfileAndKeepsDevicePermissionsLocal() = runTest {
