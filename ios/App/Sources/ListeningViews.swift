@@ -9,7 +9,7 @@ struct ListeningIntroduction: View {
             Image(systemName: "waveform").font(.system(size: 34)).foregroundStyle(InstantStyle.accent)
             Text("Keep the words that matter.").font(InstantStyle.serif(32))
             Text("Tap Echo to record, and tap again to stop. Recording continues when you lock your iPhone.")
-            Text("Speech is detected on your iPhone. Speech recordings are saved locally, then uploaded in batches. Audio is sent to Impo and Google Gemini for transcription. Once transcribed, Impo removes the audio and keeps the text in Echo. Choose your voice in each recording before it can be used in memories or Brief. You can delete each recording there.")
+            Text("Speech is detected on your iPhone. Speech recordings are saved locally, then uploaded in batches. Audio is sent to Impo and Google Gemini for transcription. Once transcribed, Impo removes the audio and keeps the text in Echo. You can review and delete each recording there.")
             EchoLocationSettings()
             Text("Before recording a conversation, let everyone know and get their permission.")
                 .font(.footnote).foregroundStyle(InstantStyle.muted)
