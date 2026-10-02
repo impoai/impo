@@ -37,6 +37,13 @@ Session before unsent input after six idle hours, eight turns, or an estimated
 12,000-token context. It carries two completed turns (up to 3,000 text characters),
 adds the profile, and keeps Memory retrieval first. Historical Session mappings
 preserve the complete conversation for clients. Rotation adds no summarization call.
+Brief v2 uses a shared [typed content contract](../contracts/brief.md) for useful
+next steps, short recaps, connection offers, feature tips and opted-in occasions.
+The hourly worker supplies owned evidence and verified context to an isolated
+Rebyte Agent. Server validation resolves eligible action IDs and persists content
+preferences and repetition state in `today_settings`. Native actions open an
+editable draft or an existing destination; they do not execute automatically.
+
 Account-level `mode` selects a server-owned model for Chat, Tasks, scheduled
 occurrences and Brief. Accepted work retains its model snapshot; changes apply
 after active work ends. See [model modes](../contracts/model-modes.md) for rollout

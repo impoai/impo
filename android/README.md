@@ -436,3 +436,15 @@ Tasks → Scheduled supports one-time, daily and weekly plans, explicit time zon
 editing, pause/resume, deletion and paged run history. Chat can also create plans.
 Each run opens an ordinary Task conversation. Settings → Notifications has a
 separate Scheduled tasks switch. Schedules require a live server with Temporal.
+
+## Brief guidance
+
+Brief uses the shared [v2 content contract](../contracts/brief.md). The preferences
+screen controls next steps, updates, connection suggestions, feature tips and
+occasion greetings independently from push notifications. Cards can be hidden
+indefinitely or for a week. Chat actions fill an editable draft, preserving existing
+text unless the user confirms replacement; they never send automatically.
+
+Model Settings synchronize `Balanced` (DeepSeek Flash) and `Power` (GPT-6 Luna).
+Current clients identify their catalog to the API; older builds keep their disabled
+preview instead of displaying the wrong model.

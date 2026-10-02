@@ -38,3 +38,15 @@ automatic stop uses the original session start across audio interruptions and
 checks the deadline before resuming or accepting a late microphone activation.
 The saved account plan works offline; other-device edits apply after the next
 foreground sync. See [the shared contract](../contracts/echo-schedule.md).
+
+## Brief guidance
+
+Brief uses the shared [v2 content contract](../contracts/brief.md). The preferences
+screen controls next steps, updates, connection suggestions, feature tips and
+occasion greetings independently from push notifications. Cards can be hidden
+indefinitely or for a week. Chat actions fill an editable draft, preserving existing
+text unless the user confirms replacement; they never send automatically.
+
+Model Settings synchronize `Balanced` (DeepSeek Flash) and `Power` (GPT-6 Luna).
+Current clients identify their catalog to the API; older builds keep their disabled
+preview instead of displaying the wrong model.

@@ -277,3 +277,12 @@
 - Prepared iOS 1.0 (55) and Android 0.1.9 (10). Production deployment and distribution receipts will be recorded after release.
 
 - Visual review caught inherited dark text on the new iOS action button; set its label to paper white for contrast before distribution.
+
+
+## 2026-10-02 — Brief guidance production and native releases
+
+- Released server source `9f5e6db74464e3a8ec7bc2ace0d08914eeea3b86` as immutable image `sha256:1da4d32b3307a8413cb27ef9b78573ea5cde6af13e920b51e5960756aa72f53f`. API **instant-api:51** and Worker **instant-worker:50** are COMPLETED, with one healthy instance each, verified image digests, startup logs and public health/readiness responses. Reviewed Drizzle push added three Brief settings columns and the model-mode column/check; no destructive statements.
+- A production-container canary verified 182 tracked source/package hashes, real Brief generation on both DeepSeek Flash and GPT-6 Luna, current/legacy model catalog behavior, owned HTTP actions, preference persistence, repeat dismissal and restoration. Synthetic database writes rolled back; provider Sessions were deleted and no test notifications were sent. All 116 unit tests also passed in the Linux image with the development-only fixture mounted and test environment selected.
+- iOS **1.0 (55)**, source `fd88fefce0ca55f9e92b1593b7df265d970f6184`, Apple build `19dd4ee7-9a0b-4d05-9853-51c944faa7a3`, is VALID and IN_BETA_TESTING in the existing internal Team group. English notes and group association were read back. Signed archive/export, production API/Clerk/Firebase/APNs, Apple sign-in, HealthKit, privacy manifest, iOS 18 minimum versions and packaged resources passed. IPA: 39705683 bytes; SHA-256 `ea9983dd9d95840e8788aa4b0426bfdd942b04ab4a7d667aef7009b31cfe4190`. External beta review, formal App Store submission and public iOS update metadata were not changed.
+- Published Android **0.1.9 (10)** at `https://impo.ai/android.apk`. The signed APK cold-launched on the API 35 emulator; original signing identity was retained. Immutable and permanent downloads matched 132886887 bytes and SHA-256 `1abae63c8b05389318e3fcd2c31482c816395112724b543537e28e53439c90bd`.
+- Native Brief action/draft/preference UI tests passed on both platforms; iOS visual review includes the corrected action-button contrast. Physical-device push presentation and signed-in deployed native accounts remain separate validation limits. Private receipts: `.local/brief-release/`, `.local/release55/`, and `.local/android/releases/0.1.9-10/`.
