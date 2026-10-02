@@ -39,16 +39,16 @@ regardless of subsequent preference edits.
 ## Deployment status and prerequisites
 
 Implemented and locally verified on 2026-10-02; production rollout is blocked by
-provider availability. The production Rebyte key rejects `gpt-6-sol` Session
-creation with `403 paid_model_required` and rejects the official `deepseek-flash`
-ID as unsupported. Its legacy `deepseek-v4-flash` alias maps to V4 Pro in the
-deployed Relay source and failed both isolated Session probes, so it is not an
-acceptable substitute for V4.1 Flash. A control probe using the existing production
-GPT Luna route completed. No credentials, billing entitlements or production
-services were changed during these checks.
+paid-model access. A repeat live test on 2026-10-02 completed with the official
+`deepseek-flash` ID using the same key and endpoint as production. The earlier
+unsupported-model response is no longer reproducible. `gpt-6-sol` Session
+creation still fails with HTTP 403; the provider requires purchased credits or
+an active subscription for that model. The existing production GPT Luna route
+previously completed a control probe. No credentials, billing entitlements or
+production services were changed during these checks.
 
-Before deploying this feature, provide paid GPT access and a working Rebyte Flash
-route, then run `npm run test:model-modes:live` for real Session acceptance with both
+Before deploying this feature, resolve paid GPT access or agree on a supported
+replacement with truthful native labels, then run `npm run test:model-modes:live` for real Session acceptance with both
 modes. This uses the configured Rebyte credentials, runs synthetic prompts, and
 removes only its own test Sessions. Offline verification is
 `npm run test:model-modes` and the native account/profile and UI suites. Push the additive Drizzle

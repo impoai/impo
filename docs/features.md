@@ -46,6 +46,11 @@ append-only. Source versions allow edited/deleted evidence to invalidate old
 content. Locale, time zone and optional city guide timing and presentation.
 The interface is named Brief; internal `today` routes and types remain compatible.
 
+The proposed [Brief content contract](../contracts/brief.md) defines suggestions,
+recaps, connection guidance, feature introductions and occasion greetings, with
+verified context and explicit actions. It describes the next implementation;
+those card categories and actions are not yet implemented in production.
+
 ## Echo
 
 The iOS app detects speech locally with Silero VAD. Audio segments and metadata
