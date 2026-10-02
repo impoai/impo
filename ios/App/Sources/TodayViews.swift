@@ -245,7 +245,7 @@ struct TodayBriefBody: View {
                                 if let action = card.action {
                                     Button { onAction?(card) } label: {
                                         Label(action.label, systemImage: action.kind == "chat_draft" ? "text.bubble" : "arrow.up.right")
-                                            .font(.system(size: 15, weight: .semibold)).frame(minHeight: 44)
+                                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(InstantStyle.paper).frame(minHeight: 44)
                                     }.buttonStyle(.borderedProminent).tint(InstantStyle.forest).disabled(actionBusy)
                                         .accessibilityIdentifier("today.action.\(card.id!)")
                                 }

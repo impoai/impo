@@ -275,3 +275,5 @@
 - Enabled the existing Balanced/Power preference using verified DeepSeek Flash and GPT-6 Luna routes. Both real Session checks pass with production credentials. A client catalog header prevents older Sol-labeled builds from changing the Luna preference. No paid subscription or provider secret changed.
 - Validation: 116 server unit tests, 6 Brief PostgreSQL tests, 9 notification tests, 3 model-mode tests and 16 Rebyte recovery tests passed. Four real Agent examples passed semantic review (personal next step, connection offer, email-review offer and greeting), with scoped provider cleanup. Swift: 70 tests, 10 live-only skips; Android unit suites and lint passed. Both native Brief interaction tests cover draft preservation/replacement and preference persistence. Secret inventory/history checks passed. No physical-device push, microphone or background validation is claimed.
 - Prepared iOS 1.0 (55) and Android 0.1.9 (10). Production deployment and distribution receipts will be recorded after release.
+
+- Visual review caught inherited dark text on the new iOS action button; set its label to paper white for contrast before distribution.
