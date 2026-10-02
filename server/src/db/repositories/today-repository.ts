@@ -1,3 +1,4 @@
+import { personalTranscript } from '../../listening/speakers.js';
 import type { ModelModes } from '../../model-modes.js';
 import { userProfiles } from '../schema.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -124,19 +125,19 @@ export class TodayRepository {
     const [chat, batches, segments, tasks] = await Promise.all([
       this.db.select().from(messages).where(and(eq(messages.userId, row.userId), eq(messages.role, 'user'), gte(messages.createdAt, since), lt(messages.createdAt, cutoff))).orderBy(desc(messages.createdAt)).limit(24)
         .then(rows => hydrateMessages(this.db, this.history, row.userId, rows)),
-      this.db.select({ id: listeningBatches.id, clientSegmentId: listeningBatches.clientBatchId, status: listeningBatches.status, startedAt: listeningBatches.startedAt, transcript: listeningBatches.transcript, segments: listeningBatches.segments, locationLabel: listeningBatches.locationLabel }).from(listeningBatches)
-        .where(and(eq(listeningBatches.userId, row.userId), eq(listeningBatches.status, 'transcribed'), gte(listeningBatches.transcribedAt, since), lt(listeningBatches.transcribedAt, cutoff))).orderBy(desc(listeningBatches.transcribedAt)).limit(24)
+      this.db.select({ id: listeningBatches.id, clientSegmentId: listeningBatches.clientBatchId, status: listeningBatches.status, startedAt: listeningBatches.startedAt, transcript: listeningBatches.transcript, segments: listeningBatches.segments, locationLabel: listeningBatches.locationLabel, utterances: listeningBatches.utterances, speakerReview: listeningBatches.speakerReview }).from(listeningBatches)
+        .where(and(eq(listeningBatches.userId, row.userId), eq(listeningBatches.status, 'transcribed'), sql`${listeningBatches.speakerReview}->>'status' = 'confirmed'`, gte(listeningBatches.speakerReviewedAt, since), lt(listeningBatches.speakerReviewedAt, cutoff))).orderBy(desc(listeningBatches.speakerReviewedAt)).limit(24)
         .then(rows => hydrateTranscripts(this.archive, row.userId, rows)),
-      this.db.select({ id: listeningSegments.id, clientSegmentId: listeningSegments.clientSegmentId, status: listeningSegments.status, startedAt: listeningSegments.startedAt, transcript: listeningSegments.transcript, locationLabel: listeningSegments.locationLabel }).from(listeningSegments)
-        .where(and(eq(listeningSegments.userId, row.userId), eq(listeningSegments.status, 'transcribed'), gte(listeningSegments.transcribedAt, since), lt(listeningSegments.transcribedAt, cutoff))).orderBy(desc(listeningSegments.transcribedAt)).limit(24)
+      this.db.select({ id: listeningSegments.id, clientSegmentId: listeningSegments.clientSegmentId, status: listeningSegments.status, startedAt: listeningSegments.startedAt, transcript: listeningSegments.transcript, locationLabel: listeningSegments.locationLabel, utterances: listeningSegments.utterances, speakerReview: listeningSegments.speakerReview }).from(listeningSegments)
+        .where(and(eq(listeningSegments.userId, row.userId), eq(listeningSegments.status, 'transcribed'), sql`${listeningSegments.speakerReview}->>'status' = 'confirmed'`, gte(listeningSegments.speakerReviewedAt, since), lt(listeningSegments.speakerReviewedAt, cutoff))).orderBy(desc(listeningSegments.speakerReviewedAt)).limit(24)
         .then(rows => hydrateTranscripts(this.archive, row.userId, rows)),
       this.db.select().from(actions).where(and(eq(actions.userId, row.userId), gte(actions.updatedAt, since), lt(actions.createdAt, cutoff))).orderBy(desc(actions.updatedAt)).limit(12)
         .then(rows => this.withTaskTitles(row.userId, rows)),
     ]);
     const candidates = [
       ...chat.map(v => this.source('message', v.id, 'Your message', v.createdAt, v.text)),
-      ...batches.map(v => this.source('batch', v.id, 'Listening transcript · speakers unverified', v.startedAt, v.transcript, v.transcript, echoLocationContext(v, 8))),
-      ...segments.map(v => this.source('transcript', v.id, 'Listening transcript · speakers unverified', v.startedAt, v.transcript, v.transcript, echoLocationContext(v, 8))),
+      ...batches.map(v => this.source('batch', v.id, 'Your Echo speech', v.startedAt, personalTranscript(v), JSON.stringify([personalTranscript(v), v.speakerReview]), echoLocationContext(v, 8))),
+      ...segments.map(v => this.source('transcript', v.id, 'Your Echo speech', v.startedAt, personalTranscript(v), JSON.stringify([personalTranscript(v), v.speakerReview]), echoLocationContext(v, 8))),
       ...tasks.map(v => this.source('task', v.id, 'Task', v.createdAt, `${v.goal}\nStatus at ${cutoff.toISOString()}: ${v.status}`, v.goal)),
     ].filter(s => s.text.trim()).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
     const sources: BriefSource[] = []; let remaining = 24000; let truncated = candidates.length >= 24;
@@ -159,13 +160,13 @@ export class TodayRepository {
       const [v] = await hydrateMessages(this.db, this.history, userId, await this.db.select().from(messages).where(and(eq(messages.userId, userId), eq(messages.id, id), eq(messages.role, 'user'))));
       if (v?.text) return this.source(kind, id, 'Your message', v.createdAt, v.text);
     } else if (kind === 'batch') {
-      const [v] = await hydrateTranscripts(this.archive, userId, await this.db.select({ clientSegmentId: listeningBatches.clientBatchId, status: listeningBatches.status, startedAt: listeningBatches.startedAt, transcript: listeningBatches.transcript, segments: listeningBatches.segments, locationLabel: listeningBatches.locationLabel })
+      const [v] = await hydrateTranscripts(this.archive, userId, await this.db.select({ clientSegmentId: listeningBatches.clientBatchId, status: listeningBatches.status, startedAt: listeningBatches.startedAt, transcript: listeningBatches.transcript, segments: listeningBatches.segments, locationLabel: listeningBatches.locationLabel, utterances: listeningBatches.utterances, speakerReview: listeningBatches.speakerReview })
         .from(listeningBatches).where(and(eq(listeningBatches.userId, userId), eq(listeningBatches.id, id), eq(listeningBatches.status, 'transcribed'))));
-      if (v?.transcript) return this.source(kind, id, 'Listening transcript', v.startedAt, v.transcript, v.transcript, echoLocationContext(v, 8));
+      if (v && personalTranscript(v)) return this.source(kind, id, 'Your Echo speech', v.startedAt, personalTranscript(v), JSON.stringify([personalTranscript(v), v.speakerReview]), echoLocationContext(v, 8));
     } else if (kind === 'transcript') {
-      const [v] = await hydrateTranscripts(this.archive, userId, await this.db.select({ clientSegmentId: listeningSegments.clientSegmentId, status: listeningSegments.status, startedAt: listeningSegments.startedAt, transcript: listeningSegments.transcript, locationLabel: listeningSegments.locationLabel }).from(listeningSegments)
+      const [v] = await hydrateTranscripts(this.archive, userId, await this.db.select({ clientSegmentId: listeningSegments.clientSegmentId, status: listeningSegments.status, startedAt: listeningSegments.startedAt, transcript: listeningSegments.transcript, locationLabel: listeningSegments.locationLabel, utterances: listeningSegments.utterances, speakerReview: listeningSegments.speakerReview }).from(listeningSegments)
         .where(and(eq(listeningSegments.userId, userId), eq(listeningSegments.id, id), eq(listeningSegments.status, 'transcribed'))));
-      if (v?.transcript) return this.source(kind, id, 'Listening transcript', v.startedAt, v.transcript, v.transcript, echoLocationContext(v, 8));
+      if (v && personalTranscript(v)) return this.source(kind, id, 'Your Echo speech', v.startedAt, personalTranscript(v), JSON.stringify([personalTranscript(v), v.speakerReview]), echoLocationContext(v, 8));
     } else if (kind === 'task') {
       const [v] = await this.withTaskTitles(userId, await this.db.select().from(actions).where(and(eq(actions.userId, userId), eq(actions.id, id))));
       if (v) return this.source(kind, id, 'Task', v.createdAt, `${v.goal}\nCurrent status: ${v.status}`, v.goal);

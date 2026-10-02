@@ -27,7 +27,7 @@ export interface BriefCard {
   style: 'focus' | 'plan' | 'reflection' | 'discovery'; links: BriefLink[];
 }
 export interface BriefContent { title: string; summary: string; cards: BriefCard[] }
-export const briefConfigVersion = 'today.v3';
+export const briefConfigVersion = 'today.v4';
 
 export function localClock(at: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(at);

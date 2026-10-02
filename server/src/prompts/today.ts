@@ -9,6 +9,7 @@ export const todayInstructions = `${composePrompt('scheduled-task')}
 - Morning looks ahead, midday checks in, and evening reflects. Follow custom slot labels.
 - Interpret relative dates using occurredLocalDate and timeZone, not UTC dates or upload times.
 - Do not attribute unidentified speakers to the user or use earlier briefs as new evidence.
+- Echo sources include only speech the user confirmed as their own. Keep quotations and statements about other people attributed to those people.
 - Missing data or location is unknown. A selected city does not prove the user's current position.
 - Use at most two public searches. Exclude private details; prefer authoritative sources.
 - Cite supplied sourceIds for personal claims and returned web URLs for public claims.

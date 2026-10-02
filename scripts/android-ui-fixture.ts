@@ -16,6 +16,7 @@ import { parseListeningBatch } from '../server/src/listening/batch-input.js';
 import { parseConfirmation } from '../server/src/accounts/contract.js';
 import { defaultEchoSchedule, parseEchoSchedule, type EchoSchedule } from '../server/src/echo/schedule.js';
 import { TranscriptionError } from '../server/src/listening/transcriber.js';
+import { emptySpeakerReview, parseSpeakerReview } from '../server/src/listening/speakers.js';
 import { validateTodaySettings } from '../server/src/db/repositories/today-repository.js';
 import { isDeviceTool, deviceHash, deviceToolNames } from '../server/src/tools/device-tools.js';
 import type { Dictation } from '../server/src/voice/dictation.js';
@@ -293,13 +294,19 @@ export function createAndroidFixture(
         startedAt,
         endedAt,
         status: 'transcribed',
-        transcript:
+        transcript: i === 0 ? 'I would like to make more time for walking this week.\nI am planning to take a pottery class next month.\nAn evening walk helps me clear my head.' :
           [
             'Leave a little room this afternoon. Take the long way home and stop for coffee.',
             'Start with the smallest useful version, then ask what we learned.',
             'The quiet bookshop near the station would be lovely this weekend.',
           ][i % 3] + ` [Echo ${i + 1}]`,
         model: 'synthetic-development-fixture',
+        speakerReview: emptySpeakerReview(),
+        utterances: i === 0 ? [
+          { id: 'u1', speaker: 'spk:0', startMs: 0, endMs: 6000, text: 'I would like to make more time for walking this week.' },
+          { id: 'u2', speaker: 'spk:1', startMs: 6200, endMs: 13000, text: 'I am planning to take a pottery class next month.' },
+          { id: 'u3', speaker: 'spk:0', startMs: 13200, endMs: 20000, text: 'An evening walk helps me clear my head.' },
+        ] : [],
         error: null,
         location:
           i === 0
@@ -765,6 +772,18 @@ export function createAndroidFixture(
           label: typeof label === 'string' ? label.trim() || undefined : undefined,
           source: 'manual',
         };
+        return { segment: strip(row) };
+      },
+      reviewSpeakers: async (userId: string, recordId: string, raw: unknown) => {
+        const row = own(records, userId, recordId);
+        if (row.deleted) throw missing();
+        if (!row.utterances?.some((turn: Json) => turn.speaker)) throw new ServiceError(409, 'speakers_unavailable', 'Speaker labels are not available for this recording.');
+        const review = parseSpeakerReview(raw, row.utterances);
+        if (review.revision !== row.speakerReview.revision) throw new ServiceError(409, 'speaker_review_conflict', 'This recording changed. Refresh it before saving your speaker choice.');
+        row.speakerReview = { ...review, revision: review.revision + 1 };
+        for (const brief of visible(briefs, userId)) if (brief.sources.some((source: Json) => source.recordId === recordId)) {
+          brief.status = 'withdrawn'; brief.content = null;
+        }
         return { segment: strip(row) };
       },
       delete: async (userId: string, recordId: string) => {

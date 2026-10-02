@@ -130,12 +130,12 @@ struct ListeningTranscriptDetail: View {
                         Button("Retry transcription") { Task { await listening.retryBatch(batchId) } }
                     }
                     if let count = current.segmentCount { Text("\(count) speech segment\(count == 1 ? "" : "s") in this batch").font(.caption).foregroundStyle(InstantStyle.muted) }
-                    Text(current.displayTranscript).font(.system(size: 18)).lineSpacing(7).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("listening.full-transcript")
+                    EchoSpeakerTranscript(segment: current) { editedSegment = $0 }
                     if let error = listening.loadError { Text(error).font(.footnote).foregroundStyle(InstantStyle.accent) }
                 }.padding(24)
             }.background(InstantStyle.paper).foregroundStyle(InstantStyle.ink)
                 .navigationTitle("Echo").navigationBarTitleDisplayMode(.inline)
+                .task(id: segment.id) { await listening.refreshRecording(segment.id) }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { Button("Back") { dismiss() }.accessibilityIdentifier("echo.detail-back") }
                     ToolbarItem(placement: .topBarTrailing) {

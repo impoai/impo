@@ -55,8 +55,12 @@ allowed by default, with an optional Wi-Fi-only setting. The app uploads files
 directly to private S3 using short-lived, checksum-bound URLs. The API verifies
 the object and durably starts a Temporal job before the app deletes local audio.
 Each batch transcribes independently; one failed batch does not block uploads.
-Google Gemini produces transcripts, which are archived per user. PostgreSQL
-keeps metadata; new Temporal jobs carry object references instead of audio.
+Google Gemini produces transcripts and anonymous speaker turns, archived per user.
+Users select their voice, choose Not sure or None of these is me, and exclude
+misassigned passages. Only confirmed personal speech can enter Memory and Brief;
+the full transcript remains in Echo. Labels apply only within a recording and
+can be wrong. PostgreSQL keeps review state and metadata; new Temporal jobs carry
+object references instead of audio. See the [speaker contract](../contracts/echo-speakers.md).
 Processed audio is deleted from S3. Failed jobs retain audio for retry until the
 recording is deleted. Unconfirmed staging objects expire after one day when the
 documented bucket lifecycle is configured. Legacy clients remain supported.
@@ -82,7 +86,7 @@ hardware verification; Simulator tests do not establish those results.
 
 ## Memory
 
-The hourly Memory step reads completed chat history and Echo evidence. An Agent
+The hourly Memory step reads completed chat history and confirmed personal Echo evidence. An Agent
 extracts useful lasting facts and proposes ADD/UPDATE/DELETE operations against
 existing memory. Facts have categories, source references and optional expiry.
 A pure planner selects bounded windows, defers active conversations and sweeps
@@ -97,9 +101,11 @@ inventing recalled facts. Tasks and scheduled tasks do not get this requirement
 or the retrieval tool. Existing main Sessions adopt the new configuration on the
 next user message after any active turn finishes.
 
-Manual Echo label edits do
-not replay already-consumed evidence. Deleting source recordings does not silently
-claim to erase facts already derived from them; users can forget those separately.
+Manual Echo place-label edits do not replay already-consumed evidence. Speaker
+review changes create new evidence revisions. Revoked or deleted Echo sources
+withdraw dependent memories and Brief editions when accessed or reconciled.
+Mixed-source facts are withdrawn as a whole; audit history remains. This does
+not erase previously delivered responses or content already seen by the user.
 
 ## Tools and permissions
 

@@ -19,6 +19,16 @@ From the repository root, run `npm test` for host verification or
 The Xcode scheme and Swift package retain their existing `Instant` and
 `InstantClient` identifiers; the product name is Impo.
 
+## Echo speakers
+
+Echo details also show anonymous speaker turns. Choose your voice, leave it
+uncertain, mark yourself absent, or exclude individual passages. Selection is
+recording-specific and is shared with Android through the
+[speaker contract](../contracts/echo-speakers.md). `EchoSpeakerUITests` uses the
+synthetic fixture on port 3018 to verify selection, exclusion, relaunch and
+revocation. Physical microphone and real conversation accuracy remain separate
+acceptance checks.
+
 ## Echo schedules
 
 Settings → Echo schedule and the Echo timeline clock button edit the account

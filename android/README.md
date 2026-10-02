@@ -411,6 +411,15 @@ The signed APK cold-launched and both immutable and permanent download URLs
 passed complete SHA-256 verification. Physical-device and production-account
 acceptance remain unverified.
 
+## Echo speakers
+
+Echo details also show anonymous speaker turns with Choose/Change, Not sure,
+None of these is me and passage exclusions. The server uses only confirmed
+personal speech in Memory and Brief. See the [speaker contract](../contracts/echo-speakers.md).
+Run `IMPO_ANDROID_TEST_CLASS=ai.impo.ui.EchoSpeakersInstrumentedTest npm run test:android:ui`
+for selection, exclusion, relaunch and revocation against the synthetic fixture.
+This does not establish physical microphone or real conversation accuracy.
+
 ## Echo schedules
 
 Settings → Echo schedule and the clock button in Memories → Echo edit the same

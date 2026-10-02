@@ -393,6 +393,11 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 200, { segments: await options.listening.list(user.id, from, to) }); return;
       }
       const locationRoute = /^\/api\/v1\/listening\/segments\/([^/]+)\/location$/.exec(path);
+      const speakerRoute = /^\/api\/v1\/listening\/segments\/([^/]+)\/speakers$/.exec(path);
+      if (speakerRoute && method === 'PATCH') {
+        if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+        sendJSON(res, 200, await options.listening.reviewSpeakers(user.id, uuid(speakerRoute[1]), await readJSON(req, requestTimeoutMs))); return;
+      }
       if (locationRoute && method === 'PATCH') {
         if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
         const input = await readJSON(req, requestTimeoutMs);

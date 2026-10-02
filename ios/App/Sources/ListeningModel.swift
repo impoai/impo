@@ -832,6 +832,26 @@ final class ListeningModel: NSObject {
         return updated
     }
 
+    func reviewSpeakers(_ segment: ListeningSegment, review: EchoSpeakerReview) async throws -> ListeningSegment {
+        guard let client else { throw URLError(.notConnectedToInternet) }
+        let token = generation
+        let updated = try await client.reviewListeningSpeakers(segment.id, review: review)
+        guard token == generation, !deletedSegmentIDs.contains(segment.id) else { throw CancellationError() }
+        timeline.update(updated)
+        if let index = history.firstIndex(where: { $0.id == updated.id }) { history[index] = updated }
+        if let index = segments.firstIndex(where: { $0.id == updated.id }) { segments[index] = updated }
+        return updated
+    }
+
+    func refreshRecording(_ id: String) async {
+        guard let client else { return }
+        let token = generation
+        guard let rows = try? await client.listeningRecords(ids: [id]), token == generation, !deletedSegmentIDs.contains(id), let updated = rows.first else { return }
+        timeline.update(updated)
+        if let index = history.firstIndex(where: { $0.id == id }) { history[index] = updated }
+        if let index = segments.firstIndex(where: { $0.id == id }) { segments[index] = updated }
+    }
+
     @discardableResult func delete(_ segment: ListeningSegment) async -> Bool {
         guard let client else { return false }
         let token = generation

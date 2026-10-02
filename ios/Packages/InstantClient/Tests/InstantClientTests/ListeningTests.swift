@@ -42,6 +42,19 @@ final class ListeningTests: XCTestCase {
         XCTAssertNil(cleared.location?.label)
         XCTAssertEqual(cleared.location?.spans.count, 1)
     }
+    func testSpeakerReviewRoundTripAndUnknownVoiceDoesNotBecomeSelf() async throws {
+        let (api, session) = client("speakers"); defer { session.invalidateAndCancel() }
+        let review = EchoSpeakerReview(revision: 2, status: "confirmed", selfSpeakerIds: ["a"], excludedUtteranceIds: ["u3"])
+        let result = try await api.reviewListeningSpeakers("server-id", review: review)
+        XCTAssertEqual(result.speakerReview?.revision, 3)
+        XCTAssertEqual(result.speakerIDs, ["a", "b"])
+        XCTAssertEqual(result.speakerLabel("a"), "Speaker A")
+        XCTAssertEqual(result.speakerLabel(nil), "Unknown speaker")
+        XCTAssertTrue(result.speakerReview!.includes(result.utterances![0]))
+        XCTAssertFalse(result.speakerReview!.includes(result.utterances![1]))
+        XCTAssertFalse(result.speakerReview!.includes(result.utterances![2]))
+        XCTAssertFalse(EchoSpeakerReview().includes(result.utterances![0]))
+    }
     private func client(_ scenario: String) -> (InstantClient, URLSession) {
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ListeningProtocol.self]
         let session = URLSession(configuration: config)
@@ -53,6 +66,25 @@ private final class ListeningProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host?.hasSuffix(".listening-test.invalid") == true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        if request.url?.host == "speakers.listening-test.invalid" {
+            XCTAssertEqual(request.url?.path, "/instant/api/v1/listening/segments/server-id/speakers")
+            XCTAssertEqual(request.httpMethod, "PATCH")
+            var bytes = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+                stream.open(); defer { stream.close() }; var buffer = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable { let count = stream.read(&buffer, maxLength: buffer.count); if count <= 0 { break }; bytes.append(contentsOf: buffer.prefix(count)) }
+            }
+            var review = try! JSONDecoder().decode(EchoSpeakerReview.self, from: bytes)
+            XCTAssertEqual(review.revision, 2); XCTAssertEqual(review.selfSpeakerIds, ["a"]); XCTAssertEqual(review.excludedUtteranceIds, ["u3"])
+            review.revision += 1
+            let body: [String: Any] = ["segment": ["id": "server-id", "clientSegmentId": "stable-id", "startedAt": "1970-01-01T00:00:01Z", "endedAt": "1970-01-01T00:00:05Z", "status": "transcribed", "transcript": "Mine. Other. Excluded.",
+                "speakerReview": try! JSONSerialization.jsonObject(with: JSONEncoder().encode(review)), "utterances": [
+                    ["id": "u1", "speaker": "a", "startMs": 0, "endMs": 1000, "text": "Mine."],
+                    ["id": "u2", "speaker": "b", "startMs": 1100, "endMs": 2000, "text": "Other."],
+                    ["id": "u3", "speaker": "a", "startMs": 2100, "endMs": 3000, "text": "Excluded."]]]]
+            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body)); client?.urlProtocolDidFinishLoading(self); return
+        }
         if request.url?.host == "location.listening-test.invalid" {
             XCTAssertEqual(request.url?.path, "/instant/api/v1/listening/segments/server-id/location")
             XCTAssertEqual(request.httpMethod, "PATCH")

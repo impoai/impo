@@ -1,3 +1,5 @@
+import { EchoSourceRepository } from '../src/db/repositories/echo-source-repository.js';
+import { emptySpeakerReview } from '../src/listening/speakers.js';
 import { MemoryDatabaseRepository } from '../src/db/repositories/memory-database-repository.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -36,7 +38,7 @@ async function fixture(t: TestContext) {
   const archive = new MemoryTranscriptArchive();
   const repository = new MemoryRepository(db.db, archive);
   const embedder = new DevelopmentEmbedder();
-  const store = new MemoryStore(new MemoryDatabaseRepository(db.db, new LocalFileProvider(directory), embedder), embedder);
+  const store = new MemoryStore(new MemoryDatabaseRepository(db.db, new LocalFileProvider(directory), embedder), embedder, (owner, ids) => new EchoSourceRepository(db.db).valid(owner, ids));
   const fake = new FakeRebyte(); const baseURL = await fake.listen();
   const gateway = new RebyteGateway({ apiKey: 'instant-fake-rebyte-key', baseURL, model: 'test-model', timeoutMs: 2000 });
   let sequence = 0;
@@ -52,9 +54,10 @@ async function fixture(t: TestContext) {
   const echo = async (transcript: string, transcribedAt = hourAgo()) => {
     const id = randomUUID(), clientBatchId = randomUUID(), startedAt = new Date(transcribedAt.getTime() - 60_000);
     await db.db.insert(listeningBatches).values({ id, userId, clientBatchId, streamId: randomUUID(), sequence: 1, sessionId: randomUUID(), contentHash: 'test',
-      startedAt, endedAt: transcribedAt, segments: [], audioMilliseconds: 60_000, status: 'transcribed', transcribedAt });
-    await archive.put({ userId, recordId: clientBatchId, kind: 'echo-batch', startedAt, endedAt: transcribedAt, transcript, utterances: [], model: 'test' });
-    return `echo:${id}`;
+      startedAt, endedAt: transcribedAt, segments: [], audioMilliseconds: 60_000, status: 'transcribed', transcribedAt, speakerReviewedAt: transcribedAt,
+      speakerReview: { revision: 1, status: 'confirmed', selfSpeakerIds: ['a'], excludedUtteranceIds: [] } });
+    await archive.put({ userId, recordId: clientBatchId, kind: 'echo-batch', startedAt, endedAt: transcribedAt, transcript, utterances: [{ speaker: 'a', startMs: 0, endMs: 60000, text: transcript }], model: 'test' });
+    return `echo:${id}:v1`;
   };
   const step = (now?: () => Date) => memoryStep(repository, store, gateway, { model: 'test-model', pollMs: 15, ...(now ? { now } : {}) });
   t.after(async () => {
@@ -72,6 +75,36 @@ async function fixture(t: TestContext) {
   });
   return { db, userId, repository, store, fake, gateway, baseURL, chat, echo, step };
 }
+
+test('late speaker confirmation enters a new window and corrections retract all derived memory surfaces', { timeout: 30000 }, async t => {
+  const f = await fixture(t);
+  const source = await f.echo('I prefer walking.');
+  const id = source.split(':')[1]!;
+  const original = (await f.db.db.select().from(listeningBatches).where(eq(listeningBatches.id, id)))[0]!;
+  await f.db.db.update(listeningBatches).set({ speakerReview: emptySpeakerReview(), speakerReviewedAt: null }).where(eq(listeningBatches.id, id));
+  await f.repository.state(f.userId);
+  await f.db.db.update(memoryState).set({ echoAt: new Date(Date.now() - 180000), echoId: id }).where(eq(memoryState.userId, f.userId));
+  assert.equal(await f.repository.nextWindow(f.userId), undefined);
+  const reviewedAt = new Date(Date.now() - 120000);
+  await f.db.db.update(listeningBatches).set({ speakerReview: original.speakerReview, speakerReviewedAt: reviewedAt }).where(eq(listeningBatches.id, id));
+  const window = (await f.repository.nextWindow(f.userId))!;
+  const evidence = await f.repository.evidence(f.userId, window);
+  assert.equal(evidence[0]!.text, 'I prefer walking.');
+  assert.equal(evidence[0]!.cursor.at, reviewedAt.toISOString());
+  const memoryId = randomUUID();
+  await f.store.apply(f.userId, [{ key: 'confirmed-echo', event: 'ADD', id: memoryId, content: 'Prefers walking', categories: ['user_preferences'], sourceIds: [source], expiresAt: null }]);
+  assert.equal((await f.store.search(f.userId, 'walking')).length, 1);
+  await f.store.apply(f.userId, [{ key: 'merged-echo', event: 'UPDATE', id: memoryId, content: 'Prefers walking in the evenings', categories: ['user_preferences'],
+    sourceIds: Array.from({ length: 20 }, (_, index) => `chat:additional-${index}`), expiresAt: null }]);
+  assert.ok((await f.store.get(f.userId, [memoryId])).get(memoryId)!.sourceIds.includes(source), 'updates must not age out a revocable Echo dependency');
+  await f.db.db.update(listeningBatches).set({ speakerReview: { ...emptySpeakerReview(), revision: 2 }, speakerReviewedAt: new Date() }).where(eq(listeningBatches.id, id));
+  assert.deepEqual(await f.store.search(f.userId, 'walking'), []);
+  assert.equal((await f.store.summary(f.userId)).total, 0);
+  assert.deepEqual((await f.store.page(f.userId, { limit: 20 })).memories, []);
+  assert.equal((await f.store.get(f.userId, [memoryId])).size, 0);
+  assert.deepEqual((await f.store.history(f.userId, memoryId)).map(entry => entry.event), ['ADD', 'UPDATE', 'DELETE']);
+  await assert.rejects(f.store.apply(f.userId, [{ key: 'stale-in-flight', event: 'ADD', id: randomUUID(), content: 'Stale fact', categories: ['misc'], sourceIds: [source], expiresAt: null }]), /echo_evidence_changed/);
+});
 
 test('hourly consolidation adds, updates and deletes memories from chat and Echo, once per item', { timeout: 30000 }, async t => {
   const f = await fixture(t);

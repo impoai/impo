@@ -164,7 +164,21 @@ fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
     val status: String, val transcript: String = "", val model: String? = null,
     val error: ErrorDetail? = null, val batchId: String? = null, val segmentCount: Int? = null,
     val audioMilliseconds: Int? = null, val cursor: String? = null, val location: EchoLocationContext? = null,
-)
+    val utterances: List<EchoUtterance> = emptyList(), val speakerReview: EchoSpeakerReview? = null,
+) {
+    val speakerIds: List<String> get() = utterances.mapNotNull { it.speaker }.distinct()
+    fun speakerLabel(id: String?): String {
+        val index = speakerIds.indexOf(id)
+        return if (index < 0) "Unknown speaker" else "Speaker ${if (index < 26) ('A' + index).toString() else (index + 1).toString()}"
+    }
+}
+@Serializable data class EchoUtterance(val id: String, val speaker: String? = null, val startMs: Int, val endMs: Int, val text: String)
+@Serializable data class EchoSpeakerReview(
+    val revision: Int = 0, val status: String = "unconfirmed", val selfSpeakerIds: List<String> = emptyList(),
+    val excludedUtteranceIds: List<String> = emptyList(),
+) {
+    fun includes(turn: EchoUtterance): Boolean = status == "confirmed" && turn.speaker in selfSpeakerIds && turn.id !in excludedUtteranceIds
+}
 @Serializable data class EchoPage(val segments: List<EchoRecord>, val nextCursor: String? = null, val previousCursor: String? = null)
 @Serializable data class EchoTimelineDay(val date: String, val ids: List<String>)
 @Serializable data class EchoTimeline(val timeZone: String, val days: List<EchoTimelineDay>)

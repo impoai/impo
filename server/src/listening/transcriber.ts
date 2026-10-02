@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Utterance } from '../db/entities/listening.js';
+import { joinAudio } from './audio-join.js';
 
 export interface TranscriptionResult { transcript: string; utterances: Utterance[]; model: string }
 
@@ -24,22 +25,39 @@ const seconds = (value: string | undefined) => {
   return match ? Math.round(Number(match[1]) * 1000) : 0;
 };
 
-/** Consecutive words by the same speaker become one utterance, sliced from the text itself. */
+/** Preserve source text while splitting speaker changes, sentences and long passages. */
 export function groupUtterances(text: string, words: WordInfo[]): Utterance[] {
   const result: Utterance[] = [];
+  // Gemini annotation indices are UTF-8 bytes, not JavaScript UTF-16 offsets.
+  const bytes = Buffer.from(text, 'utf8');
+  const slice = (from: number, to: number) => bytes.subarray(from, to).toString('utf8').trim();
+  const boundary = (at: number) => at === bytes.length || (bytes[at]! & 0xc0) !== 0x80;
   let current: { speaker: string | null; startMs: number; endMs: number; from: number; to: number } | undefined;
+  let previousEnd = 0, previousEndMs = 0;
+  const flush = () => {
+    if (current) result.push({ speaker: current.speaker, startMs: current.startMs, endMs: current.endMs, text: slice(current.from, current.to) });
+    current = undefined;
+  };
   for (const word of words) {
     if (word.type !== 'word_info' || typeof word.start_index !== 'number' || typeof word.end_index !== 'number') continue;
-    const speaker = word.speaker ?? null;
-    if (current && current.speaker === speaker) {
+    if (!Number.isSafeInteger(word.start_index) || !Number.isSafeInteger(word.end_index) || word.start_index < 0 || word.end_index <= word.start_index || word.end_index > bytes.length
+      || !boundary(word.start_index) || !boundary(word.end_index) || word.start_index < previousEnd) return [];
+    // Never attribute unannotated text to the voices on either side of it.
+    const gap = slice(previousEnd, word.start_index);
+    if (gap) { flush(); result.push({ speaker: null, startMs: previousEndMs, endMs: seconds(word.start_offset), text: gap }); }
+    const speaker = typeof word.speaker === 'string' && word.speaker ? word.speaker : null;
+    if (current && current.speaker === speaker && seconds(word.start_offset) - current.endMs < 1500
+      && current.endMs - current.startMs < 20000 && !/[.!?。！？][”"'’）)]*$/.test(slice(current.from, current.to))) {
       current.endMs = seconds(word.end_offset);
       current.to = word.end_index;
     } else {
-      if (current) result.push({ speaker: current.speaker, startMs: current.startMs, endMs: current.endMs, text: text.slice(current.from, current.to).trim() });
+      flush();
       current = { speaker, startMs: seconds(word.start_offset), endMs: seconds(word.end_offset), from: word.start_index, to: word.end_index };
     }
+    previousEnd = word.end_index; previousEndMs = seconds(word.end_offset);
   }
-  if (current) result.push({ speaker: current.speaker, startMs: current.startMs, endMs: current.endMs, text: text.slice(current.from, current.to).trim() });
+  flush();
+  if (previousEnd && slice(previousEnd, bytes.length)) result.push({ speaker: null, startMs: previousEndMs, endMs: previousEndMs, text: slice(previousEnd, bytes.length) });
   return result.filter(utterance => utterance.text);
 }
 
@@ -56,6 +74,15 @@ export class GeminiTranscriber implements Transcriber {
   }
 
   async transcribeMany(items: Array<{ audio: Buffer; mimeType: string }>, signal: AbortSignal): Promise<TranscriptionResult> {
+    // A multi-file response has no documented shared timeline or speaker namespace.
+    // Decode and join first; offsets refer to speech audio, not elapsed wall time.
+    if (items.length > 1) {
+      try { items = [{ audio: await joinAudio(items, signal), mimeType: 'audio/wav' }]; }
+      catch (error) {
+        if (signal.aborted) throw error;
+        throw new TranscriptionError('Could not prepare recording for transcription', false, 'audio_decode_failed');
+      }
+    }
     const files: Array<{ name: string; uri: string; mimeType: string; state?: string }> = [];
     try {
       for (const item of items) {
@@ -74,7 +101,7 @@ export class GeminiTranscriber implements Transcriber {
         body: JSON.stringify({
           model: this.model, store: false,
           input: files.map(file => ({ type: 'audio', uri: file.uri, mime_type: file.mimeType })),
-          generation_config: { transcription_config: { mode: { type: 'verbatim' } } },
+          generation_config: { transcription_config: { mode: { type: 'verbatim', diarization_mode: 'speaker', timestamp_granularities: ['word'] } } },
         }),
       }, signal);
       const body = await response.json() as { object?: string; status?: string; steps?: Array<{ content?: Array<{ type?: string; text?: string; annotations?: WordInfo[] }> }> };
@@ -84,9 +111,7 @@ export class GeminiTranscriber implements Transcriber {
       if (!Array.isArray(body.steps) && !(body.status === 'completed' && body.object === 'interaction')) throw new TranscriptionError('Invalid transcription response', true, 'invalid_response');
       if (parts.length === 0 && body.status !== 'completed') throw new TranscriptionError('Invalid transcription response', true, 'invalid_response');
       const transcript = parts.map(part => part.text!).join('\n').trim();
-      // Multi-file offsets are not a documented wall-clock timeline. Keep source
-      // timestamps on the batch and do not publish guessed speaker/time mapping.
-      const utterances = items.length === 1 ? parts.flatMap(part => groupUtterances(part.text!, part.annotations ?? [])) : [];
+      const utterances = parts.flatMap(part => groupUtterances(part.text!, part.annotations ?? []));
       return { transcript, utterances, model: this.model };
     } finally {
       await Promise.all(files.map(file => this.request(`${this.options.baseURL}/v1beta/${file.name}`, { method: 'DELETE' }, AbortSignal.timeout(10_000)).catch(() => undefined)));

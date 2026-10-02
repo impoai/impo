@@ -326,6 +326,13 @@ public struct InstantClient: Sendable {
         let _: Receipt = try await send("DELETE", ["listening", "segments", id])
     }
 
+    public func reviewListeningSpeakers(_ id: String, review: EchoSpeakerReview) async throws -> ListeningSegment {
+        struct Response: Decodable { let segment: ListeningSegment }
+        let body = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(review))
+        let response: Response = try await send("PATCH", ["listening", "segments", id, "speakers"], body: body)
+        return response.segment
+    }
+
     public func tasks() async throws -> [TaskSummary] {
         struct Response: Decodable { let tasks: [TaskSummary] }
         let response: Response = try await send("GET", ["tasks"])

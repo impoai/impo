@@ -5,7 +5,7 @@
  * Existing memories are shown to the Agent under short aliases (m1..mN), never raw IDs, so
  * an invented identifier cannot touch a memory it was not shown.
  */
-export const memoryConfigVersion = 'memory.v2';
+export const memoryConfigVersion = 'memory.v3';
 /**
  * Mem0 Platform's 15 default categories (https://docs.mem0.ai/platform/features/custom-categories).
  * A memory carries one to three. Time-bound plans are marked by expiresAt, not a category.
@@ -30,9 +30,9 @@ export interface MemoryWindow {
 }
 
 export interface MemoryEvidence {
-  /** chat:<submission ID> | echo:<batch or segment ID> */
+  /** chat:<submission ID> | echo:<recording ID>:v<speaker review revision> */
   id: string; kind: 'chat' | 'echo'; occurredAt: string;
-  /** Chat: the user's words. Echo: an ambient transcript, speakers unverified. */
+  /** Chat: the user's words. Echo: only speech explicitly confirmed as the user's. */
   text: string;
   /** Chat only: the assistant's answer, context for resolving what the user meant. */
   reply?: string;

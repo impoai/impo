@@ -25,6 +25,7 @@ for (const scenario of ['success', 'failure', 'processing', 'malformed', 'silenc
       } else {
         called = true; const input = JSON.parse(body);
         assert.equal(input.store, false); assert.equal(input.model, 'gemini-3.5-transcribe');
+        assert.deepEqual(input.generation_config.transcription_config.mode, { type: 'verbatim', diarization_mode: 'speaker', timestamp_granularities: ['word'] });
         assert.deepEqual(input.input, [{ type: 'audio', uri: 'https://files.invalid/test', mime_type: 'audio/mp4' }]);
         if (scenario === 'failure') { res.statusCode = 429; res.end('{"private":"do not leak"}'); }
         else if (scenario === 'silence') res.end(JSON.stringify({status:'completed', object:'interaction'}));

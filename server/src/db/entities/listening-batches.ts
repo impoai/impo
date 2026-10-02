@@ -4,6 +4,8 @@ import { users } from './chat.js';
 import type { StoredError } from './runtime.js';
 import type { EchoLocationSpan } from '../../listening/location.js';
 import type { AcceptedBatch } from '../../listening/batch-contract.js';
+import type { Utterance } from './listening.js';
+import type { SpeakerReview } from '../../listening/speakers.js';
 export interface BatchSegmentMetadata { segmentId: string; startedAt: string; endedAt: string; locations?: EchoLocationSpan[] }
 /** Metadata only. New uploads keep raw audio in S3; legacy inputs remain in Temporal. */
 export const listeningBatches = pgTable('listening_batches', {
@@ -17,12 +19,16 @@ export const listeningBatches = pgTable('listening_batches', {
  status:text('status',{enum:['pending','transcribing','transcribed','failed','deleted']}).notNull().default('pending'),
  transcript:text('transcript').notNull().default(''), model:text('model'), error:jsonb('error').$type<StoredError>(),
  locationLabel:text('location_label'),
+ utterances:jsonb('utterances').$type<Utterance[]>().notNull().default(sql`'[]'::jsonb`),
+ speakerReview:jsonb('speaker_review').$type<SpeakerReview>().notNull().default(sql`'{"revision":0,"status":"unconfirmed","selfSpeakerIds":[],"excludedUtteranceIds":[]}'::jsonb`),
+ speakerReviewedAt:timestamp('speaker_reviewed_at',{withTimezone:true}),
  attempts:integer('attempts').notNull().default(0), executionToken:uuid('execution_token'),
  createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(), updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
  transcribedAt:timestamp('transcribed_at',{withTimezone:true}),
 }, t=>[
  unique('listening_batches_client_unique').on(t.userId,t.clientBatchId), unique('listening_batches_sequence_unique').on(t.userId,t.streamId,t.sequence),
  index('listening_batches_user_time').on(t.userId,t.startedAt),
+ index('listening_batches_review_time').on(t.userId,t.speakerReviewedAt,t.id).where(sql`${t.status} = 'transcribed'`),
  check('listening_batches_status_check',sql`${t.status} IN ('pending','transcribing','transcribed','failed','deleted')`),
  check('listening_batches_sequence_check',sql`${t.sequence} > 0`),
  check('listening_batches_location_label_check',sql`${t.locationLabel} IS NULL OR char_length(${t.locationLabel}) BETWEEN 1 AND 80`),

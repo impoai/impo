@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, or,
 import type { MemoryDatabase } from '../memory-client.js';
 import type { MemorySchema } from '../memory-schema.js';
 import type { Memory, MemoryCategory, MemoryChange, MemoryMatch } from '../../memory/contract.js';
+import { createHash } from 'node:crypto';
 
 type MemoryRow = Omit<MemorySchema['memories']['$inferSelect'], 'embedding' | 'metadata'>;
 function view(row: MemoryRow): Memory {
@@ -25,6 +26,30 @@ export class MemoryRecordRepository {
 
   async count(): Promise<number> {
     return (await this.db.select({ value: count() }).from(this.memories))[0]!.value;
+  }
+
+  async echoSources(): Promise<string[]> {
+    const source = sql<string>`source.value`;
+    const rows = await this.db.selectDistinct({ source }).from(this.memories)
+      .innerJoin(sql`json_each(${this.memories.sourceIds}) AS source`, sql`true`).where(sql`${source} LIKE 'echo:%'`);
+    return rows.map(row => row.source);
+  }
+
+  /** Remove the whole derived fact: merged prose cannot safely be separated by source. */
+  async retractEchoSources(invalid: string[]): Promise<void> {
+    for (let start = 0; start < invalid.length; start += 200) {
+      const values = invalid.slice(start, start + 200);
+      await this.db.transaction(async tx => {
+        const rows = await tx.select(this.fields).from(this.memories).where(sql`EXISTS (
+          SELECT 1 FROM json_each(${this.memories.sourceIds}) AS source WHERE source.value IN (${sql.join(values.map(v => sql`${v}`), sql`, `)}))`);
+        for (const row of rows) {
+          await tx.delete(this.memories).where(eq(this.memories.id, row.id));
+          const revision = createHash('sha256').update(JSON.stringify([row.sourceIds, row.updatedAt, row.content])).digest('hex');
+          await tx.insert(this.historyTable).values({ opKey: `echo-revision/${row.id}/${revision}`, memoryId: row.id, event: 'DELETE',
+            previous: row.content, reason: 'Echo speaker confirmation changed or its source was removed', at: new Date() }).onConflictDoNothing();
+        }
+      });
+    }
   }
 
   async list(limit: number): Promise<Memory[]> {
@@ -60,9 +85,12 @@ export class MemoryRecordRepository {
       if (change.event !== 'ADD') await tx.delete(m).where(eq(m.id, change.id));
       if (change.event !== 'DELETE') {
         if (!vector) throw new Error('Memory change requires an embedding');
+        const sources = [...new Set([...(previous?.sourceIds ?? []), ...change.sourceIds])];
         // Reinsert updates so the vector index cannot retain the previous embedding.
         await tx.insert(m).values({ id: change.id, content: change.content, categories: change.categories,
-          sourceIds: previous ? [...new Set([...previous.sourceIds, ...change.sourceIds])].slice(-20) : change.sourceIds,
+          // Never age an Echo dependency out of provenance: later revocation must
+          // still withdraw prose that may have been carried through many updates.
+          sourceIds: sources.filter((source, index) => source.startsWith('echo:') || index >= sources.length - 20),
           createdAt: previous?.createdAt ?? now, updatedAt: now,
           expiresAt: change.expiresAt ? new Date(change.expiresAt) : null, embedding: vector });
       }

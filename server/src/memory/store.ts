@@ -12,28 +12,43 @@ export function memoryId(key: string): string {
 
 /** Memory application service: embedding and validation; repositories own all database access. */
 export class MemoryStore {
-  constructor(private readonly databases: MemoryDatabaseRepository, readonly embedder: Embedder) {}
+  constructor(private readonly databases: MemoryDatabaseRepository, readonly embedder: Embedder,
+    private readonly validEchoSources?: (userId: string, sourceIds: string[]) => Promise<Set<string>>) {}
+
+  private async records(userId: string, signal?: AbortSignal) {
+    const records = await this.databases.open(userId, signal);
+    if (this.validEchoSources) {
+      const sources = await records.echoSources();
+      const valid = await this.validEchoSources(userId, sources);
+      await records.retractEchoSources(sources.filter(source => !valid.has(source)));
+    }
+    return records;
+  }
+
+  async reconcileSources(userId: string, signal?: AbortSignal): Promise<void> {
+    if (await this.exists(userId)) await this.records(userId, signal);
+  }
 
   exists(userId: string): Promise<boolean> { return this.databases.exists(userId); }
 
   async count(userId: string, signal?: AbortSignal): Promise<number> {
-    return (await this.databases.open(userId, signal)).count();
+    return (await this.records(userId, signal)).count();
   }
 
   async list(userId: string, limit = 50, signal?: AbortSignal): Promise<Memory[]> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) throw new ServiceError(400, 'invalid_request', 'Limit must be between 1 and 500');
-    return (await this.databases.open(userId, signal)).list(limit);
+    return (await this.records(userId, signal)).list(limit);
   }
 
   async get(userId: string, ids: string[], signal?: AbortSignal): Promise<Map<string, Memory>> {
     if (!ids.length) return new Map();
-    return (await this.databases.open(userId, signal)).get(ids);
+    return (await this.records(userId, signal)).get(ids);
   }
 
   /** Nearest memories for each text, merged by best distance. */
   async similar(userId: string, texts: string[], perText: number, maxDistance: number, signal?: AbortSignal): Promise<MemoryMatch[]> {
     if (!texts.length) return [];
-    const records = await this.databases.open(userId, signal);
+    const records = await this.records(userId, signal);
     const vectors = await this.embedder.embed(texts, 'query', signal);
     const best = new Map<string, MemoryMatch>();
     for (const vector of vectors) {
@@ -57,8 +72,13 @@ export class MemoryStore {
   async apply(userId: string, changes: MemoryChange[], signal?: AbortSignal): Promise<{ added: number; updated: number; deleted: number }> {
     const counts = { added: 0, updated: 0, deleted: 0 };
     if (!changes.length) return counts;
-    const records = await this.databases.open(userId, signal);
+    const records = await this.records(userId, signal);
     const written = changes.filter(change => change.event !== 'DELETE');
+    if (this.validEchoSources) {
+      const sources = [...new Set(written.flatMap(change => change.sourceIds).filter(source => source.startsWith('echo:')))];
+      const valid = await this.validEchoSources(userId, sources);
+      if (sources.some(source => !valid.has(source))) throw new Error('echo_evidence_changed');
+    }
     const vectors = await this.embedder.embed(written.map(change => change.content), 'document', signal);
     const vectorOf = new Map(written.map((change, index) => [change.key, vectors[index]]));
     for (const change of changes) {
@@ -66,12 +86,13 @@ export class MemoryStore {
       const outcome = await records.apply(change, vectorOf.get(change.key));
       if (outcome) counts[outcome]++;
     }
+    await this.reconcileSources(userId, signal);
     return counts;
   }
 
   async summary(userId: string, signal?: AbortSignal): Promise<{ total: number; categories: Partial<Record<MemoryCategory, number>> }> {
     if (!await this.exists(userId)) return { total: 0, categories: {} };
-    return (await this.databases.open(userId, signal)).summary();
+    return (await this.records(userId, signal)).summary();
   }
 
   async page(userId: string, query: { category?: MemoryCategory; limit: number; cursor?: string }, signal?: AbortSignal): Promise<{ memories: Memory[]; nextCursor: string | null }> {
@@ -81,7 +102,7 @@ export class MemoryStore {
       if (!before || !Number.isSafeInteger(before.at) || typeof before.id !== 'string') throw new ServiceError(400, 'invalid_cursor', 'Invalid page cursor');
     }
     if (!await this.exists(userId)) return { memories: [], nextCursor: null };
-    const rows = await (await this.databases.open(userId, signal)).page({ ...query, before, limit: query.limit + 1 });
+    const rows = await (await this.records(userId, signal)).page({ ...query, before, limit: query.limit + 1 });
     const memories = rows.slice(0, query.limit), last = memories.at(-1);
     return { memories, nextCursor: rows.length > query.limit && last ? Buffer.from(JSON.stringify({ at: Date.parse(last.updatedAt), id: last.id })).toString('base64url') : null };
   }

@@ -45,6 +45,39 @@ public struct ListeningSegment: Codable, Equatable, Identifiable, Sendable {
     public var audioMilliseconds: Int? = nil
     public var cursor: String? = nil
     public var location: EchoLocationContext? = nil
+    public var utterances: [EchoUtterance]? = nil
+    public var speakerReview: EchoSpeakerReview? = nil
+
+    public var speakerIDs: [String] {
+        (utterances ?? []).compactMap(\.speaker).reduce(into: []) { ids, speaker in
+            if !ids.contains(speaker) { ids.append(speaker) }
+        }
+    }
+    public func speakerLabel(_ id: String?) -> String {
+        guard let id, let index = speakerIDs.firstIndex(of: id) else { return "Unknown speaker" }
+        return "Speaker \(index < 26 ? String(UnicodeScalar(65 + index)!) : String(index + 1))"
+    }
+}
+
+public struct EchoUtterance: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let speaker: String?
+    public let startMs: Int
+    public let endMs: Int
+    public let text: String
+}
+
+public struct EchoSpeakerReview: Codable, Equatable, Sendable {
+    public var revision: Int
+    public var status: String
+    public var selfSpeakerIds: [String]
+    public var excludedUtteranceIds: [String]
+    public init(revision: Int = 0, status: String = "unconfirmed", selfSpeakerIds: [String] = [], excludedUtteranceIds: [String] = []) {
+        self.revision = revision; self.status = status; self.selfSpeakerIds = selfSpeakerIds; self.excludedUtteranceIds = excludedUtteranceIds
+    }
+    public func includes(_ utterance: EchoUtterance) -> Bool {
+        status == "confirmed" && utterance.speaker.map { selfSpeakerIds.contains($0) } == true && !excludedUtteranceIds.contains(utterance.id)
+    }
 }
 
 public struct EchoLocationContext: Codable, Equatable, Sendable {

@@ -73,6 +73,9 @@ export class MemoryConsolidator {
       try { operations = parseOperations(decided.text, new Set(refs.keys()), evidenceIds); } catch { return await this.fail(row, 'invalid_operations'); }
 
       if (row.phase !== 'apply') row = await this.repository.patch(row, { phase: 'apply' });
+      // An edited speaker choice must not apply output from an older Agent input.
+      const currentEvidence = await this.repository.evidence(userId, row.window);
+      if (JSON.stringify(currentEvidence) !== JSON.stringify(evidence)) return await this.fail(row, 'evidence_changed');
       const known = new Set([...existing.values()].map(memory => normalized(memory.content)));
       const changes: MemoryChange[] = [];
       const runId = row.id;
@@ -165,6 +168,7 @@ export function memoryStep(repository: MemoryRepository, store: MemoryStore, gat
   };
   return { key: 'memory.v1', async run(context) {
     const { userId, signal } = context;
+    await store.reconcileSources(userId, signal);
     // The Activity allows 10 minutes; a run can take up to 8. Later runs wait for the next tick.
     const startNewUntil = Date.now() + 90_000;
     let tasks = await plan(userId);

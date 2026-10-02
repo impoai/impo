@@ -22,19 +22,20 @@ export interface TranscriptArchive {
   delete(userId: string, recordId: string, startedAt: Date, signal?: AbortSignal): Promise<void>;
   /** The archived transcript text, or undefined when no object exists. */
   get(userId: string, recordId: string, startedAt: Date, signal?: AbortSignal): Promise<string | undefined>;
+  read(userId: string, recordId: string, startedAt: Date, signal?: AbortSignal): Promise<Pick<TranscriptRecord, 'transcript' | 'utterances'> | undefined>;
 }
 
 /** Fill `transcript` from the archive for transcribed rows; PostgreSQL keeps only metadata. */
-export async function hydrateTranscripts<T extends { status: string; transcript: string; clientSegmentId: string; startedAt: Date }>(
-  archive: TranscriptArchive | undefined, userId: string, rows: T[]): Promise<T[]> {
+export async function hydrateTranscripts<T extends { status: string; transcript: string; clientSegmentId: string; startedAt: Date; utterances?: Utterance[] }>(
+  archive: TranscriptArchive | undefined, userId: string, rows: T[]): Promise<Array<T & { utterances?: Utterance[] }>> {
   if (!archive) return rows;
   const result = [...rows];
   // Bounded fan-out: a day view can hold many recordings.
   for (let start = 0; start < result.length; start += 32) {
     await Promise.all(result.slice(start, start + 32).map(async (row, offset) => {
-      if (row.status !== 'transcribed' || row.transcript) return;
-      const text = await archive.get(userId, row.clientSegmentId, row.startedAt);
-      if (text !== undefined) result[start + offset] = { ...row, transcript: text };
+      if (row.status !== 'transcribed' || (row.transcript && row.utterances?.length)) return;
+      const content = await archive.read(userId, row.clientSegmentId, row.startedAt);
+      if (content !== undefined) result[start + offset] = { ...row, ...content };
     }));
   }
   return result;
@@ -72,10 +73,14 @@ export class S3TranscriptArchive implements TranscriptArchive {
   }
 
   async get(userId: string, recordId: string, startedAt: Date, signal?: AbortSignal): Promise<string | undefined> {
+    return (await this.read(userId, recordId, startedAt, signal))?.transcript;
+  }
+
+  async read(userId: string, recordId: string, startedAt: Date, signal?: AbortSignal): Promise<Pick<TranscriptRecord, 'transcript' | 'utterances'> | undefined> {
     try {
       const object = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: transcriptKey(userId, recordId, startedAt) }), { abortSignal: signal });
-      const transcript = (JSON.parse(await object.Body!.transformToString()) as { transcript?: unknown }).transcript;
-      return typeof transcript === 'string' ? transcript : undefined;
+      const content = JSON.parse(await object.Body!.transformToString()) as { transcript?: unknown; utterances?: Utterance[] };
+      return typeof content.transcript === 'string' ? { transcript: content.transcript, utterances: Array.isArray(content.utterances) ? content.utterances : [] } : undefined;
     } catch (error) { if (error instanceof NoSuchKey) return undefined; throw error; }
   }
 }
@@ -86,4 +91,8 @@ export class MemoryTranscriptArchive implements TranscriptArchive {
   async put(record: TranscriptRecord): Promise<void> { this.objects.set(transcriptKey(record.userId, record.recordId, record.startedAt), record); }
   async delete(userId: string, recordId: string, startedAt: Date): Promise<void> { this.objects.delete(transcriptKey(userId, recordId, startedAt)); }
   async get(userId: string, recordId: string, startedAt: Date): Promise<string | undefined> { return this.objects.get(transcriptKey(userId, recordId, startedAt))?.transcript; }
+  async read(userId: string, recordId: string, startedAt: Date) {
+    const record = this.objects.get(transcriptKey(userId, recordId, startedAt));
+    return record ? { transcript: record.transcript, utterances: record.utterances } : undefined;
+  }
 }

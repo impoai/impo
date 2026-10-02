@@ -291,6 +291,8 @@ class ImpoClient(
         return send<SegmentResponse>("PATCH", listOf("listening", "segments", identifier(recordId), "location"), buildJsonObject { put("label", label?.let(::JsonPrimitive) ?: JsonNull) }).segment
     }
     suspend fun deleteEchoRecord(recordId: String) { delete(listOf("listening", "segments", identifier(recordId)), "deleted") }
+    suspend fun reviewEchoSpeakers(recordId: String, review: EchoSpeakerReview): EchoRecord =
+        send<SegmentResponse>("PATCH", listOf("listening", "segments", identifier(recordId), "speakers"), ProtocolJson.encodeToJsonElement(review)).segment
     suspend fun prepareAudioUpload(manifest: UploadManifest): UploadTicket = send("POST", listOf("listening", "uploads"), ProtocolJson.encodeToJsonElement(manifest))
     suspend fun completeAudioUpload(batchId: String): BatchReceipt = send("POST", listOf("listening", "uploads", identifier(batchId), "complete"), expected = 202)
     suspend fun batchStatus(batchId: String): BatchStatus = get(listOf("listening", "batches", identifier(batchId)))

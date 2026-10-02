@@ -52,6 +52,12 @@ clients reconcile those slots. The iOS timeline requests at most 30 at once.
 These commands avoid mutable offset pagination for distant viewport loads.
 The older calendar/count and cursor-history endpoints remain supported.
 
+Hydrated records also include anonymous speaker turns and a revisioned review.
+`PATCH /api/v1/listening/segments/:id/speakers` saves selected voices and passage
+exclusions. Only confirmed personal speech is eligible for Memory and Brief.
+See [the speaker contract](../contracts/echo-speakers.md) for concurrency,
+backward compatibility and correction semantics.
+
 ## Direct Echo uploads
 
 1. Seal one immutable JSON batch on disk. Compute its byte length and SHA-256.

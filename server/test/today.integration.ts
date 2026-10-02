@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test, { type TestContext } from 'node:test';
 import { and, eq } from 'drizzle-orm';
 import { createDatabase } from '../src/db/client.js';
-import { conversations, messages, todayBriefs, todaySettings, users, notificationEvents, userProfiles } from '../src/db/schema.js';
+import { conversations, messages, todayBriefs, todaySettings, users, notificationEvents, userProfiles, listeningBatches } from '../src/db/schema.js';
 import { TodayRepository } from '../src/db/repositories/today-repository.js';
 import { todayStep } from '../src/today/worker.js';
 import { RebyteGateway } from '../src/rebyte/gateway.js';
@@ -34,11 +34,40 @@ async function fixture(t: TestContext) {
     await db.db.delete(messages).where(eq(messages.userId, userId));
     await db.db.delete(conversations).where(eq(conversations.userId, userId));
     await db.db.delete(userProfiles).where(eq(userProfiles.userId, userId));
+    await db.db.delete(listeningBatches).where(eq(listeningBatches.userId, userId));
     await db.db.delete(users).where(eq(users.id, userId)); await db.db.delete(users).where(eq(users.id, otherId));
     await db.close();
   });
   return { db, repository, fake, gateway, userId, otherId, baseURL };
 }
+
+test('Brief only receives confirmed self speech and withdraws after a speaker correction', async t => {
+  const f = await fixture(t);
+  const confirmed = randomUUID(), unconfirmed = randomUUID(), at = new Date(Date.now() - 60000);
+  for (const id of [confirmed, unconfirmed]) await f.db.db.insert(listeningBatches).values({
+    id, userId: f.userId, clientBatchId: randomUUID(), streamId: randomUUID(), sequence: 1, sessionId: randomUUID(), contentHash: 'test',
+    startedAt: new Date(at.getTime() - 7 * 86400000), endedAt: new Date(at.getTime() - 7 * 86400000 + 4000), segments: [], audioMilliseconds: 4000, status: 'transcribed', transcribedAt: new Date(at.getTime() - 7 * 86400000),
+    transcript: 'I prefer walking. Someone else is moving abroad. Misassigned words.',
+    utterances: [
+      { speaker: 'a', startMs: 0, endMs: 1000, text: 'I prefer walking.' },
+      { speaker: 'b', startMs: 1100, endMs: 2000, text: 'Someone else is moving abroad.' },
+      { speaker: 'a', startMs: 2100, endMs: 3000, text: 'Misassigned words.' },
+    ], ...(id === confirmed ? { speakerReview: { revision: 1, status: 'confirmed' as const, selfSpeakerIds: ['a'], excludedUtteranceIds: ['u3'] }, speakerReviewedAt: at } : {}),
+  });
+  await f.repository.ensureDue(f.userId);
+  const row = (await f.repository.claim(f.userId))!;
+  const input = await f.repository.input(row);
+  assert.equal(input.sources.length, 1, 'recent confirmation makes an older recording available to the next Brief');
+  assert.equal(input.sources[0]!.recordId, confirmed);
+  assert.equal(input.sources[0]!.text, 'I prefer walking.');
+  assert.ok(!JSON.stringify(input).includes('abroad'));
+  const prepared = await f.repository.patch(row, { providerSessionId: 'session' });
+  await f.repository.complete({ ...prepared, input }, JSON.parse(quiet), { providerAgentId: null, providerTurnId: 'turn', providerItemId: 'item' });
+  assert.equal((await f.repository.view(await f.repository.owned(f.userId, row.id))).status, 'completed');
+  await f.db.db.update(listeningBatches).set({ speakerReview: { revision: 2, status: 'not_present', selfSpeakerIds: [], excludedUtteranceIds: [] } }).where(eq(listeningBatches.id, confirmed));
+  const withdrawn = await f.repository.view(await f.repository.owned(f.userId, row.id));
+  assert.equal(withdrawn.status, 'withdrawn'); assert.equal(withdrawn.content, null); assert.deepEqual(withdrawn.sources, []);
+});
 
 test('Today editions: concurrent workers, cross-tick dedup, history pagination, API ownership and deletion', { timeout: 30000 }, async t => {
   const f = await fixture(t); f.fake.answers.push(quiet);

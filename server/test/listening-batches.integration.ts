@@ -37,7 +37,7 @@ test('real Temporal: independent durable admission, duplicate delivery, sequence
  let blocked=true;let failing=false;let calls=0;let concurrent=0;let maximum=0;const sizes:number[]=[];
  const transcriber={model:'test',async transcribe(){return {transcript:'unused',utterances:[],model:'test'};},async transcribeMany(items:unknown[],signal:AbortSignal){
   calls++;sizes.push(items.length);concurrent++;maximum=Math.max(maximum,concurrent);
-  try {while(blocked)await delay(30,undefined,{signal});if(failing)throw new TranscriptionError('synthetic permanent failure',false,'synthetic_failure');return {transcript:'batch transcript',utterances:[],model:'test'};}finally{concurrent--;}
+  try {while(blocked)await delay(30,undefined,{signal});if(failing)throw new TranscriptionError('synthetic permanent failure',false,'synthetic_failure');return {transcript:'batch transcript',utterances:[{speaker:'A',startMs:0,endMs:2000,text:'batch transcript'}],model:'test'};}finally{concurrent--;}
  }};
  // Per-user S3 archive stand-in; counts writes and deletions to observe in-flight races.
  const archive=new MemoryTranscriptArchive();let archiveDeletes=0;const baseDelete=archive.delete.bind(archive);archive.delete=async(...a)=>{archiveDeletes++;return baseDelete(...a);};
@@ -87,6 +87,11 @@ test('real Temporal: independent durable admission, duplicate delivery, sequence
   assert.deepEqual(recording.location?.spans,locations.flat());
   assert.equal('segments' in recording,false); assert.equal('locationLabel' in recording,false);
   const today=new TodayRepository(database.db,archive);
+  assert.equal(await today.currentSource(user.id,{kind:'batch',recordId:rowOne.id}),undefined,'a single archived voice still needs confirmation');
+  assert.equal((await repo.receipt(user.id,one.batchId))?.utterances.length,0,'speaker turns live in the archive, not SQL');
+  assert.equal(recording.utterances[0]?.speaker,'A','the API hydrates archived speaker turns');
+  const reviewed=await fetch(`http://127.0.0.1:${(apis[0]!.address() as {port:number}).port}/api/v1/listening/segments/${rowOne.id}/speakers`,{method:'PATCH',headers:{Authorization:'Bearer instant-dev-alice','Content-Type':'application/json'},body:JSON.stringify({revision:0,status:'confirmed',selfSpeakerIds:['A'],excludedUtteranceIds:[]})});
+  assert.equal(reviewed.status,200);assert.equal((await reviewed.json()).segment.speakerReview.revision,1);
   const originalSource=await today.currentSource(user.id,{kind:'batch',recordId:rowOne.id});
   assert.deepEqual(originalSource?.location?.spans,locations.flat());
   const patch=(label:unknown,token='alice')=>fetch(`http://127.0.0.1:${(apis[0]!.address() as {port:number}).port}/api/v1/listening/segments/${rowOne.id}/location`,{method:'PATCH',headers:{Authorization:`Bearer instant-dev-${token}`,'Content-Type':'application/json'},body:JSON.stringify({label})});
@@ -99,8 +104,8 @@ test('real Temporal: independent durable admission, duplicate delivery, sequence
   assert.equal(changedSource?.location?.source,'manual');
   const far={at:'9999-12-31T00:00:00.000Z',id:'ffffffff-ffff-ffff-ffff-ffffffffffff'};
   const evidence=await new MemoryRepository(database.db,archive).evidence(user.id,{echo:{after:null,through:far}},10,new Date(Date.now()+3600000));
-  assert.equal(evidence.find(e=>e.id===`echo:${rowOne.id}`)?.location?.label,'Office');
-  assert.deepEqual(evidence.find(e=>e.id===`echo:${rowOne.id}`)?.location?.spans,locations.flat());
+  assert.equal(evidence.find(e=>e.id===`echo:${rowOne.id}:v1`)?.location?.label,'Office');
+  assert.deepEqual(evidence.find(e=>e.id===`echo:${rowOne.id}:v1`)?.location?.spans,locations.flat());
   assert.equal((await patch(null)).status,200);
   assert.equal((await today.currentSource(user.id,{kind:'batch',recordId:rowOne.id}))?.version,originalSource?.version);
   assert.equal((await post(input(1))).status,409,'a different batch cannot claim an existing stream sequence');

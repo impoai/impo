@@ -400,6 +400,7 @@ is planned, not an implemented protocol feature.
 | `GET /listening/segments` | Optional `limit` (default 30, 1–100), `cursor`, `before`, `direction` | 200 `EchoPage` |
 | `GET /listening/segments` | `from`, `to` for one local day (maximum 26 hours to allow clock changes) | 200 `{segments: EchoRecord[]}` |
 | `PATCH /listening/segments/{recordId}/location` | `{label: string \| null}` | 200 `{segment: EchoRecord}` |
+| `PATCH /listening/segments/{recordId}/speakers` | Full `EchoSpeakerReview` with expected revision | 200 `{segment: EchoRecord}` with new revision |
 | `DELETE /listening/segments/{recordId}` | No query | 200 `{status: "deleted"}` |
 
 ```text
@@ -407,7 +408,11 @@ EchoRecord = { id: UUID, clientSegmentId: UUID, startedAt: timestamp, endedAt: t
                status: string, transcript: string, model: string | null,
                error: {code: string, message: string, retryable?: boolean} | null,
                batchId?: UUID, segmentCount?: integer, audioMilliseconds?: integer,
-               cursor?: string, location?: EchoLocationContext | null }
+               cursor?: string, location?: EchoLocationContext | null,
+               utterances?: EchoUtterance[], speakerReview?: EchoSpeakerReview }
+EchoUtterance = { id: string, speaker: string | null, startMs: integer, endMs: integer, text: string }
+EchoSpeakerReview = { revision: integer, status: "unconfirmed" | "confirmed" | "not_present",
+                      selfSpeakerIds: string[], excludedUtteranceIds: string[] }
 EchoPage = { segments: EchoRecord[], nextCursor: string | null,
              previousCursor?: string | null }
 EchoLocationContext = { label?: string, source?: "manual", spans: EchoLocationSpan[],
@@ -416,6 +421,10 @@ EchoLocationSpan = { from: timestamp, to: timestamp, capturedAt: timestamp,
                      accuracyMeters: number, source: "device", granularity: "city" | "district",
                      city: string, country: string, district?: string }
 ```
+
+Anonymous speaker labels apply only within each recording. Explicit confirmation
+is required for Memory and Brief; speaker corrections invalidate previous source
+revisions. See [speaker review and evidence rules](echo-speakers.md).
 
 Do not combine segment query modes. History direction defaults to `older`;
 `newer` requires a cursor. `before` and `cursor` are mutually exclusive. Use

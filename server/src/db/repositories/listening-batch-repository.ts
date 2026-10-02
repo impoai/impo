@@ -8,7 +8,8 @@ import { ServiceError } from '../../errors.js';
 
 export const batchPublicFields = {id:batches.id,clientSegmentId:batches.clientBatchId,startedAt:batches.startedAt,endedAt:batches.endedAt,
  status:batches.status,transcript:batches.transcript,model:batches.model,error:batches.error,segments:batches.segments,locationLabel:batches.locationLabel,
- batchId:batches.clientBatchId,segmentCount:sql<number>`jsonb_array_length(${batches.segments})`,audioMilliseconds:batches.audioMilliseconds};
+ batchId:batches.clientBatchId,segmentCount:sql<number>`jsonb_array_length(${batches.segments})`,audioMilliseconds:batches.audioMilliseconds,
+ utterances:batches.utterances,speakerReview:batches.speakerReview};
 export class ListeningBatchRepository {
  constructor(private readonly db:Database) {}
  async receipt(userId:string,batchId:string) {return (await this.db.select().from(batches).where(and(eq(batches.userId,userId),eq(batches.clientBatchId,batchId))))[0];}
@@ -37,7 +38,7 @@ export class ListeningBatchRepository {
   return claimed ? {done:false as const,id:row.id,token,attempts:claimed.attempts} : {done:true as const,status:'deleted'};
  }
  async complete(id:string,token:string,result:TranscriptionResult) {
-  return (await this.db.update(batches).set({status:'transcribed',transcript:result.transcript,model:result.model,error:null,executionToken:null,uploadInput:null,transcribedAt:new Date(),updatedAt:new Date()})
+  return (await this.db.update(batches).set({status:'transcribed',transcript:result.transcript,utterances:result.utterances,model:result.model,error:null,executionToken:null,uploadInput:null,transcribedAt:new Date(),updatedAt:new Date()})
    .where(and(eq(batches.id,id),eq(batches.executionToken,token),eq(batches.status,'transcribing'))).returning({id:batches.id})).length>0;
  }
  async clearUploadInput(userId:string,batchId:string){
@@ -53,6 +54,6 @@ export class ListeningBatchRepository {
  }
  async list(userId:string,from:Date,to:Date) {return this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId,userId),gte(batches.startedAt,from),lt(batches.startedAt,to),ne(batches.status, 'deleted'))).orderBy(asc(batches.startedAt),asc(batches.id)).limit(2000);}
  async history(userId:string,limit:number,before?:{startedAt:Date;id:string}) {return this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId,userId),ne(batches.status, 'deleted'),before?or(lt(batches.startedAt, before.startedAt), and(eq(batches.startedAt, before.startedAt), lt(batches.id, before.id))):undefined)).orderBy(desc(batches.startedAt),desc(batches.id)).limit(limit);}
- async delete(userId:string,id:string) {return (await this.db.update(batches).set({status:'deleted',transcript:'',model:null,error:null,executionToken:null,locationLabel:null,
+ async delete(userId:string,id:string) {return (await this.db.update(batches).set({status:'deleted',transcript:'',utterances:[],model:null,error:null,executionToken:null,locationLabel:null,
   segments:sql`(SELECT coalesce(jsonb_agg(item - 'locations'), '[]'::jsonb) FROM jsonb_array_elements(${batches.segments}) item)`,updatedAt:new Date()}).where(and(eq(batches.userId,userId),eq(batches.id,id))).returning({batchId:batches.clientBatchId,startedAt:batches.startedAt}))[0];}
 }

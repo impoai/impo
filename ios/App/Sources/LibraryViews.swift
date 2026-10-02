@@ -604,7 +604,7 @@ private struct MemoryList: View {
                         Text(memory.content).font(.system(size: 17)).lineSpacing(4)
                         let others = memory.categories.filter { $0 != info.id }.map { MemoryCategoryInfo.named($0).title }
                         if !others.isEmpty { Text(others.joined(separator: " · ")).font(.caption).foregroundStyle(InstantStyle.forest) }
-                        let echoes = memory.sourceIds.filter { $0.hasPrefix("echo:") }.map { String($0.dropFirst(5)) }
+                        let echoes = Array(Set(memory.sourceIds.filter { $0.hasPrefix("echo:") }.compactMap { $0.dropFirst(5).split(separator: ":").first.map(String.init) })).sorted()
                         if !echoes.isEmpty {
                             Button { openEcho(Array(echoes.prefix(20))) } label: {
                                 Label(echoes.count == 1 ? "From Echo" : "From \(echoes.count) Echo recordings", systemImage: "waveform")

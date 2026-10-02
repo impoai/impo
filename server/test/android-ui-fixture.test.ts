@@ -108,7 +108,7 @@ test('Android smoke fixture exercises real HTTP/SSE, resource isolation and muta
   assert.equal((await request(`/today/briefs/${brief.id}`, 'GET', undefined, 'bob')).status, 404);
   assert.ok(
     (await request(`/today/briefs/${brief.id}/sources/${brief.sources[0].recordId}`)).body.text.includes(
-      'coffee',
+      'walking',
     ),
   );
   const memory = (await request('/memories?category=technology')).body.memories[0];

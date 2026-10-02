@@ -204,6 +204,13 @@ Work continues server-side when the app closes. See
 
 ## Echo and Listening batches
 
+The worker requires FFmpeg on PATH for multi-file audio decoding; the runtime
+Docker image includes it. Gemini returns anonymous speaker turns, and the user
+must confirm their voice before speech enters Memory or Brief. See the shared
+[speaker contract](../contracts/echo-speakers.md). Run `npm run test:server`,
+`npm run test:listening`, `npm run test:listening-batches`, `npm run test:memory`
+and `npm run test:today` for the relevant protocol and persistence checks.
+
 Clients request a signed URL at `POST /api/v1/listening/uploads`, PUT the immutable
 file directly to S3, then confirm at `/api/v1/listening/uploads/:batchId/complete`.
 See the [upload contract](../docs/client-api.md#direct-echo-uploads). The API and

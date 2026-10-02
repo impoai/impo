@@ -7,6 +7,7 @@ import { ServiceError } from '../../errors.js';
 import type { TranscriptionResult } from '../../listening/transcriber.js';
 import { hydrateTranscripts, type TranscriptArchive } from '../../listening/transcript-archive.js';
 import { parseLocationLabel, withEchoLocation } from '../../listening/location.js';
+import { parseSpeakerReview, speakerUtterances } from '../../listening/speakers.js';
 
 export const maxAudioBytes = 8 * 1024 * 1024;
 export type Segment = typeof segments.$inferSelect;
@@ -15,7 +16,11 @@ const publicFields = {
   id: segments.id, clientSegmentId: segments.clientSegmentId,
   startedAt: segments.startedAt, endedAt: segments.endedAt,
   status: segments.status, transcript: segments.transcript, model: segments.model, error: segments.error, locationLabel: segments.locationLabel,
+  utterances: segments.utterances, speakerReview: segments.speakerReview,
 };
+
+const publicRecording = <T extends Parameters<typeof withEchoLocation>[0] & { utterances?: import('../entities/listening.js').Utterance[] }>(row: T) =>
+  ({ ...withEchoLocation(row), utterances: speakerUtterances(row.utterances) });
 
 export class ListeningRepository {
   constructor(private readonly db: Database, private readonly archive?: TranscriptArchive) {}
@@ -43,7 +48,7 @@ export class ListeningRepository {
       gte(segments.startedAt, from), lt(segments.startedAt, to), ne(segments.status, 'deleted')))
       .orderBy(asc(segments.startedAt), asc(segments.id)).limit(2000);
     const batches = await new ListeningBatchRepository(this.db).list(userId, from, to);
-    return (await hydrateTranscripts(this.archive, userId, [...legacy, ...batches].sort((a,b) => a.startedAt.getTime()-b.startedAt.getTime() || a.id.localeCompare(b.id)).slice(0,2000))).map(withEchoLocation);
+    return (await hydrateTranscripts(this.archive, userId, [...legacy, ...batches].sort((a,b) => a.startedAt.getTime()-b.startedAt.getTime() || a.id.localeCompare(b.id)).slice(0,2000))).map(publicRecording);
   }
 
   async calendar(userId: string, timeZone: string) {
@@ -75,7 +80,7 @@ export class ListeningRepository {
   async records(userId: string, ids: string[]) {
     const legacy = await this.db.select(publicFields).from(segments).where(and(eq(segments.userId, userId), inArray(segments.id, ids), ne(segments.status, 'deleted')));
     const current = await this.db.select(batchPublicFields).from(batches).where(and(eq(batches.userId, userId), inArray(batches.id, ids), ne(batches.status, 'deleted')));
-    return { segments: (await hydrateTranscripts(this.archive, userId, [...legacy, ...current])).map(row => ({ ...withEchoLocation(row), cursor: this.cursor(row) })) };
+    return { segments: (await hydrateTranscripts(this.archive, userId, [...legacy, ...current])).map(row => ({ ...publicRecording(row), cursor: this.cursor(row) })) };
   }
 
   private cursor(row: { startedAt: Date; id: string }) {
@@ -110,9 +115,31 @@ export class ListeningRepository {
     const rows = [...legacy, ...current].sort((a,b) => (ascending ? -1 : 1) * (b.startedAt.getTime()-a.startedAt.getTime() || b.id.localeCompare(a.id)));
     const page = rows.slice(0, limit); if (ascending) page.reverse();
     const first = page[0], last = page.at(-1), hasMore = rows.length > limit;
-    return { segments: (await hydrateTranscripts(this.archive, userId, page)).map(row => ({ ...withEchoLocation(row), cursor: this.cursor(row) })),
+    return { segments: (await hydrateTranscripts(this.archive, userId, page)).map(row => ({ ...publicRecording(row), cursor: this.cursor(row) })),
       nextCursor: last && (ascending || hasMore) ? this.cursor(last) : null,
       previousCursor: first && (ascending ? hasMore : !!before || !!beforeDate) ? this.cursor(first) : null };
+  }
+
+  async reviewSpeakers(userId: string, id: string, raw: unknown) {
+    const recording = (await this.records(userId, [id])).segments[0];
+    if (!recording) throw new ServiceError(404, 'not_found', 'Recording not found');
+    if (recording.status !== 'transcribed' || !recording.utterances.some(turn => turn.speaker)) {
+      throw new ServiceError(409, 'speakers_unavailable', 'Speaker labels are not available for this recording.');
+    }
+    const input = parseSpeakerReview(raw, recording.utterances);
+    const speakerReview = { ...input, revision: input.revision + 1 };
+    await this.db.transaction(async tx => {
+      for (const table of [batches, segments]) {
+        const [saved] = await tx.update(table).set({ speakerReview, speakerReviewedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(table.userId, userId), eq(table.id, id), eq(table.status, 'transcribed'),
+            sql`(${table.speakerReview}->>'revision')::integer = ${input.revision}`)).returning({ id: table.id });
+        if (saved) return;
+      }
+      throw new ServiceError(409, 'speaker_review_conflict', 'This recording changed. Refresh it before saving your speaker choice.');
+    });
+    const updated = (await this.records(userId, [id])).segments[0];
+    if (!updated) throw new ServiceError(404, 'not_found', 'Recording not found');
+    return { segment: updated };
   }
 
   async labelLocation(userId: string, id: string, value: unknown) {

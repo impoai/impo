@@ -118,7 +118,7 @@ fun openWeb(context: Context, raw: String) {
     if (!consent) Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text("AI Data Processing Notice", style = MaterialTheme.typography.headlineLarge)
         Text("Your messages and selected connected data go to Impo, Rebyte, and its AI model providers, including OpenAI, to answer requests. Google Gemini processes voice audio and creates memory search embeddings.")
-        Text("Saved messages, completed Echo transcripts and tasks may also be processed in background Brief and memory jobs. Every data connection is optional. Share only information you want processed.")
+        Text("Saved messages, confirmed personal Echo speech and tasks may also be processed in background Brief and memory jobs. Every data connection is optional. Share only information you want processed.")
         TextButton(onClick = { openWeb(context, "https://impo.ai/privacy/") }) { Text("Read the Privacy Policy") }
         Button(onClick = { consent = true }, modifier = Modifier.fillMaxWidth()) { Text("I Agree") }
         TextButton(onClick = vm::signOut) { Text("Cancel") }
@@ -217,7 +217,7 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
     }
     if (!recording.isRecording && !recording.isPaused) OutlinedButton(onClick = { explain = true }, modifier = Modifier.testTag("echo.start")) { Icon(Icons.Outlined.Mic, null); Spacer(Modifier.width(6.dp)); Text("Record Echo") }
     ErrorNotice(if (denied) "Microphone permission is needed to record. You can enable it in Android settings." else recording.message)
-    if (explain) AlertDialog(onDismissRequest = { explain = false }, title = { Text("Capture a thought") }, text = { Text("Echo listens while you choose to record. Speech is saved on this device, uploaded securely and transcribed into your Memories. A recording notification stays visible, and you can pause or stop at any time.") }, confirmButton = { TextButton(onClick = {
+    if (explain) AlertDialog(onDismissRequest = { explain = false }, title = { Text("Capture a thought") }, text = { Text("Echo listens while you choose to record. Speech is saved on this device, uploaded securely and transcribed into Echo. Confirm your voice before using speech in memories or Brief. A recording notification stays visible, and you can pause or stop at any time.") }, confirmButton = { TextButton(onClick = {
         explain = false
         permission.launch(buildList { add(Manifest.permission.RECORD_AUDIO); if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS) }.toTypedArray())
     }) { Text("Start recording") } }, dismissButton = { TextButton(onClick = { explain = false }) { Text("Not now") } })

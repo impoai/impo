@@ -30,7 +30,7 @@ export function createListeningActivities(repository:ListeningBatchRepository, t
      transcript:result.transcript,utterances:result.utterances,model:result.model,segments:row.segments,streamId:row.streamId,sequence:row.sequence}:undefined;
     if(record)await archive!.put(record,context.cancellationSignal);
     // With an archive, the text lives only there; PostgreSQL keeps metadata and status.
-    const committed=await repository.complete(claim.id,claim.token,archive?{...result,transcript:''}:result);
+    const committed=await repository.complete(claim.id,claim.token,archive?{...result,transcript:'',utterances:[]}:result);
     // Deleted while transcribing: withdraw it. A lost claim is not a deletion; the winning
     // execution owns the same key.
     if(record&&!committed&&(await repository.receipt(batch.userId,batch.batchId))?.status==='deleted')await archive!.delete(record.userId,record.recordId,record.startedAt);

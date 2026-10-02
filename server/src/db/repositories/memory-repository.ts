@@ -1,3 +1,4 @@
+import { personalTranscript, echoSourceId } from '../../listening/speakers.js';
 import { echoLocationContext } from '../../listening/location.js';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gt, inArray, isNotNull, lte, or, sql, type SQL, lt } from 'drizzle-orm';
@@ -30,7 +31,7 @@ const clip = (text: string, max: number) => (text.length > max ? { text: text.sl
 /**
  * Evidence sources and run bookkeeping for memory consolidation. Chat reads completed Turns
  * (text from Rebyte history); Echo reads transcribed recordings (text from the S3 archive).
- * Both advance by (completion time, ID) cursors, so each item is consolidated once.
+ * Echo advances by speaker review time so a late confirmation or correction is processed anew.
  */
 export class MemoryRepository {
   constructor(private readonly db: Database, private readonly archive?: TranscriptArchive, private readonly history?: HistoryReader) {}
@@ -54,10 +55,10 @@ export class MemoryRepository {
   private echoQueries(userId: string, after: MemoryCursor | null, through?: MemoryCursor, now = new Date()) {
     const settled = new Date(now.getTime() - settleMs);
     return [
-      and(eq(listeningBatches.userId, userId), eq(listeningBatches.status, 'transcribed'), isNotNull(listeningBatches.transcribedAt),
-        lte(listeningBatches.transcribedAt, settled), range(listeningBatches.transcribedAt, listeningBatches.id, after, through)),
-      and(eq(listeningSegments.userId, userId), eq(listeningSegments.status, 'transcribed'), isNotNull(listeningSegments.transcribedAt),
-        lte(listeningSegments.transcribedAt, settled), range(listeningSegments.transcribedAt, listeningSegments.id, after, through)),
+      and(eq(listeningBatches.userId, userId), eq(listeningBatches.status, 'transcribed'), isNotNull(listeningBatches.speakerReviewedAt),
+        lte(listeningBatches.speakerReviewedAt, settled), range(listeningBatches.speakerReviewedAt, listeningBatches.id, after, through)),
+      and(eq(listeningSegments.userId, userId), eq(listeningSegments.status, 'transcribed'), isNotNull(listeningSegments.speakerReviewedAt),
+        lte(listeningSegments.speakerReviewedAt, settled), range(listeningSegments.speakerReviewedAt, listeningSegments.id, after, through)),
     ] as const;
   }
 
@@ -68,8 +69,8 @@ export class MemoryRepository {
       this.echoQueries(userId, cursor(state.echoAt, state.echoId), undefined, now)];
     const stats = await Promise.all([
       this.db.select({ n: sql<number>`count(*)::int`, min: sql<Date | null>`min(${runtimeSubmissions.completedAt})`, max: sql<Date | null>`max(${runtimeSubmissions.completedAt})` }).from(runtimeSubmissions).where(chatWhere),
-      this.db.select({ n: sql<number>`count(*)::int`, min: sql<Date | null>`min(${listeningBatches.transcribedAt})`, max: sql<Date | null>`max(${listeningBatches.transcribedAt})` }).from(listeningBatches).where(batchWhere),
-      this.db.select({ n: sql<number>`count(*)::int`, min: sql<Date | null>`min(${listeningSegments.transcribedAt})`, max: sql<Date | null>`max(${listeningSegments.transcribedAt})` }).from(listeningSegments).where(segmentWhere),
+      this.db.select({ n: sql<number>`count(*)::int`, min: sql<Date | null>`min(${listeningBatches.speakerReviewedAt})`, max: sql<Date | null>`max(${listeningBatches.speakerReviewedAt})` }).from(listeningBatches).where(batchWhere),
+      this.db.select({ n: sql<number>`count(*)::int`, min: sql<Date | null>`min(${listeningSegments.speakerReviewedAt})`, max: sql<Date | null>`max(${listeningSegments.speakerReviewedAt})` }).from(listeningSegments).where(segmentWhere),
     ]);
     const rows = stats.map(([s]) => s!);
     const times = (key: 'min' | 'max') => rows.map(r => r[key]).filter((v): v is Date => !!v).map(v => new Date(v));
@@ -99,15 +100,15 @@ export class MemoryRepository {
     if (window.echo) {
       const [batchWhere, segmentWhere] = this.echoQueries(userId, window.echo.after, window.echo.through, now);
       const [batches, segments] = await Promise.all([
-        this.db.select({ id: listeningBatches.id, at: listeningBatches.transcribedAt, clientSegmentId: listeningBatches.clientBatchId, status: listeningBatches.status, startedAt: listeningBatches.startedAt, transcript: listeningBatches.transcript, segments: listeningBatches.segments, locationLabel: listeningBatches.locationLabel })
-          .from(listeningBatches).where(batchWhere).orderBy(asc(listeningBatches.transcribedAt), asc(listeningBatches.id)).limit(limitPerSource),
-        this.db.select({ id: listeningSegments.id, at: listeningSegments.transcribedAt, clientSegmentId: listeningSegments.clientSegmentId, status: listeningSegments.status, startedAt: listeningSegments.startedAt, transcript: listeningSegments.transcript, locationLabel: listeningSegments.locationLabel })
-          .from(listeningSegments).where(segmentWhere).orderBy(asc(listeningSegments.transcribedAt), asc(listeningSegments.id)).limit(limitPerSource),
+        this.db.select({ id: listeningBatches.id, at: listeningBatches.speakerReviewedAt, clientSegmentId: listeningBatches.clientBatchId, status: listeningBatches.status, startedAt: listeningBatches.startedAt, transcript: listeningBatches.transcript, segments: listeningBatches.segments, locationLabel: listeningBatches.locationLabel, utterances: listeningBatches.utterances, speakerReview: listeningBatches.speakerReview })
+          .from(listeningBatches).where(batchWhere).orderBy(asc(listeningBatches.speakerReviewedAt), asc(listeningBatches.id)).limit(limitPerSource),
+        this.db.select({ id: listeningSegments.id, at: listeningSegments.speakerReviewedAt, clientSegmentId: listeningSegments.clientSegmentId, status: listeningSegments.status, startedAt: listeningSegments.startedAt, transcript: listeningSegments.transcript, locationLabel: listeningSegments.locationLabel, utterances: listeningSegments.utterances, speakerReview: listeningSegments.speakerReview })
+          .from(listeningSegments).where(segmentWhere).orderBy(asc(listeningSegments.speakerReviewedAt), asc(listeningSegments.id)).limit(limitPerSource),
       ]);
       const recordings = [...batches, ...segments].sort((a, b) => a.at!.getTime() - b.at!.getTime() || a.id.localeCompare(b.id)).slice(0, limitPerSource);
       for (const recording of await hydrateTranscripts(this.archive, userId, recordings)) {
-        const body = clip(recording.transcript, memoryLimits.echoCharacters);
-        result.push({ id: `echo:${recording.id}`, kind: 'echo', occurredAt: recording.startedAt.toISOString(), text: body.text, location: echoLocationContext(recording, 8),
+        const body = clip(personalTranscript(recording), memoryLimits.echoCharacters);
+        result.push({ id: echoSourceId(recording.id, recording.speakerReview), kind: 'echo', occurredAt: recording.startedAt.toISOString(), text: body.text, location: echoLocationContext(recording, 8),
           ...(body.truncated ? { truncated: true } : {}), cursor: { at: recording.at!.toISOString(), id: recording.id } });
       }
     }

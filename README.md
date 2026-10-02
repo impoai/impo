@@ -26,8 +26,8 @@ platform. Work continues on the server when a client disconnects.
 | **Chat** | One main conversation per user, with a reusable Rebyte Session, streamed replies, history recovery, and explicit cancellation. |
 | **Tasks** | Delegate work from chat or start a task directly. Each task has its own conversation and agent Session. |
 | **Brief** | Background agents generate briefings using the user's language, time zone, and configured brief times. Card editions accumulate across days and can be captured as PNG or PDF. |
-| **Echo** | Capture spoken context, upload immutable audio batches, and browse transcripts with recording-time places and optional labels. |
-| **Memory** | Consolidate chat and Echo evidence into per-user memories, with categories, expiry and forgetting. Main Chat retrieves relevant memories before each reply. |
+| **Echo** | Capture spoken context, browse anonymous speaker turns, and confirm your voice or exclude passages before using them in Memory and Brief. Recording-time places and optional labels remain available. |
+| **Memory** | Consolidate chat and confirmed personal Echo speech into per-user memories, with categories, expiry and forgetting. Main Chat retrieves relevant memories before each reply. |
 | **Integrations** | Connect the agent to external services through Composio and to native capabilities through permissioned device adapters. |
 
 External apps come from **Rebyte's Composio shelf** (about 120 apps), with

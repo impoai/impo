@@ -12,6 +12,9 @@ import { ListeningRepository } from '../src/db/repositories/listening-repository
 import { ListeningWorker } from '../src/listening/worker.js';
 import { DevelopmentTranscriber, TranscriptionError } from '../src/listening/transcriber.js';
 import { MemoryTranscriptArchive, transcriptKey } from '../src/listening/transcript-archive.js';
+import { MemoryRepository } from '../src/db/repositories/memory-repository.js';
+import { TodayRepository } from '../src/db/repositories/today-repository.js';
+import { EchoSourceRepository } from '../src/db/repositories/echo-source-repository.js';
 
 const database = createDatabase(process.env.DATABASE_URL!);
 const runtime = new RuntimeRepository(database.db);
@@ -241,4 +244,47 @@ test('archive maintenance clears only the verified, still-owned transcript', asy
   assert.equal(cleared.transcript, '');
   assert.deepEqual(cleared.utterances, []);
   assert.equal(cleared.status, 'transcribed');
+});
+
+test('owned speaker confirmation gates personal evidence, preserves anonymous turns and fences concurrent edits', async () => {
+  const accepted = await upload();
+  const claimed = (await repository.claim(60_000))!;
+  await repository.complete(claimed, { model: 'test', transcript: 'Mine. Someone else. Unclear. Mine again.', utterances: [
+    { speaker: 'a', startMs: 0, endMs: 1000, text: 'Mine.' },
+    { speaker: 'b', startMs: 1100, endMs: 2000, text: 'Someone else.' },
+    { speaker: null, startMs: 2100, endMs: 3000, text: 'Unclear.' },
+    { speaker: 'a', startMs: 3100, endMs: 4000, text: 'Mine again.' },
+  ] });
+  const id = accepted.body.id, userId = claimed.userId;
+  const memory = new MemoryRepository(database.db), today = new TodayRepository(database.db), sources = new EchoSourceRepository(database.db);
+  const patch = (body: unknown, who = 'alice') => fetch(`${base}/api/v1/listening/segments/${id}/speakers`, {
+    method: 'PATCH', headers: { Authorization: `Bearer instant-dev-${who}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal(await memory.nextWindow(userId), undefined);
+  assert.equal(await today.currentSource(userId, { kind: 'transcript', recordId: id }), undefined);
+  const choice = { revision: 0, status: 'confirmed', selfSpeakerIds: ['a'], excludedUtteranceIds: ['u4'] };
+  assert.equal((await patch(choice, 'bob')).status, 404);
+  assert.equal((await patch({ ...choice, selfSpeakerIds: ['invented'] })).status, 400);
+  const first = await patch(choice); assert.equal(first.status, 200);
+  const saved = (await first.json() as any).segment;
+  assert.equal(saved.speakerReview.revision, 1); assert.equal(saved.utterances.length, 4);
+  assert.equal(saved.transcript, 'Mine. Someone else. Unclear. Mine again.');
+  assert.equal((await row(id)).audio, null);
+  const future = new Date(Date.now() + 120000), window = (await memory.nextWindow(userId, future))!;
+  const evidence = await memory.evidence(userId, window, undefined, future);
+  assert.equal(evidence.length, 1); assert.equal(evidence[0]!.text, 'Mine.'); assert.equal(evidence[0]!.id, `echo:${id}:v1`);
+  const oldSource = (await today.currentSource(userId, { kind: 'transcript', recordId: id }))!;
+  assert.equal(oldSource.text, 'Mine.');
+  assert.equal((await sources.valid(userId, [`echo:${id}`, `echo:${id}:v1`])).size, 1);
+  const racing = await Promise.all([patch({ ...choice, revision: 1 }), patch({ ...choice, revision: 1, selfSpeakerIds: ['b'] })]);
+  assert.deepEqual(racing.map(response => response.status).sort(), [200, 409]);
+  assert.notEqual((await today.currentSource(userId, { kind: 'transcript', recordId: id }))!.version, oldSource.version);
+  assert.equal((await sources.valid(userId, [`echo:${id}:v1`])).size, 0);
+  assert.equal((await patch({ revision: 2, status: 'not_present', selfSpeakerIds: [], excludedUtteranceIds: [] })).status, 200);
+  assert.equal(await today.currentSource(userId, { kind: 'transcript', recordId: id }), undefined);
+  const noSelf = await memory.evidence(userId, (await memory.nextWindow(userId, future))!, undefined, future);
+  assert.equal(noSelf[0]!.text, '');
+  assert.equal((await patch({ revision: 3, status: 'unconfirmed', selfSpeakerIds: [], excludedUtteranceIds: [] })).status, 200);
+  await remove(id);
+  assert.equal((await patch({ ...choice, revision: 4 })).status, 404);
 });

@@ -106,6 +106,16 @@ a busy Session returns `config_upgrade_pending` until the current turn settles.
 Tasks never receive native device tools. See the
 [native tool contract](../contracts/native-device-tools.md).
 
+## Echo speaker confirmation
+
+The transcription worker joins each batch into one media timeline for anonymous
+speaker diarization. Archived utterances are immutable; a revisioned PostgreSQL
+review records the user's selected voices and excluded passages. The shared
+`personalTranscript` projection supplies Memory and Brief, with no full-text
+fallback. Source revisions and read/write validation withdraw stale derived
+content when a review changes or the recording is deleted. Labels never identify
+people across recordings. See [Echo speakers](../contracts/echo-speakers.md).
+
 ## Echo calendar reminders and native stop
 
 `EchoScheduleRepository` owns a revisioned plan in the notification preference

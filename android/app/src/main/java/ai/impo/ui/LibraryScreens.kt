@@ -139,7 +139,7 @@ import java.time.LocalDate
                 Text(memory.categories.joinToString(" · ") { humanStatus(it) }, color = Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                 IconButton(onClick = { deleting = memory }) { Icon(Icons.Outlined.DeleteOutline, "Forget memory") }
             }
-            memory.sourceIds.filter { it.startsWith("echo:") }.forEach { source -> TextButton(onClick = { go("echo/${source.removePrefix("echo:")}") }) { Text("View original Echo") } }
+            memory.sourceIds.filter { it.startsWith("echo:") }.map { it.removePrefix("echo:").substringBefore(":") }.distinct().forEach { id -> TextButton(onClick = { go("echo/$id") }) { Text("View original Echo") } }
             if (memory.sourceIds.any { it.startsWith("chat:") }) Text("From your conversations", color = Muted, style = MaterialTheme.typography.labelSmall)
         } }
         if (state.memoryCursor != null) item { TextButton(onClick = { vm.refreshMemories(more = true) }, enabled = "memories" !in state.busy) { Text("More memories") } }
@@ -248,8 +248,8 @@ private data class TimelineRow(val key: String, val date: String? = null, val re
         if (record != null) Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             SectionLabel(shortDate(record.startedAt))
             Text(humanStatus(record.status), color = Muted)
-            if (record.transcript.isNotBlank()) SelectionContainer { Text(record.transcript, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.testTag("echo.transcript")) }
-            else Text(when (record.status) { "transcribed" -> "No speech was transcribed."; "failed" -> "Transcription couldn't finish."; else -> "Your recording is being transcribed…" }, color = Muted)
+            EchoSpeakerTranscript(vm, state, record)
+            if (record.transcript.isBlank() && record.utterances.isEmpty()) Text(when (record.status) { "transcribed" -> "No speech was transcribed."; "failed" -> "Transcription couldn't finish."; else -> "Your recording is being transcribed…" }, color = Muted)
             record.error?.let { ErrorNotice(it.message) }
             if (record.status == "failed") record.batchId?.let { batch -> OutlinedButton(onClick = { vm.retryTranscription(batch) }) { Text("Retry transcription") } }
             HorizontalDivider(color = Border)

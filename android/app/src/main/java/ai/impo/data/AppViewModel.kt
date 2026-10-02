@@ -336,6 +336,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun labelRecord(id: String, label: String?) { launch("record") { client -> val row = client.updateEchoLabel(id, label); ensureCurrentAccount(); bodyCache[id] = row; mutable.update { it.copy(selectedRecord = if (it.selectedRecord?.id == id) row else it.selectedRecord, records = bodyCache.toMap()) } } }
+    fun reviewSpeakers(record: EchoRecord, review: EchoSpeakerReview, done: () -> Unit = {}) {
+        launch("speakers") { client ->
+            try {
+                val row = client.reviewEchoSpeakers(record.id, review)
+                ensureCurrentAccount()
+                bodyCache[row.id] = row
+                mutable.update { it.copy(selectedRecord = if (it.selectedRecord?.id == row.id) row else it.selectedRecord, records = bodyCache.toMap()) }
+                refreshMemories(); refreshBriefs(); done()
+            } catch (failure: Exception) {
+                ensureCurrentAccount()
+                openRecord(record.id)
+                throw failure
+            }
+        }
+    }
     fun deleteRecord(id: String, done: () -> Unit) { launch("record") { it.deleteEchoRecord(id); ensureCurrentAccount(); bodyCache.remove(id); mutable.update { it.copy(selectedRecord = it.selectedRecord?.takeUnless { record -> record.id == id }) }; refreshEcho(); refreshBriefs(); done() } }
     fun retryTranscription(id: String) { launch("record") { it.retryBatch(id); ensureCurrentAccount(); mutable.value.selectedRecord?.let { openRecord(it.id) } } }
     fun refreshConnectors() { launch("connectors", replacePrevious = true) { client ->

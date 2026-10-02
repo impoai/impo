@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { check, customType, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { users } from './chat.js';
 import type { StoredError } from './runtime.js';
+import type { SpeakerReview } from '../../listening/speakers.js';
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 
@@ -28,6 +29,8 @@ export const listeningSegments = pgTable('listening_segments', {
   transcript: text('transcript').notNull().default(''),
   locationLabel: text('location_label'),
   utterances: jsonb('utterances').$type<Utterance[]>().notNull().default(sql`'[]'::jsonb`),
+  speakerReview: jsonb('speaker_review').$type<SpeakerReview>().notNull().default(sql`'{"revision":0,"status":"unconfirmed","selfSpeakerIds":[],"excludedUtteranceIds":[]}'::jsonb`),
+  speakerReviewedAt: timestamp('speaker_reviewed_at', { withTimezone: true }),
   model: text('model'),
   leaseToken: uuid('lease_token'),
   leaseUntil: timestamp('lease_until', { withTimezone: true }),
@@ -39,6 +42,7 @@ export const listeningSegments = pgTable('listening_segments', {
 }, (table) => [
   unique('listening_segments_client_unique').on(table.userId, table.clientSegmentId),
   index('listening_segments_user_time_index').on(table.userId, table.startedAt),
+  index('listening_segments_review_time_index').on(table.userId, table.speakerReviewedAt, table.id).where(sql`${table.status} = 'transcribed'`),
   index('listening_segments_pending_index').on(table.createdAt).where(sql`${table.status} IN ('pending', 'transcribing')`),
   check('listening_segments_status_check', sql`${table.status} IN ('pending', 'transcribing', 'transcribed', 'failed', 'deleted')`),
   check('listening_segments_time_check', sql`${table.endedAt} >= ${table.startedAt}`),
