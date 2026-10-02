@@ -56,17 +56,19 @@ struct SettingsView: View {
                                     .accessibilityIdentifier("settings.echo-schedule")
                             }.padding(.horizontal, 18)
                         }
-                        sectionLabel("Mode")
+                        sectionLabel(model.modeLoaded ? "Mode" : "Mode preview")
                         LibraryCard {
                             VStack(alignment: .leading, spacing: 12) {
                                 modeChoice("Balanced", description: "DeepSeek V4.1 Flash · Fast and economical for everyday tasks.")
                                 modeChoice("Power", description: "GPT-6 Sol · Stronger reasoning for complex work.")
-                                Text("Applies to your next chat reply, task and Brief on all your devices. Work already running keeps its current model.")
+                                Text(model.modeLoaded
+                                     ? "Applies to your next chat reply, task and Brief on all your devices. Work already running keeps its current model."
+                                     : "Preview the upcoming model options. Switching is not available yet.")
                                     .font(.caption).foregroundStyle(libraryMuted)
-                                if model.modeBusy { ProgressView("Saving or loading mode…").font(.caption) }
+                                if model.modeBusy { ProgressView(model.modeLoaded ? "Saving mode…" : "Checking availability…").font(.caption) }
                                 if let error = model.modeError {
                                     Text(error).font(.caption).foregroundStyle(libraryMuted)
-                                    Button("Retry") { Task { await model.refreshMode() } }.disabled(model.modeBusy)
+                                    Button(model.modeLoaded ? "Retry" : "Check availability") { Task { await model.refreshMode() } }.disabled(model.modeBusy)
                                 }
                             }.padding(18)
                         }
@@ -286,7 +288,8 @@ struct SettingsView: View {
     }
 
     private func modeChoice(_ name: String, description: String) -> some View {
-        Button {
+        let selected = model.modeLoaded && model.mode == name
+        return Button {
             Task { await model.selectMode(name) }
         } label: {
             HStack(alignment: .top) {
@@ -295,14 +298,14 @@ struct SettingsView: View {
                     Text(description).font(.footnote).foregroundStyle(libraryMuted)
                 }
                 Spacer(minLength: 8)
-                Image(systemName: model.mode == name ? "record.circle.fill" : "circle")
-                    .font(.title3).foregroundStyle(model.mode == name ? InstantStyle.forest : libraryMuted.opacity(0.6))
+                Image(systemName: selected ? "record.circle.fill" : "circle")
+                    .font(.title3).foregroundStyle(selected ? InstantStyle.forest : libraryMuted.opacity(0.6))
             }.padding(15).frame(maxWidth: .infinity, alignment: .leading)
-                .background(model.mode == name ? InstantStyle.sage.opacity(0.3) : InstantStyle.paper, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(model.mode == name ? InstantStyle.forest.opacity(0.4) : InstantStyle.border, lineWidth: 0.7))
+                .background(selected ? InstantStyle.sage.opacity(0.3) : InstantStyle.paper, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? InstantStyle.forest.opacity(0.4) : InstantStyle.border, lineWidth: 0.7))
         }.buttonStyle(.plain).disabled(model.modeBusy || !model.modeLoaded)
             .accessibilityIdentifier("settings.mode.\(name.lowercased())")
-            .accessibilityAddTraits(model.mode == name ? .isSelected : [])
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func settingsRow(_ title: String, detail: String? = nil, symbol: String? = "chevron.right", destructive: Bool = false, action: @escaping () -> Void) -> some View {

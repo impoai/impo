@@ -33,6 +33,27 @@ final class AccountProfileTests: XCTestCase {
         XCTAssertEqual(reopened.mode, "Balanced")
     }
 
+    func testLegacyServerKeepsModesUnavailableAndDoesNotWriteThePreviewChoice() async throws {
+        let suite = "AccountProfileTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("Power", forKey: "instant.mode")
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [AccountProfileProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let model = AppModel(defaults: defaults, session: session)
+        model.useLiveBackend = true
+        model.backendURL = "http://127.0.0.1:39203"
+        await model.refreshMode()
+        XCTAssertFalse(model.modeLoaded)
+        XCTAssertFalse(model.modeBusy)
+        XCTAssertEqual(model.modeError, "Model switching is coming soon. Your current model stays active.")
+        await model.selectMode("Balanced")
+        XCTAssertEqual(model.mode, "Power")
+        XCTAssertEqual(defaults.string(forKey: "instant.mode"), "Power")
+    }
+
     func testUnavailableProfileDoesNotCompleteOnboarding() async throws {
         let suite = "AccountProfileTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -57,10 +78,11 @@ private final class AccountProfileProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let available = request.url?.port == 39201 && request.url?.path == "/api/v1/profile"
+        let available = [39201, 39203].contains(request.url?.port ?? 0) && request.url?.path == "/api/v1/profile"
         var body = available
             ? #"{"onboarded":true,"displayName":"Alex","assistantName":"Robin","avatarIndex":2,"mode":"Power"}"#
             : #"{"error":{"code":"profile_unavailable","message":"Unavailable","retryable":true}}"#
+        if request.url?.port == 39203 { body = #"{"onboarded":true,"assistantName":"Robin"}"# }
         if available && request.httpMethod == "PATCH" { body = #"{"onboarded":true,"mode":"Balanced"}"# }
         let response = HTTPURLResponse(url: request.url!, statusCode: available ? 200 : 503, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

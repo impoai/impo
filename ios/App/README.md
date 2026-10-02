@@ -109,6 +109,22 @@ Device tool execution comes from owned pending/claim requests. Echo preserves
 immutable audio/location batches across offline retries. Background recording,
 real GPS, lock-screen behavior and battery use need physical-device testing.
 
+## Model mode preview
+
+When the connected profile API does not advertise a saved model mode, Settings
+shows **Mode preview**, disables both choices and does not mark either as active.
+The current production model keeps running. The selector becomes available only
+when the server supports the account preference; provider readiness must be
+verified before deploying that backend. See [model modes](../../contracts/model-modes.md).
+
+`ModelModeUITests` checks both supported and legacy profile APIs. Start these
+local synthetic fixtures in separate terminals before running the class:
+
+```sh
+node --import tsx scripts/android-ui-fixture.ts --port 3016 --public-host 127.0.0.1
+node --import tsx scripts/android-ui-fixture.ts --port 3017 --public-host 127.0.0.1 --legacy-profile
+```
+
 ## Resources and release builds
 
 The committed asset catalog is required product artwork. The Silero VAD model

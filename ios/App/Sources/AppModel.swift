@@ -427,7 +427,7 @@ final class AppModel {
             let profile = try await client.profile()
             guard !Task.isCancelled, listeningScope == scope, modeRevision == revision else { return }
             guard let selected = profile.mode, ["Balanced", "Power"].contains(selected) else {
-                modeLoaded = false; modeError = "Model selection is not available on this server yet."; return
+                modeLoaded = false; modeError = "Model switching is coming soon. Your current model stays active."; return
             }
             mode = selected; modeLoaded = true; persistProfile()
         } catch {

@@ -54,3 +54,8 @@ removes only its own test Sessions. Offline verification is
 `npm run test:model-modes` and the native account/profile and UI suites. Push the additive Drizzle
 profile column and check constraint before releasing API/Worker and native clients.
 Do not deploy the new default routing while either mode is unavailable.
+
+The iOS client can be distributed ahead of the model-routing backend: a legacy
+profile response without `mode` shows a disabled **Mode preview**, with neither
+choice presented as active. This does not enable model switching or change the
+production model. Keep the backend rollout prerequisites above in place.

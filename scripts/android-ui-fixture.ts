@@ -42,6 +42,7 @@ export function createAndroidFixture(
     delayMs?: number;
     voiceDelayMs?: number;
     files?: boolean;
+    legacyProfile?: boolean;
   } = {},
 ) {
   if (process.env.NODE_ENV === 'production') throw new Error('Android fixtures are local development only');
@@ -628,7 +629,7 @@ export function createAndroidFixture(
     dictation,
     profiles: {
       get: async (userId: string): Promise<Json> => ({
-        mode: 'Balanced',
+        ...(options.legacyProfile ? {} : { mode: 'Balanced' }),
         onboarded: main(userId).messages.some((message: Json) => message.role === 'user'),
         ...profiles.get(userId),
         ...(settings.get(userId)?.displayName ? { displayName: settings.get(userId)!.displayName } : {}),
@@ -639,7 +640,7 @@ export function createAndroidFixture(
         if (input.assistantName !== undefined && (typeof input.assistantName !== 'string' || !input.assistantName.trim() || input.assistantName.trim().length > 30 || input.assistantName.includes('\0'))) throw invalid();
         if (input.avatarIndex !== undefined && (!Number.isInteger(input.avatarIndex) || input.avatarIndex < 0 || input.avatarIndex > 6)) throw invalid();
         if (input.onboarded !== undefined && input.onboarded !== true) throw invalid();
-        if (input.mode !== undefined && !['Balanced', 'Power'].includes(input.mode)) throw invalid();
+        if (input.mode !== undefined && (options.legacyProfile || !['Balanced', 'Power'].includes(input.mode))) throw invalid();
         profiles.set(userId, { ...profiles.get(userId), ...input,
           ...(input.assistantName !== undefined ? { assistantName: input.assistantName.trim() } : {}),
         });
@@ -957,7 +958,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     !['127.0.0.1', 'localhost', '10.0.2.2'].includes(publicHost)
   )
     throw new Error('Use a local port and loopback/emulator public host');
-  const server = createAndroidFixture({ publicHost, files: process.argv.includes('--files') });
+  const server = createAndroidFixture({ publicHost, files: process.argv.includes('--files'), legacyProfile: process.argv.includes('--legacy-profile') });
   server.listen(port, '127.0.0.1');
   await once(server, 'listening');
   console.log(
