@@ -329,7 +329,7 @@
 		F897FDA93B47CDDCE46A2460 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F94425CBABA1F787B13400E3 /* DeleteAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteAccountView.swift; sourceTree = "<group>"; };
 		FE73AA4D127EEE24ED05CEB8 /* ListeningDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningDiagnostics.swift; sourceTree = "<group>"; };
-		"TEMP_1BD75B92-1D41-4875-A75C-70B08EFBB580" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		"TEMP_D427540E-939A-4D01-87E2-84EA1BCD6B86" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -579,10 +579,10 @@
 			path = NativeTests;
 			sourceTree = "<group>";
 		};
-		"TEMP_B7C112CF-2FBB-49A3-B42B-93A327735F6D" /* App */ = {
+		"TEMP_9EE2FF3F-0A38-4E07-BF0E-6AD972F7FC98" /* App */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_1BD75B92-1D41-4875-A75C-70B08EFBB580" /* Config.xcconfig */,
+				"TEMP_D427540E-939A-4D01-87E2-84EA1BCD6B86" /* Config.xcconfig */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -1037,7 +1037,7 @@
 		};
 		44E8F053EFDA9D9118394472 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_1BD75B92-1D41-4875-A75C-70B08EFBB580" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_D427540E-939A-4D01-87E2-84EA1BCD6B86" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -1072,7 +1072,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1178,7 +1178,7 @@
 		};
 		C5DC81EBB3D1465AA28E40C2 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_1BD75B92-1D41-4875-A75C-70B08EFBB580" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_D427540E-939A-4D01-87E2-84EA1BCD6B86" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -1213,7 +1213,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 58;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
