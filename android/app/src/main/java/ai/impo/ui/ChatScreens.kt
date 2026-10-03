@@ -235,7 +235,7 @@ import ai.impo.data.AppViewModel
             FilterChip(selected = true, onClick = {}, label = { Text("Tasks") }, modifier = Modifier.weight(1f))
             FilterChip(selected = false, onClick = { go("scheduled-tasks") }, label = { Text("Scheduled") }, modifier = Modifier.weight(1f).testTag("tasks.scheduled"))
         }
-        BusyLine("tasks" in state.busy)
+        BusyLine("tasks" in state.busy || (!state.tasksLoaded && state.errors["tasks"] == null))
         ErrorNotice(state.errors["tasks"], { vm.refreshTasks() })
         ErrorNotice(state.errors["createTask"])
         if (state.pendingTask != null) PaperCard(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
@@ -244,7 +244,7 @@ import ai.impo.data.AppViewModel
             TextButton(onClick = { vm.recoverTask { go("task/$it") } }, enabled = "createTask" !in state.busy) { Text("Recover task") }
         }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize().testTag("tasks.list")) {
-            if (state.tasks.isEmpty() && "tasks" !in state.busy) item { EmptyState("Make room for your day", "Delegate research, a plan, or a piece of writing. Each task has its own conversation.", "Create a task", { create = true }) }
+            if (state.tasksLoaded && state.tasks.isEmpty() && "tasks" !in state.busy && state.errors["tasks"] == null) item { EmptyState("Make room for your day", "Delegate research, a plan, or a piece of writing. Each task has its own conversation.", "Create a task", { create = true }) }
             items(state.tasks, key = { it.taskId }) { task -> PaperCard(Modifier.fillMaxWidth().clickable { go("task/${task.taskId}") }.testTag("task.${task.taskId}")) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(humanStatus(task.status), style = MaterialTheme.typography.labelMedium, color = Forest)

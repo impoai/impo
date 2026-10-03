@@ -49,6 +49,9 @@ final class TasksModel {
     var schedulesLoading = false
     @ObservationIgnored private var scheduleRequest = UUID()
     var loadError: String?
+    private(set) var tasksLoaded = false
+    private(set) var tasksLoading = false
+    @ObservationIgnored private var taskRequest = UUID()
     /// The New task or task conversation page currently shown over the Tasks tab.
     var route: TaskRoute?
     /// Offline Demo keeps its tasks on this device (cleared by Reset Demo with the other `instant.` keys).
@@ -64,6 +67,7 @@ final class TasksModel {
         guard scope != self.scope else { return }
         self.scope = scope; revision = UUID()
         tasks = []; schedules = []; scheduleError = nil; schedulesLoading = false; scheduleRequest = UUID(); loadError = nil; route = nil
+        tasksLoaded = false; tasksLoading = false; taskRequest = UUID()
     }
     private struct DemoStore: Codable { var tasks: [TaskItem]; var threads: [String: [ChatMessage]] }
 
@@ -83,15 +87,20 @@ final class TasksModel {
     func refresh(using app: AppModel) async {
         configure(scope: app.listeningScope)
         let token = revision
+        let request = UUID(); taskRequest = request
+        tasksLoading = true
+        loadError = nil
+        defer { if token == revision, request == taskRequest { tasksLoading = false } }
         guard let api = app.liveClient() else {
             // After Reset Demo the stored tasks are gone even though this model outlived it.
             if UserDefaults.standard.data(forKey: Self.demoKey) == nil { demoThreads = [:]; demoTasks = [] }
             tasks = demoTasks
+            tasksLoaded = true
             return
         }
         do {
             let summaries = try await api.tasks()
-            guard token == revision else { return }
+            guard token == revision, request == taskRequest, !Task.isCancelled else { return }
             tasks = summaries.map { summary in
                 TaskItem(id: summary.taskId, title: summary.title, status: summary.status,
                          createdAt: parseDate(summary.createdAt) ?? Date(),
@@ -99,8 +108,9 @@ final class TasksModel {
                          updatedAt: parseDate(summary.updatedAt))
             }
             loadError = nil
+            tasksLoaded = true
         } catch {
-            guard token == revision else { return }
+            guard token == revision, request == taskRequest, !Task.isCancelled else { return }
             loadError = "Couldn't load your tasks. Pull to try again."
         }
     }

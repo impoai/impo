@@ -86,10 +86,19 @@ struct TasksView: View {
                 }
                 segments
                 if showScheduled { ScheduledTasksList { scheduleRoute = ScheduledTaskRoute(value: $0) } }
-                else if tasks.tasks.isEmpty { getStarted }
-                else { taskList }
+                else if !tasks.tasks.isEmpty { taskList }
+                else if tasks.loadError == nil {
+                    if !tasks.tasksLoaded || tasks.tasksLoading {
+                        ProgressView("Loading tasks…")
+                            .frame(maxWidth: .infinity).padding(.vertical, 32)
+                            .accessibilityIdentifier("task.loading")
+                    } else { getStarted }
+                }
                 if let error = tasks.loadError, !showScheduled {
                     Text(error).font(.footnote).foregroundStyle(InstantStyle.muted)
+                        .accessibilityIdentifier("task.error")
+                    Button("Try again") { Task { await tasks.refresh(using: model) } }
+                        .frame(minHeight: 44).accessibilityIdentifier("task.retry")
                 }
             }.padding(.horizontal, 18).padding(.top, 6).padding(.bottom, 24)
         }

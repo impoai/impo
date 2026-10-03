@@ -20,6 +20,7 @@ data class AppState(
     val account: Account? = null, val profile: UserSettings = UserSettings(), val profileLoaded: Boolean = false,
     val chat: ConversationSession? = null, val taskSession: ConversationSession? = null,
     val tasks: List<TaskSummary> = emptyList(), val briefs: List<Brief> = emptyList(), val briefCursor: String? = null,
+    val tasksLoaded: Boolean = false,
     val briefSettings: BriefSettings? = null, val memories: List<Memory> = emptyList(),
     val memorySummary: MemorySummary = MemorySummary(0, emptyMap()), val memoryCursor: String? = null,
     val memoryCategory: String? = null, val connectors: List<Connector> = emptyList(),
@@ -242,7 +243,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if ("scheduleSave" in state.value.busy) return
         launch("scheduleSave") { client -> client.deleteScheduledTask(source.id, source.revision); ensureCurrentAccount(); refreshSchedules(); done() }
     }
-    fun refreshTasks() { launch("tasks", replacePrevious = true) { client -> val rows = client.tasks(); ensureCurrentAccount(); mutable.update { it.copy(tasks = rows) } } }
+    fun refreshTasks() { launch("tasks", replacePrevious = true) { client -> val rows = client.tasks(); ensureCurrentAccount(); mutable.update { it.copy(tasks = rows, tasksLoaded = true) } } }
     fun createTask(text: String, attachmentIds: List<String> = emptyList(), opened: (String) -> Unit) {
         val creator = taskCreator ?: return
         launch("createTask") {

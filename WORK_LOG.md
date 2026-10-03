@@ -333,3 +333,8 @@
 - TestFlight **1.0 (58)** is VALID / IN_BETA_TESTING for the internal Team group, Apple build `eecb1390-2e41-4e2a-bcb1-ea808ccb2db9`; group membership and English test notes were read back. Archive/export signatures, production configuration, entitlements and packaged resources passed. IPA SHA-256: `5d47db5c2e7c2578b6cb13903eec4a47447fea58dd8cc007fbfcf8ab63ee2c37`.
 - Android **0.1.12 (13)** is published at `https://impo.ai/android.apk`. Both public download URLs matched 132919655 bytes and SHA-256 `6a4f0825336363edcd1c5a4dfd0d2fda8f36dad40848f911d2d453bbb495c661`; the original signing identity was retained. Signed release cold launch reached the sign-in screen on the emulator with no crash.
 - Physical-device external-app handoff remains unverified; Timer adapters remain unimplemented. No external beta review, formal App Store submission or public iOS update-feed change. Private receipts: `.local/actions-release/`, `.local/release58/`, and `.local/android/releases/0.1.12-13/`.
+
+## 2026-10-03 — Task loading state correction
+
+- iOS and Android only show task onboarding after a successful empty response. Initial loading and failure have distinct presentation; refreshes and failed refreshes retain existing rows. iOS retries are explicit, overlapping responses are fenced, and loading state resets with the account.
+- Added a loopback-only response gate and native UI regressions for delayed initial loading, populated refresh, refresh failure, initial failure and an empty successful retry. Both iOS Simulator and Android emulator tests passed, including native builds. Xcode project regenerated; prepared iOS build 59. No backend change or production data access was needed for these tests.
