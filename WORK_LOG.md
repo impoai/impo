@@ -338,3 +338,10 @@
 
 - iOS and Android only show task onboarding after a successful empty response. Initial loading and failure have distinct presentation; refreshes and failed refreshes retain existing rows. iOS retries are explicit, overlapping responses are fenced, and loading state resets with the account.
 - Added a loopback-only response gate and native UI regressions for delayed initial loading, populated refresh, refresh failure, initial failure and an empty successful retry. Both iOS Simulator and Android emulator tests passed, including native builds. Xcode project regenerated; prepared iOS build 59. No backend change or production data access was needed for these tests.
+
+
+## 2026-10-03 — Task loading fix distributed
+
+- Released native source `adc4cb27109b01628c4f96271a81f5ad602dd54c`. TestFlight **1.0 (59)** is VALID / IN_BETA_TESTING for the internal Team group, Apple build `194c2b31-61b8-44c3-8ef5-a57658c43b9e`; group association and English notes were read back. Signed archive/export, production configuration, entitlements and fixture exclusion passed.
+- Android **0.1.13 (14)** is published at `https://impo.ai/android.apk`. Immutable and permanent downloads matched 132919655 bytes and SHA-256 `aed8677a5de983543d5e18c21dabdf07e80e20eda2df2b9ced15f48db182711e`; original signing identity retained. Signed release cold launch reached the sign-in screen without a crash on the emulator.
+- No backend deployment was necessary. UI regression checks used synthetic local data; physical-device and signed-in production acceptance remain unverified. Private receipts: `.local/task-loading/`, `.local/release59/`, and `.local/android/releases/0.1.13-14/`.
