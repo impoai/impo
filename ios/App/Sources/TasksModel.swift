@@ -121,9 +121,9 @@ final class TasksModel {
     }
 
     /// Creates a task and returns its ID. A retried create reuses the same clientMessageId on the server.
-    func create(_ raw: String, using app: AppModel) async throws -> String {
+    func create(_ raw: String, using app: AppModel, attachments: [UploadedAttachment] = []) async throws -> String {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= 4000 else { throw TaskInputError.invalidLength }
+        guard (!text.isEmpty || !attachments.isEmpty), text.count <= 4000 else { throw TaskInputError.invalidLength }
         guard let api = app.liveClient() else {
             let id = UUID().uuidString
             let now = Date()
@@ -132,7 +132,7 @@ final class TasksModel {
             return id
         }
         let token = revision
-        let receipt = try await api.createTask(clientMessageId: UUID().uuidString, text: text, clientContext: currentClientContext())
+        let receipt = try await api.createTask(clientMessageId: UUID().uuidString, text: text, clientContext: currentClientContext(), attachmentIds: attachments.map(\.id))
         guard token == revision else { throw CancellationError() }
         let now = Date()
         tasks.removeAll { $0.id == receipt.taskId }
@@ -214,9 +214,9 @@ final class TaskThreadModel {
         followTask = nil
     }
 
-    func send(_ raw: String) -> Bool {
+    func send(_ raw: String, attachments: [UploadedAttachment] = []) -> Bool {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isRunning, text.utf16.count <= 32_768 else { return false }
+        guard (!text.isEmpty || !attachments.isEmpty), !isRunning, text.utf16.count <= 32_768 else { return false }
         error = nil
         switch backend {
         case .demo(let tasks):
@@ -228,12 +228,12 @@ final class TaskThreadModel {
             }
         case .live(let api):
             let clientID = UUID().uuidString
-            messages.append(ChatMessage(id: clientID, role: "user", text: text))
+            messages.append(ChatMessage(id: clientID, role: "user", text: text, files: attachments.map(\.deliveredFile)))
             status = "queued"
             followTask?.cancel()
             followTask = Task {
                 do {
-                    _ = try await api.sendTaskMessage(taskId, clientMessageId: clientID, text: text, clientContext: currentClientContext())
+                    _ = try await api.sendTaskMessage(taskId, clientMessageId: clientID, text: text, clientContext: currentClientContext(), attachmentIds: attachments.map(\.id))
                     await follow()
                 } catch {
                     if !Task.isCancelled { self.error = "Couldn't send this message. Check your connection and try again."; status = "failed" }

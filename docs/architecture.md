@@ -134,3 +134,10 @@ Android `EchoRecordingService` apply the last synced plan to their own active
 recording, using an immutable session anchor and an offline local deadline.
 The API, timezone rules and lifecycle limits are in
 [Echo schedule](../contracts/echo-schedule.md).
+
+## Input files
+
+The [attachment contract](../contracts/attachments.md) defines uploads, ownership,
+history and retries. Impo stores originals and forwards admitted files into the
+owned Rebyte Session before sending input. Rebyte provides `list_files` and
+`read_file` and handles document parsing and typed image conversion for models.

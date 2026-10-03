@@ -1,3 +1,5 @@
+import { attachmentIds, attachmentTypes, maxAttachmentBytes, maxAttachments } from '../attachments/contract.js';
+import type { AttachmentService } from '../attachments/service.js';
 import type { ScheduledTaskRepository } from '../db/repositories/scheduled-task-repository.js';
 import { parseScheduledTask } from '../scheduling/contract.js';
 import { ListeningBatchRepository } from '../db/repositories/listening-batch-repository.js';
@@ -35,6 +37,7 @@ export type ApiRepository = Pick<RuntimeRepository,
   & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
 
 export interface ApiOptions {
+  attachments?: AttachmentService;
   scheduledTasks?: Pick<ScheduledTaskRepository, 'list' | 'get' | 'create' | 'update' | 'remove' | 'runs'>;
   echoSchedules?: Pick<EchoScheduleRepository, 'get' | 'save'>;
   accounts?: Pick<AccountDeletionRepository, 'closedIdentity' | 'status' | 'prepare' | 'confirm'>;
@@ -61,6 +64,13 @@ export interface ApiOptions {
   streamKeepAliveMs?: number;
   /** local-dev is the fixed fixture identity; clerk verifies a real Bearer session token. */
   auth?: { mode: 'local-dev' } | { mode: 'clerk'; secretKey: string };
+}
+
+function messageInput(data: Record<string, unknown>, maxLength: number) {
+  const ids = attachmentIds(data.attachmentIds);
+  const text = data.text === undefined && ids.length ? '' : data.text;
+  if (typeof text !== 'string' || text.includes('\0') || text.length > maxLength || (!text.trim() && !ids.length)) throw new ServiceError(400, 'invalid_request', 'Enter a message or attach a file.');
+  return { text, ...(ids.length ? { attachmentIds: ids } : {}) };
 }
 
 /** Base64 audio plus a few small fields. */
@@ -455,12 +465,33 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         sendJSON(res, 200, action === 'connect' ? await options.connectors.connect(user.id, toolkit) : await options.connectors.refresh(user.id, toolkit)); return;
       }
     }
+    if (path === '/api/v1/attachments' && method === 'GET') {
+      if (!options.attachments) throw new ServiceError(503, 'attachments_unavailable', 'File uploads are unavailable.');
+      sendJSON(res, 200, { maxBytes: maxAttachmentBytes, maxFiles: maxAttachments, formats: attachmentTypes }); return;
+    }
+    if (path === '/api/v1/attachments/prepare' && method === 'POST') {
+      if (!options.attachments) throw new ServiceError(503, 'attachments_unavailable', 'File uploads are unavailable.');
+      sendJSON(res, 200, await options.attachments.prepare(user.id, await readJSON(req, requestTimeoutMs))); return;
+    }
+    const attachment = /^\/api\/v1\/attachments\/([^/]+)\/complete$/.exec(path);
+    if (attachment && method === 'POST') {
+      if (!options.attachments) throw new ServiceError(503, 'attachments_unavailable', 'File uploads are unavailable.');
+      onlyFields(await readJSON(req, requestTimeoutMs), []);
+      sendJSON(res, 200, await options.attachments.complete(user.id, uuid(attachment[1]))); return;
+    }
+    const uploadedFile = /^\/api\/v1\/files\/upload_([^/]+)$/.exec(path);
+    if (uploadedFile && method === 'GET') {
+      if (!options.attachments) throw new ServiceError(404, 'not_found', 'File not found.');
+      const { file, bytes } = await options.attachments.load(user.id, uuid(uploadedFile[1]), requestSignal(res));
+      res.writeHead(200, { 'Content-Type': file.mediaType, 'Content-Length': bytes.length, 'Content-Disposition': contentDisposition(file.name), 'Cache-Control': 'private, no-store' });
+      res.end(bytes); return;
+    }
     if (path === '/api/v1/conversation/messages' && method === 'POST') {
       const data = await readJSON(req, requestTimeoutMs);
-      onlyFields(data, ['clientMessageId', 'text', 'deviceId', 'clientContext']);
+      onlyFields(data, ['clientMessageId', 'text', 'deviceId', 'clientContext', 'attachmentIds']);
       const receipt = await repository.acceptMessage(user.id, {
         clientMessageId: requiredString(data, 'clientMessageId', 256),
-        text: requiredString(data, 'text', 32_768),
+        ...messageInput(data, 32_768),
         ...(data.deviceId === undefined ? {} : { deviceId: uuid(requiredString(data, 'deviceId', 36)) }),
         ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
       });
@@ -545,10 +576,10 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       }
       if (path === '/api/v1/tasks' && method === 'POST') {
         const data = await readJSON(req, requestTimeoutMs);
-        onlyFields(data, ['clientMessageId', 'text', 'clientContext']);
+        onlyFields(data, ['clientMessageId', 'text', 'clientContext', 'attachmentIds']);
         sendJSON(res, 202, await createUserTask.call(repository, user.id, {
           clientMessageId: requiredString(data, 'clientMessageId', 256),
-          text: requiredString(data, 'text', 4000),
+          ...messageInput(data, 4000),
           ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
         })); return;
       }
@@ -563,10 +594,10 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       if (task?.[2] === 'messages' && method === 'POST') {
         if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
         const data = await readJSON(req, requestTimeoutMs);
-        onlyFields(data, ['clientMessageId', 'text', 'clientContext']);
+        onlyFields(data, ['clientMessageId', 'text', 'clientContext', 'attachmentIds']);
         sendJSON(res, 202, await acceptTaskMessage.call(repository, user.id, uuid(task[1]), {
           clientMessageId: requiredString(data, 'clientMessageId', 256),
-          text: requiredString(data, 'text', 32_768),
+          ...messageInput(data, 32_768),
           ...(data.clientContext === undefined ? {} : { clientContext: clientContext(data.clientContext) }),
         })); return;
       }

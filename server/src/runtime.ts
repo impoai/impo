@@ -22,7 +22,7 @@ export function createRuntimeRepository(db: Database, config: ReturnType<typeof 
   const connectors = config.composio ? connectorToolRegistry(new ConnectorService(new ConnectorRepository(db), config.composio)) : undefined;
   // instant_create_task needs the repository, which needs this registry: close over it and assign below.
   let repository!: RebyteRepository;
-  const task = taskToolRegistry({ createTask: (userId, goal, invocationId) => repository.createTask(userId, goal, invocationId) });
+  const task = taskToolRegistry({ createTask: (userId, goal, invocationId, fileIds) => repository.createTask(userId, goal, invocationId, fileIds) });
   const memory = memoryToolRegistry(options.memories, (userId, invocationId) => repository.isMainConversationInvocation(userId, invocationId));
   const scheduling = config.temporal ? scheduledTaskToolRegistry(async (userId, invocationId, input) => {
     if (!await repository.isMainConversationInvocation(userId, invocationId)) throw new ServiceError(403, 'main_chat_required', 'Create schedules from the main chat.');

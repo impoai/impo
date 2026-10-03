@@ -10,6 +10,7 @@ struct MainView: View {
     @State private var showSettings = false
     @State private var showSearch = false
     @State private var composer = ""
+    @State private var attachments: [UploadedAttachment] = []
     @State private var search = ""
     @State private var voice = VoiceInput()
     @State private var composerFocused = false
@@ -114,7 +115,7 @@ struct MainView: View {
                 }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4)
                     .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
             }
-            ChatComposer(text: $composer, focused: $composerFocused,
+            ChatComposer(text: $composer, focused: $composerFocused, attachments: $attachments,
                          placeholder: model.selectedTab == 3 ? "Tell \(model.assistantName) more about you..."
                              : model.selectedTab == 2 ? "Ask \(model.assistantName) to research, plan, or create" : "Chat or hold to speak...",
                          sendDisabled: model.isThinking && model.selectedTab != 2, voice: voice, onSend: send, onClip: deliverVoice)
@@ -177,13 +178,14 @@ struct MainView: View {
     }
 
     private func send() {
-        guard !composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !composer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty else { return }
         if model.selectedTab == 2 {
             // On the Tasks tab the composer starts a new task, as in the reference design.
             let text = composer
+            let sentFiles = attachments
             composer = ""; composerFocused = false
             Task {
-                do { tasks.route = .detail(try await tasks.create(text, using: model)) }
+                do { tasks.route = .detail(try await tasks.create(text, using: model, attachments: sentFiles)); attachments = [] }
                 catch is CancellationError {} // The account changed; its text must not reappear.
                 catch { composer = text; tasks.loadError = (error as? TaskInputError)?.errorDescription ?? "Couldn't create this task. Check your connection and try again." }
             }
@@ -191,7 +193,7 @@ struct MainView: View {
         }
         guard !model.isThinking else { return }
         model.selectedTab = 0
-        if model.send(composer) { composer = ""; composerFocused = false }
+        if model.send(composer, attachments: attachments) { composer = ""; attachments = []; composerFocused = false }
     }
 }
 
@@ -235,7 +237,7 @@ private struct ChatView: View {
                     }
                     ForEach(model.messages.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) }) { message in
                         // A voice message shows "…" until the server returns its transcript.
-                        if message.role == "user" && message.text.isEmpty { TranscribingBubble().id(message.id) }
+                        if message.role == "user" && message.text.isEmpty && message.files.isEmpty { TranscribingBubble().id(message.id) }
                         else {
                             VStack(alignment: .leading, spacing: 8) {
                                 if !message.text.isEmpty { bubble(message.text, user: message.role == "user") }

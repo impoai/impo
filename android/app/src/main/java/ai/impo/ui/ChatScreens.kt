@@ -32,6 +32,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ai.impo.client.ConversationState
+import ai.impo.client.UploadedAttachment
 import ai.impo.client.DeliveredFile
 import java.io.File
 import ai.impo.data.AppState
@@ -55,7 +56,7 @@ import ai.impo.data.AppViewModel
         if (searchOpen) OutlinedTextField(search, { search = it }, label = { Text("Search this conversation") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         ConversationBody(conversation, search, Modifier.weight(1f), state.profile.assistantName, { vm.retryChat() }, vm::downloadFile)
         ErrorNotice(state.errors["chat"], { vm.retryChat() })
-        MessageComposer(vm, conversation, { vm.send(it) }, { vm.cancelChat() }, "chat", session != null,
+        MessageComposer(vm, conversation, { text, files -> vm.send(text, attachmentIds = files) }, { vm.cancelChat() }, "chat", session != null,
             owner to session, { vm.state.value.account?.requestScope == owner && vm.state.value.chat === session })
     }
 }
@@ -67,7 +68,7 @@ import ai.impo.data.AppViewModel
         PageHeader("Task", conversation.title, back)
         ConversationBody(conversation, "", Modifier.weight(1f), state.profile.assistantName, { vm.retryChat(true) }, vm::downloadFile)
         ErrorNotice(state.errors["task"], { vm.retryChat(true) })
-        MessageComposer(vm, conversation, { vm.send(it, true) }, { vm.cancelChat(true) }, "task", session != null,
+        MessageComposer(vm, conversation, { text, files -> vm.send(text, true, files) }, { vm.cancelChat(true) }, "task", session != null,
             owner to session, { vm.state.value.account?.requestScope == owner && vm.state.value.taskSession === session })
     }
 }
@@ -104,7 +105,10 @@ import ai.impo.data.AppViewModel
             items(messages, key = { it.id }) { message ->
                 Column(Modifier.fillMaxWidth()) {
                     if (message.role == "user") Surface(Modifier.align(Alignment.End).widthIn(max = 340.dp), shape = RoundedCornerShape(24.dp, 24.dp, 6.dp, 24.dp), color = Sage.copy(alpha = .65f)) {
-                        SelectionContainer { Text(message.text, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge) }
+                        Column(Modifier.padding(16.dp)) {
+                            if (message.text.isNotBlank()) SelectionContainer { Text(message.text, style = MaterialTheme.typography.bodyLarge) }
+                            if (message.files.isNotEmpty()) DeliveredFiles(message.files, download)
+                        }
                     } else {
                         if (message.text.isNotBlank()) RichResponse(message.text, Modifier.fillMaxWidth(), message.status in setOf("queued", "running", "waiting_device"), onSelectionChanged = { active -> selecting = if (active) selecting + message.id else selecting - message.id })
                         else if (conversation.busy && conversation.pendingVoice == null && message.files.isEmpty()) Text("Thinking…", color = Muted)
@@ -137,9 +141,10 @@ import ai.impo.data.AppViewModel
         if (conversation.hasPendingMessage && !conversation.busy) TextButton(onClick = retry, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("chat.retry")) { Text("Retry saved message") }
     }
 }
-@Composable private fun MessageComposer(vm: AppViewModel, conversation: ConversationState, send: (String) -> Unit, cancel: () -> Unit,
+@Composable private fun MessageComposer(vm: AppViewModel, conversation: ConversationState, send: (String, List<String>) -> Unit, cancel: () -> Unit,
     prefix: String, available: Boolean, sessionKey: Any?, isCurrent: () -> Boolean) {
     var text by rememberSaveable(sessionKey) { mutableStateOf("") }
+    var files by remember(sessionKey) { mutableStateOf(emptyList<UploadedAttachment>()) }
     val appState by vm.state.collectAsStateWithLifecycle()
     val suggestion = appState.pendingBriefDraft.takeIf { prefix == "chat" }
     var chooseDraft by remember(sessionKey) { mutableStateOf(false) }
@@ -153,15 +158,17 @@ import ai.impo.data.AppViewModel
         confirmButton = { TextButton(onClick = { if (isCurrent()) text = suggestion; chooseDraft = false; vm.consumeBriefDraft() }) { Text("Replace draft") } },
         dismissButton = { TextButton(onClick = { chooseDraft = false; vm.consumeBriefDraft() }) { Text("Keep current draft") } })
     ServerVoiceComposer(vm, text, { text = it }, conversation.activeSubmissionIds.isNotEmpty() || (conversation.busy && conversation.pendingVoice == null),
-        !conversation.hasPendingMessage && available && !conversation.loading, send, cancel, prefix, sessionKey, isCurrent,
-        sendVoiceToChat = prefix == "chat", allowVoice = available, admissionPending = conversation.pendingVoice?.transcribing == true)
+        !conversation.hasPendingMessage && available && !conversation.loading, { value -> val selected = files; send(value, selected.map { it.id }); files = emptyList() }, cancel, prefix, sessionKey, isCurrent,
+        sendVoiceToChat = prefix == "chat", allowVoice = available, admissionPending = conversation.pendingVoice?.transcribing == true, attachments = files, onAttachmentsChange = { files = it })
 }
 
 /** Only draft transcription follows the view lifecycle. A released Chat command is durable. */
 @Composable private fun ServerVoiceComposer(vm: AppViewModel, value: String, onValueChange: (String) -> Unit, busy: Boolean, allowSend: Boolean,
     send: (String) -> Unit, cancel: () -> Unit, prefix: String, sessionKey: Any?, isCurrent: () -> Boolean,
     sendVoiceToChat: Boolean, allowVoice: Boolean = true, admissionPending: Boolean = false,
-    inputTag: String = "$prefix.input", placeholder: String = "Tap to type · Hold to talk", maxLength: Int = 32768, showSendControl: Boolean = true) {
+    inputTag: String = "$prefix.input", placeholder: String = "Tap to type · Hold to talk", maxLength: Int = 32768, showSendControl: Boolean = true, attachments: List<UploadedAttachment> = emptyList(),
+    onAttachmentsChange: (List<UploadedAttachment>) -> Unit = {}, onAttachmentBlocked: (Boolean) -> Unit = {}) {
+    var attachmentBlocked by remember(sessionKey) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val appState by vm.state.collectAsStateWithLifecycle()
@@ -203,17 +210,20 @@ import ai.impo.data.AppViewModel
             } finally { pending = false }
         }
     }
-    VoiceComposer(value, onValueChange, busy, allowSend && value.length <= maxLength, send, cancel, prefix, sessionKey,
-        onVoiceClip = ::receive, isCurrent = isCurrent, voicePending = pending || admissionPending, voiceNotice = notice, allowVoice = allowVoice,
+    AttachmentPicker(vm, attachments, onAttachmentsChange, { attachmentBlocked = it; onAttachmentBlocked(it) }, sessionKey, allowSend && !busy, isCurrent)
+    VoiceComposer(value, onValueChange, busy, allowSend && !attachmentBlocked && value.length <= maxLength, send, cancel, prefix, sessionKey,
+        onVoiceClip = ::receive, isCurrent = isCurrent, voicePending = pending || admissionPending, voiceNotice = notice, allowVoice = allowVoice && attachments.isEmpty() && !attachmentBlocked, hasAttachments = attachments.isNotEmpty(),
         inputTag = inputTag, placeholder = placeholder, maxLength = maxLength, showSendControl = showSendControl)
 }
 @Composable fun TasksScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit) {
     var create by remember { mutableStateOf(false) }
     var prompt by rememberSaveable { mutableStateOf("") }
+    var taskFiles by remember(state.account?.requestScope) { mutableStateOf(emptyList<UploadedAttachment>()) }
+    var attachmentBlocked by remember(state.account?.requestScope) { mutableStateOf(false) }
     val owner = state.account?.requestScope
     fun createTask(text: String) {
-        if (text.isBlank() || text.length > 4000 || "createTask" in state.busy || state.pendingTask != null) return
-        vm.createTask(text.trim()) { id -> create = false; prompt = ""; go("task/$id") }
+        if ((text.isBlank() && taskFiles.isEmpty()) || attachmentBlocked || text.length > 4000 || "createTask" in state.busy || state.pendingTask != null) return
+        vm.createTask(text.trim(), taskFiles.map { it.id }) { id -> create = false; prompt = ""; taskFiles = emptyList(); go("task/$id") }
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader("Tasks", "A little help moving things forward.", actions = {
@@ -249,9 +259,9 @@ import ai.impo.data.AppViewModel
             ServerVoiceComposer(vm, prompt, { prompt = it }, "createTask" in state.busy, state.pendingTask == null,
                 ::createTask, {}, "newTask", owner to "newTask", { create && vm.state.value.account?.requestScope == owner },
                 sendVoiceToChat = false, allowVoice = "createTask" !in state.busy && state.pendingTask == null,
-                inputTag = "tasks.prompt", placeholder = "Describe your task · Hold to talk", maxLength = 4000, showSendControl = false)
+                inputTag = "tasks.prompt", placeholder = "Describe your task · Hold to talk", maxLength = 4000, showSendControl = false, attachments = taskFiles, onAttachmentsChange = { taskFiles = it }, onAttachmentBlocked = { attachmentBlocked = it })
             ErrorNotice(state.errors["createTask"])
         }
-    }, confirmButton = { TextButton(onClick = { createTask(prompt) }, enabled = prompt.isNotBlank() && prompt.length <= 4000 && "createTask" !in state.busy && state.pendingTask == null,
+    }, confirmButton = { TextButton(onClick = { createTask(prompt) }, enabled = (prompt.isNotBlank() || taskFiles.isNotEmpty()) && !attachmentBlocked && prompt.length <= 4000 && "createTask" !in state.busy && state.pendingTask == null,
         modifier = Modifier.testTag("tasks.create")) { Text("Create task") } }, dismissButton = { TextButton(onClick = { create = false }) { Text("Cancel") } })
 }

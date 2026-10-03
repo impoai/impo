@@ -86,7 +86,7 @@ export class AccountDeletionRepository {
       // Foreign-key order is explicit. Every deletion includes ownership; no global purge.
       for (const table of [s.scheduledTaskRuns, s.scheduledTasks, s.deviceDispatches, s.outboxJobs, s.toolInvocations, s.productEvents, s.messageItemBindings,
         s.runtimeSubmissions, s.sessionCreationAttempts, s.sessionBindings, s.agentCreationAttempts, s.userAgents,
-        s.messages, s.conversations, s.actions, s.deviceCapabilities, s.devices, s.connectorConnections,
+        s.messageAttachments, s.attachments, s.messages, s.conversations, s.actions, s.deviceCapabilities, s.devices, s.connectorConnections,
         s.listeningSegments, s.listeningBatches, s.todayBriefs, s.todaySettings, s.memoryRuns, s.memoryState,
         s.memoryDatabases, s.userProfiles, s.notificationEvents, s.pushInstallations, s.notificationSettings]) {
         await tx.delete(table).where(eq(table.userId, userId));

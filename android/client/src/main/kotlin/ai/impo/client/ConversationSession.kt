@@ -172,10 +172,10 @@ class ConversationSession(
         } catch (cancelled: CancellationException) { mutableState.update { it.copy(loading = false) }; throw cancelled }
           catch (error: Exception) { mutableState.update { it.copy(loading = false, error = displayError(error)) } }
     } }
-    suspend fun send(text: String) = inSession { operationMutex.withLock {
+    suspend fun send(text: String, attachmentIds: List<String> = emptyList()) = inSession { operationMutex.withLock {
         assertOwner()
         check(store.load(accountId, taskId) == null) { "Retry the pending message before sending another" }
-        val command = MessageCommand.create(text)
+        val command = MessageCommand.create(text, attachmentIds = attachmentIds)
         val pending = PendingMessage(accountId, command, taskId, if (taskId == null) deviceId() else null)
         assertOwner()
         store.save(OutboxEntry(pending))

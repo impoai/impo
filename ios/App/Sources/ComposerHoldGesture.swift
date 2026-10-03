@@ -136,6 +136,7 @@ struct ChatComposer: View {
     @Environment(\.scenePhase) private var phase
     @Binding var text: String
     @Binding var focused: Bool
+    @Binding var attachments: [UploadedAttachment]
     let placeholder: String
     /// Accessibility prefix: `<identifier>.input`, `.voice`, `.send`, `.voice.notice`.
     var identifier = "chat"
@@ -145,7 +146,7 @@ struct ChatComposer: View {
     let voice: VoiceInput
     let onSend: () -> Void
     let onClip: @MainActor (VoiceClip) async throws -> Void
-    @State private var showAttachment = false
+    @State private var attachmentBlocked = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -160,30 +161,20 @@ struct ChatComposer: View {
                 }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4).frame(minHeight: 44)
                     .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
             }
+            AttachmentPicker(files: $attachments, blocked: $attachmentBlocked, disabled: sendDisabled)
             row
         }
         .onChange(of: phase) { _, phase in
             if phase == .background || (phase == .inactive && model.dictation.phase != .starting) { voice.cancel(model.dictation) }
         }
         .onDisappear { voice.cancel(model.dictation) }
-        .sheet(isPresented: $showAttachment) {
-            VStack(spacing: 22) {
-                Image(systemName: "paperclip").font(.largeTitle).foregroundStyle(InstantStyle.accent)
-                Text("Bring something to the conversation").font(InstantStyle.serif(25)).multilineTextAlignment(.center)
-                Text("File and camera uploads are coming next. For this demo, you can paste text into your message.").foregroundStyle(.secondary).multilineTextAlignment(.center)
-                PillButton(title: "Got it") { showAttachment = false }
-            }.padding(28).presentationDetents([.medium]).presentationBackground(InstantStyle.paper).swipeToDismiss()
-        }
     }
 
-    private var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty }
 
     private var row: some View {
         HStack(spacing: 9) {
-            Button { showAttachment = true } label: {
-                Image(systemName: "plus").font(.system(size: 26, weight: .light)).frame(width: 32, height: 42)
-            }.accessibilityLabel("Add attachment")
-            ComposerTextView(text: $text, focused: $focused, identifier: "\(identifier).input", onSend: { if !sendDisabled { onSend() } })
+            ComposerTextView(text: $text, focused: $focused, identifier: "\(identifier).input", onSend: { if !sendDisabled && !attachmentBlocked { onSend() } })
                 .overlay(alignment: .leading) {
                     if text.isEmpty {
                         Text(placeholder).font(.system(size: 15)).foregroundStyle(InstantStyle.muted).lineLimit(1)
@@ -206,7 +197,7 @@ struct ChatComposer: View {
                         .frame(width: 44, height: 44)
                         .background(InstantStyle.orangePaper, in: Circle())
                         .foregroundStyle(InstantStyle.forest)
-                }.frame(width: 44, height: 44).disabled(sendDisabled)
+                }.frame(width: 44, height: 44).disabled(sendDisabled || attachmentBlocked)
                     .accessibilityLabel("Send message").accessibilityIdentifier("\(identifier).send")
             }
         }
@@ -214,7 +205,7 @@ struct ChatComposer: View {
         .foregroundStyle(InstantStyle.forest)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 29))
         .contentShape(RoundedRectangle(cornerRadius: 29))
-        .gesture(ComposerHoldGesture(enabled: text.isEmpty,
+        .gesture(ComposerHoldGesture(enabled: text.isEmpty && attachments.isEmpty && !attachmentBlocked,
             onBegan: {
                 focused = false
                 voice.begin(model.dictation, echoActive: listening.isListening, assistantName: model.assistantName)

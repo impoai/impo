@@ -33,6 +33,7 @@ export class FakeRebyte {
   holdNextCreate = false;
   holdNextInput = false;
   holdNextTurn = false;
+  loseNextFileAcknowledgement = false;
   holdCancellation = false;
   private heldAgentCreates: { response: ServerResponse; agent: JSONRecord }[] = [];
   private heldCreates: { response: ServerResponse; session: FakeSession }[] = [];
@@ -231,14 +232,19 @@ export class FakeRebyte {
       const now = Math.floor(Date.now() / 1000);
       const session: FakeSession = {
         id: `sess_fake_${this.sessions.length + 1}`, object: 'agent.session', created_at: now, last_active_at: now,
-        agent: agentView, environment: body.environment, metadata: body.metadata,
+        agent: agentView, environment: body.environment.type === 'openai_hosted'
+          ? { ...body.environment, id: `env_fake_${this.sessions.length + 1}`, files: [] } : body.environment, metadata: body.metadata,
         error: null, required_actions: [], status: 'idle', usage: null, vault_ids: [], turns: [], items: [], artifacts: [], streams: new Set(),
       };
       this.sessions.push(session);
-      assert.ok(Array.isArray(body.input) && body.input.length === 1 && body.input[0].role === 'user', 'the creation request carries the first message');
-      const turn = this.beginTurn(session, body.input[0].content);
-      if (this.holdNextTurn) this.holdNextTurn = false;
-      else this.later(() => this.complete(session, turn));
+      if (body.metadata.instant_input_mode === 'deferred') {
+        assert.equal(body.input, undefined, 'deferred input waits until files have been uploaded');
+      } else {
+        assert.ok(Array.isArray(body.input) && body.input.length === 1 && body.input[0].role === 'user', 'the creation request carries the first message');
+        const turn = this.beginTurn(session, body.input[0].content);
+        if (this.holdNextTurn) this.holdNextTurn = false;
+        else this.later(() => this.complete(session, turn));
+      }
       if (this.holdNextCreate) {
         this.holdNextCreate = false;
         this.heldCreates.push({ response, session });
@@ -247,6 +253,18 @@ export class FakeRebyte {
     }
     if (path === '/agents/sessions' && request.method === 'GET') {
       this.page(response, url, this.sessions.map(session => this.sessionView(session))); return;
+    }
+    const uploadRoute = /^\/agents\/environments\/([^/]+)\/files$/.exec(path);
+    if (uploadRoute && request.method === 'POST') {
+      assert.ok(body);
+      const owner = this.sessions.find(value => value.environment.id === uploadRoute[1]);
+      assert.ok(owner);
+      assert.equal(body.type, 'inline');
+      const prior = owner.environment.files.find((file: JSONRecord) => file.path === body.path);
+      const file = { id: prior?.id ?? `file_fake_${owner.id}_${owner.environment.files.length + 1}`, type: 'inline', path: body.path, size_bytes: Buffer.from(body.data, 'base64').length };
+      owner.environment.files = [...owner.environment.files.filter((value: JSONRecord) => value.path !== body.path), file];
+      if (this.loseNextFileAcknowledgement) { this.loseNextFileAcknowledgement = false; response.destroy(); return; }
+      this.json(response, 200, { ...file, object: 'agent.environment.file', environment_id: owner.environment.id }); return;
     }
     const route = /^\/agents\/sessions\/([^/]+)(?:\/(events|items|turns|history|artifacts)(?:\/([^/]+)(?:\/(content))?)?)?$/.exec(path);
     const session = this.sessions.find(value => value.id === route?.[1]);

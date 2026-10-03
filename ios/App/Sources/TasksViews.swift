@@ -256,6 +256,7 @@ private struct NewTaskView: View {
     @State private var error: String?
     @State private var focused = false
     @State private var voice = VoiceInput()
+    @State private var attachments: [UploadedAttachment] = []
 
     private let suggestions: [(String, String)] = [
         ("sparkles", "Get a daily email roundup"),
@@ -282,7 +283,7 @@ private struct NewTaskView: View {
                         }.buttonStyle(PressStyle())
                     }
                     if let error { Text(error).font(.footnote).foregroundStyle(InstantStyle.accent) }
-                    ChatComposer(text: $text, focused: $focused, placeholder: "Describe what you’d like done…", identifier: "task.new",
+                    ChatComposer(text: $text, focused: $focused, attachments: $attachments, placeholder: "Describe what you’d like done…", identifier: "task.new",
                                  sendDisabled: sending, voice: voice, onSend: submit) { clip in
                         // A task starts from text: transcribe, then create it like a typed request.
                         text = try await model.transcribe(clip)
@@ -303,7 +304,7 @@ private struct NewTaskView: View {
         Task {
             defer { sending = false }
             do {
-                let id = try await tasks.create(text, using: model)
+                let id = try await tasks.create(text, using: model, attachments: attachments)
                 tasks.route = .detail(id)
             } catch {
                 self.error = (error as? TaskInputError)?.errorDescription ?? "Couldn't create this task. Check your connection and try again."
@@ -322,6 +323,7 @@ struct TaskDetailView: View {
     @State private var text = ""
     @State private var focused = false
     @State private var voice = VoiceInput()
+    @State private var attachments: [UploadedAttachment] = []
 
     var body: some View {
         ZStack {
@@ -339,7 +341,10 @@ struct TaskDetailView: View {
                                     .frame(maxWidth: .infinity).padding(.vertical, 6)
                             }
                             ForEach(thread.messages) { message in
-                                if message.role == "user" { userBubble(message.text) }
+                                if message.role == "user" {
+                                    if !message.text.isEmpty { userBubble(message.text) }
+                                    if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
+                                }
                                 else {
                                     if !message.text.isEmpty { assistantText(message.text) }
                                     if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
@@ -362,9 +367,9 @@ struct TaskDetailView: View {
                     .followsBottom(proxy, content: [AnyHashable(thread.messages.count), AnyHashable(thread.messages.last?.text.count ?? 0), AnyHashable(thread.messages.last?.files.count ?? 0), AnyHashable(thread.isRunning), AnyHashable(thread.error), AnyHashable(thread.steps.count), AnyHashable(voice.transcribing)],
                                    identifier: "task.scrollToBottom")
                 }
-                ChatComposer(text: $text, focused: $focused, placeholder: "Chat or hold to speak…", identifier: "task.detail",
+                ChatComposer(text: $text, focused: $focused, attachments: $attachments, placeholder: "Chat or hold to speak…", identifier: "task.detail",
                              sendDisabled: thread.isRunning, showsTranscribing: false, voice: voice,
-                             onSend: { if thread.send(text) { text = "" } }) { clip in
+                             onSend: { if thread.send(text, attachments: attachments) { text = ""; attachments = [] } }) { clip in
                     let spoken = try await model.transcribe(clip)
                     // While a run is still going, the words wait in the composer instead.
                     if !thread.send(spoken) { text = text.isEmpty ? spoken : text + " " + spoken }

@@ -97,7 +97,7 @@ export class RebyteGateway {
   }
 
   /** Not idempotent upstream: an uncertain response requires metadata reconciliation. */
-  async createSession(input: { input: InputParts; metadata: Record<string, string>; agentId?: string; agent?: { model?: string; instructions?: string; tools?: AgentToolParam[] }; environment?: EnvironmentParam }, signal: AbortSignal): Promise<AgentSession> {
+  async createSession(input: { input?: InputParts; metadata: Record<string, string>; agentId?: string; agent?: { model?: string; instructions?: string; tools?: AgentToolParam[] }; environment?: EnvironmentParam }, signal: AbortSignal): Promise<AgentSession> {
     signal.throwIfAborted();
     // With agentId, only pass explicit overrides; omitted fields inherit the saved Agent unchanged.
     const override = input.agentId ? {
@@ -113,7 +113,7 @@ export class RebyteGateway {
       environment: input.environment ?? { type: 'none' },
       ...(input.agentId ? { agent_id: input.agentId } : {}),
       ...(agent ? { agent } : {}),
-      input: [{ role: 'user', content: input.input }],
+      ...(input.input ? { input: [{ role: 'user', content: input.input }] } : {}),
       metadata: input.metadata,
     }, { signal }));
   }
@@ -155,6 +155,14 @@ export class RebyteGateway {
   async retrieve(sessionId: string, signal: AbortSignal): Promise<AgentSession> {
     signal.throwIfAborted();
     return this.client.beta.agents.sessions.retrieve(sessionId, { signal });
+  }
+
+  /** Upload into the already owned Session. The deterministic path is the retry identity. */
+  async uploadFile(environmentId: string, path: string, bytes: Uint8Array, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    await this.client.beta.agents.environments.files.create(environmentId, {
+      type: 'inline', path, data: Buffer.from(bytes).toString('base64'),
+    }, { signal });
   }
 
   async turns(sessionId: string, signal: AbortSignal): Promise<Turn[]> {

@@ -105,6 +105,8 @@ final class AppModel {
         /// A voice message keeps its clip until the server accepts it; `text` stays empty.
         var audio: Data?
         var audioMimeType: String?
+        var attachmentIds: [String]?
+        var attachments: [UploadedAttachment]?
     }
     private struct LiveContext {
         let operationID: UUID
@@ -582,9 +584,9 @@ final class AppModel {
     }
 
     @discardableResult
-    func send(_ raw: String) -> Bool {
+    func send(_ raw: String, attachments: [UploadedAttachment] = []) -> Bool {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isThinking else { return false }
+        guard (!text.isEmpty || !attachments.isEmpty), !isThinking else { return false }
         guard text.utf16.count <= 32_768, !text.contains("\0") else {
             chatError = "Please shorten this message to 32,768 characters or fewer and remove null characters."
             return false
@@ -597,12 +599,14 @@ final class AppModel {
                     chatError = "Your last message is still waiting for confirmation. Tap Retry before sending another."
                     return false
                 }
-                let pending = PendingInput(clientID: UUID().uuidString, text: text,
+                var pending = PendingInput(clientID: UUID().uuidString, text: text,
                     clientContext: MessageClientContext(timeZone: TimeZone.current.identifier, currentDate: ISO8601DateFormatter().string(from: Date())))
+                pending.attachmentIds = attachments.isEmpty ? nil : attachments.map(\.id)
+                pending.attachments = attachments.isEmpty ? nil : attachments
                 // Save the retry identity before starting HTTP. Mode changes and
                 // process termination must never turn a retry into a new input.
                 pendingInputs[scope] = pending
-                messages.append(ChatMessage(id: pending.clientID, role: "user", text: text))
+                messages.append(ChatMessage(id: pending.clientID, role: "user", text: text, files: attachments.map(\.deliveredFile)))
                 ListeningDiagnostics.shared.record("chat.send_started", ["clientMessageId":pending.clientID])
                 startLive(endpoint: url)
             } catch {
@@ -708,7 +712,7 @@ final class AppModel {
                 do {
                     if var pending = pendingInputs[context.scope] {
                         if !messages.contains(where: { $0.id == pending.clientID }) {
-                            messages.append(ChatMessage(id: pending.clientID, role: "user", text: pending.text))
+                            messages.append(ChatMessage(id: pending.clientID, role: "user", text: pending.text, files: pending.attachments?.map(\.deliveredFile) ?? []))
                         }
                         if pending.clientContext != nil && pending.deviceID == nil {
                             let device = try await api.registerDevice(installationId: installationID, tools: availableDeviceTools)
@@ -726,7 +730,7 @@ final class AppModel {
                             receipt = (voice.messageId, voice.submissionId)
                         } else {
                             let sent = try await api.sendMessage(clientMessageId: pending.clientID, text: pending.text,
-                                deviceId: pending.deviceID, clientContext: pending.clientContext)
+                                deviceId: pending.deviceID, clientContext: pending.clientContext, attachmentIds: pending.attachmentIds ?? [])
                             try check(context)
                             receipt = (sent.messageId, sent.submissionId)
                         }

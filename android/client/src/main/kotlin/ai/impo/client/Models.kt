@@ -45,14 +45,17 @@ fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
     val clientMessageId: String,
     val text: String,
     val clientContext: ClientContext? = null,
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val attachmentIds: List<String> = emptyList(),
 ) {
     init {
         require(clientMessageId.isNotBlank() && clientMessageId.length <= 256 && '\u0000' !in clientMessageId)
-        require(text.isNotBlank() && text.length <= 32_768 && '\u0000' !in text)
+        require((text.isNotBlank() || attachmentIds.isNotEmpty()) && text.length <= 32_768 && '\u0000' !in text)
     }
     companion object {
-        fun create(text: String, timeZone: String = ZoneId.systemDefault().id, now: Instant = Instant.now()) =
-            MessageCommand(UUID.randomUUID().toString(), text, ClientContext(timeZone, wireTimestamp(now)))
+        fun create(text: String, timeZone: String = ZoneId.systemDefault().id, now: Instant = Instant.now(), attachmentIds: List<String> = emptyList()) =
+            MessageCommand(UUID.randomUUID().toString(), text, ClientContext(timeZone, wireTimestamp(now)), attachmentIds)
     }
 }
 @Serializable data class ClientContext(val timeZone: String, val currentDate: String)

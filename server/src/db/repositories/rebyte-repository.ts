@@ -1,3 +1,5 @@
+import { attachmentIds } from '../../attachments/contract.js';
+import { attachments, messageAttachments } from '../entities/attachments.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { UIMessage, UIMessageChunk } from 'ai';
@@ -55,7 +57,26 @@ export class RebyteRepository extends RuntimeRepository {
       // The city Today already uses. Judged at submission time so a retried send is identical.
       const [settings] = await tx.select({ location: todaySettings.location }).from(todaySettings).where(eq(todaySettings.userId, submission.userId));
       const location = currentBriefLocation(settings?.location ?? null, submission.createdAt);
-      return { submission, binding, input, config, location };
+      const files = await tx.select({ id: attachments.id, name: attachments.name, mediaType: attachments.mediaType, sizeBytes: attachments.sizeBytes }).from(messageAttachments)
+        .innerJoin(attachments, and(eq(attachments.id, messageAttachments.attachmentId), eq(attachments.userId, messageAttachments.userId)))
+        .where(and(eq(messageAttachments.userId, submission.userId), eq(messageAttachments.messageId, input.id))).orderBy(asc(messageAttachments.position));
+      return { submission, binding, input, config, location, files };
+    });
+  }
+
+  /** Restore this conversation's admitted attachments into a new Session, retaining ownership and source IDs. */
+  async conversationFiles(job: ClaimedJob) {
+    return this.withLease(job, async (tx, submission) => {
+      const [input] = await tx.select({ sequence: messages.sequence }).from(messages)
+        .where(and(eq(messages.id, submission.userMessageId), eq(messages.userId, submission.userId)));
+      if (!input) throw new Error('Submission input is missing');
+      return tx.selectDistinct({
+      id: attachments.id, name: attachments.name, mediaType: attachments.mediaType, sizeBytes: attachments.sizeBytes,
+    }).from(messageAttachments)
+      .innerJoin(attachments, and(eq(attachments.id, messageAttachments.attachmentId), eq(attachments.userId, submission.userId)))
+      .innerJoin(messages, and(eq(messages.id, messageAttachments.messageId), eq(messages.userId, submission.userId)))
+      .where(and(eq(messageAttachments.userId, submission.userId), eq(messages.conversationId, submission.conversationId),
+        sql`${messages.sequence} <= ${input.sequence}`, eq(attachments.status, 'ready')));
     });
   }
 
@@ -96,7 +117,7 @@ export class RebyteRepository extends RuntimeRepository {
   }
 
   /** Delegated tasks get their own inline Session, never a Saved Agent (see runtime.ts). */
-  async createTask(userId: string, goal: string, invocationId: string): Promise<{ taskId: string }> {
+  async createTask(userId: string, goal: string, invocationId: string, fileIds: string[] = []): Promise<{ taskId: string }> {
     return this.db.transaction(async tx => {
       const [caller] = await tx.select({ kind: conversations.kind }).from(toolInvocations)
         .innerJoin(runtimeSubmissions, eq(runtimeSubmissions.id, toolInvocations.submissionId))
@@ -104,6 +125,11 @@ export class RebyteRepository extends RuntimeRepository {
         .where(and(eq(toolInvocations.id, invocationId), eq(toolInvocations.userId, userId)));
       if (!caller) throw new Error('Task creation invocation is missing');
       if (caller.kind !== 'main') throw new ServiceError(422, 'nested_task_not_supported', 'A task cannot create another task');
+      const attachedIds = attachmentIds(fileIds);
+      if (attachedIds.length) {
+        const owned = await tx.select().from(attachments).where(and(eq(attachments.userId, userId), inArray(attachments.id, attachedIds), eq(attachments.status, 'ready')));
+        if (owned.length !== attachedIds.length) throw new ServiceError(404, 'attachment_unavailable', 'One or more task attachments are unavailable.');
+      }
       if (!this.runtime.taskAgentConfig) throw new Error('Task Agent configuration is missing');
       const config = await this.ensureAgentConfigVersion(tx, (await this.userAgentConfig(tx, userId, this.runtime.taskAgentConfig))!);
 
@@ -116,6 +142,7 @@ export class RebyteRepository extends RuntimeRepository {
         { id: messageId, userId, conversationId, sequence: 1, role: 'user', text: goal, parts: [{ type: 'text', text: goal }], status: 'completed' },
         { id: assistantMessageId, userId, conversationId, sequence: 2, role: 'assistant' },
       ]);
+      if (attachedIds.length) await tx.insert(messageAttachments).values(attachedIds.map((attachmentId, position) => ({ userId, messageId, attachmentId, position })));
       const [submission] = await tx.insert(runtimeSubmissions).values({ id: submissionId, userId, conversationId, bindingId, userMessageId: messageId, assistantMessageId }).returning();
       await this.appendEvents(tx, submission!, [{ type: 'start', messageId: assistantMessageId }, this.statusChunk(submission!, 'queued')]);
       await tx.insert(outboxJobs).values({ userId, submissionId, type: 'rebyte.drive', dedupeKey: `${submissionId}:prepare` });
@@ -162,8 +189,11 @@ export class RebyteRepository extends RuntimeRepository {
       if (!attempt) throw new Error('Session creation attempt missing');
       await tx.update(sessionBindings).set({ providerSessionId: session.id, status: 'active', updatedAt: new Date() }).where(eq(sessionBindings.id, binding.id));
       await tx.update(sessionCreationAttempts).set({ status: 'succeeded', providerSessionId: session.id, updatedAt: new Date() }).where(eq(sessionCreationAttempts.id, attempt.id));
-      // The initial input belongs to create; never resubmit it as an input event.
-      await tx.update(runtimeSubmissions).set({ inputAcknowledged: true, error: null, updatedAt: new Date() }).where(eq(runtimeSubmissions.id, submission.id));
+      // File uploads finish before a deferred initial input is admitted. Older
+      // creation intents already included input and must never resubmit it.
+      const deferred = session.metadata?.instant_input_mode === 'deferred';
+      await tx.update(runtimeSubmissions).set({ inputAcknowledged: !deferred,
+        ...(deferred ? { inputStartedAt: null } : {}), error: null, updatedAt: new Date() }).where(eq(runtimeSubmissions.id, submission.id));
     });
   }
 

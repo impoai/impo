@@ -1,3 +1,5 @@
+import { attachments, messageAttachments } from '../entities/attachments.js';
+import { attachmentIds as parseAttachmentIds } from '../../attachments/contract.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, count, desc, eq, exists, gt, inArray, isNotNull, lt, lte, notExists, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -53,6 +55,8 @@ export class RuntimeRepository {
     await this.db.select({ id: outboxJobs.id }).from(outboxJobs).limit(1);
     await this.db.select({ id: devices.id }).from(devices).limit(1);
     await this.db.select({ id: deviceDispatches.id }).from(deviceDispatches).limit(1);
+    await this.db.select({ id: attachments.id }).from(attachments).limit(1);
+    await this.db.select({ id: messageAttachments.messageId }).from(messageAttachments).limit(1);
   }
 
   async findUser(authSubject: 'alice' | 'bob'): Promise<{ id: string }> {
@@ -147,7 +151,7 @@ export class RuntimeRepository {
   }
 
   /** Accept input and create its durable job in the same transaction. */
-  async acceptMessage(userId: string, input: { clientMessageId: string; text: string; deviceId?: string; clientContext?: ClientContext }) {
+  async acceptMessage(userId: string, input: { clientMessageId: string; text: string; attachmentIds?: string[]; deviceId?: string; clientContext?: ClientContext }) {
     const prepared = this.prepareInput(input, 32_768);
     return this.db.transaction(async tx => this.accept(tx, userId, await this.conversation(tx, userId), input, prepared));
   }
@@ -159,12 +163,12 @@ export class RuntimeRepository {
   }
 
   /** A user-started task: its own Action and conversation, then the same durable acceptance as chat. */
-  async createUserTask(userId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
+  async createUserTask(userId: string, input: { clientMessageId: string; text: string; attachmentIds?: string[]; clientContext?: ClientContext }) {
     return this.db.transaction(tx => this.createUserTaskInTransaction(tx, userId, input));
   }
 
   /** Reused by scheduled admission so the occurrence and task commit atomically. */
-  protected async createUserTaskInTransaction(tx: Transaction, userId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
+  protected async createUserTaskInTransaction(tx: Transaction, userId: string, input: { clientMessageId: string; text: string; attachmentIds?: string[]; clientContext?: ClientContext }) {
     // A task never gets device Function tools (it may run with no foreground device), so no deviceId.
     const prepared = this.prepareInput({ ...input, text: input.text.trim() }, 4000);
     await this.lockUser(tx, userId);
@@ -175,35 +179,41 @@ export class RuntimeRepository {
       if (!conversation) throw new ServiceError(409, 'idempotency_conflict', 'Message ID already has different content');
     } else {
       const actionId = randomUUID();
-      await tx.insert(actions).values({ id: actionId, userId, goal: input.text.trim() });
+      await tx.insert(actions).values({ id: actionId, userId, goal: input.text.trim() || 'Attached files' });
       [conversation] = await tx.insert(conversations).values({ userId, kind: 'task', actionId }).returning();
     }
     const receipt = await this.accept(tx, userId, conversation!, { ...input, text: input.text.trim() }, prepared);
     return { taskId: conversation!.actionId!, conversationId: conversation!.id, ...receipt };
   }
 
-  async acceptTaskMessage(userId: string, taskId: string, input: { clientMessageId: string; text: string; clientContext?: ClientContext }) {
+  async acceptTaskMessage(userId: string, taskId: string, input: { clientMessageId: string; text: string; attachmentIds?: string[]; clientContext?: ClientContext }) {
     const prepared = this.prepareInput(input, 32_768);
     return this.db.transaction(async tx => this.accept(tx, userId, await this.taskConversation(tx, userId, taskId), input, prepared));
   }
 
-  private prepareInput(input: { clientMessageId: string; text: string; deviceId?: string; clientContext?: ClientContext }, maxText: number) {
-    if (!input.clientMessageId.trim() || input.clientMessageId.length > 256 || !input.text.trim() || input.text.length > maxText) {
+  private prepareInput(input: { clientMessageId: string; text: string; attachmentIds?: string[]; deviceId?: string; clientContext?: ClientContext }, maxText: number) {
+    if (!input.clientMessageId.trim() || input.clientMessageId.length > 256 || (!input.text.trim() && !input.attachmentIds?.length) || input.text.length > maxText) {
       throw new ServiceError(400, 'invalid_request', 'Invalid message ID or text length');
     }
+    const fileIds = parseAttachmentIds(input.attachmentIds);
     const context = clientContext(input.clientContext);
-    const inputHash = hash({ text: input.text, ...(input.deviceId ? { deviceId: input.deviceId } : {}), ...(context ? { clientContext: context } : {}) });
+    const inputHash = hash({ text: input.text, ...(fileIds.length ? { attachmentIds: fileIds } : {}), ...(input.deviceId ? { deviceId: input.deviceId } : {}), ...(context ? { clientContext: context } : {}) });
     return { context, inputHash };
   }
 
   private async accept(tx: Transaction, userId: string, conversation: typeof conversations.$inferSelect,
-    input: { clientMessageId: string; text: string; deviceId?: string }, { context, inputHash }: { context: ClientContext | undefined; inputHash: string }) {
+    input: { clientMessageId: string; text: string; attachmentIds?: string[]; deviceId?: string }, { context, inputHash }: { context: ClientContext | undefined; inputHash: string }) {
     const [existing] = await tx.select().from(messages).where(and(eq(messages.userId, userId), eq(messages.clientMessageId, input.clientMessageId)));
     if (existing) {
       if (existing.inputHash !== inputHash || existing.conversationId !== conversation.id) throw new ServiceError(409, 'idempotency_conflict', 'Message ID already has different content');
       const [submission] = await tx.select().from(runtimeSubmissions).where(and(eq(runtimeSubmissions.userId, userId), eq(runtimeSubmissions.userMessageId, existing.id)));
       if (!submission) throw new Error('Accepted message has no submission');
       return { messageId: existing.id, submissionId: submission.id };
+    }
+    const fileIds = parseAttachmentIds(input.attachmentIds);
+    if (fileIds.length) {
+      const owned = await tx.select().from(attachments).where(and(eq(attachments.userId, userId), inArray(attachments.id, fileIds), eq(attachments.status, 'ready')));
+      if (owned.length !== fileIds.length) throw new ServiceError(404, 'attachment_unavailable', 'One or more files are unavailable or still uploading.');
     }
     let capabilities: string[] = [];
     if (input.deviceId) {
@@ -256,6 +266,7 @@ export class RuntimeRepository {
       { id: messageId, userId, conversationId: conversation.id, sequence: conversation.nextSequence, role: 'user', clientMessageId: input.clientMessageId, inputHash, text: input.text, parts: [{ type: 'text', text: input.text }], status: 'completed' },
       { id: assistantMessageId, userId, conversationId: conversation.id, sequence: conversation.nextSequence + 1, role: 'assistant' },
     ]);
+    if (fileIds.length) await tx.insert(messageAttachments).values(fileIds.map((attachmentId, position) => ({ userId, messageId, attachmentId, position })));
     await tx.update(conversations).set({ nextSequence: conversation.nextSequence + 2, updatedAt: new Date() }).where(eq(conversations.id, conversation.id));
     const [submission] = await tx.insert(runtimeSubmissions).values({ id: submissionId, userId, conversationId: conversation.id, bindingId: binding!.id, userMessageId: messageId, assistantMessageId, deviceId: input.deviceId, deviceTools: capabilities, clientContext: context }).returning();
     await this.appendEvents(tx, submission!, [

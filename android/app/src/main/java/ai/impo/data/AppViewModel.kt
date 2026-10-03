@@ -166,9 +166,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun resumed() { devices.start(); launch("chat") { mutable.value.chat?.refresh() }; retryProfile(); refreshTasks(); refreshConnectors() }
     fun paused() { devices.stop() }
-    fun send(text: String, task: Boolean = false) {
+    fun send(text: String, task: Boolean = false, attachmentIds: List<String> = emptyList()) {
         val session = (if (task) mutable.value.taskSession else mutable.value.chat) ?: return
-        launch(if (task) "task" else "chat") { session.send(text) }
+        launch(if (task) "task" else "chat") { session.send(text, attachmentIds) }
     }
     /** Once released into Chat, acceptance belongs to the account, not the visible screen. */
     suspend fun sendVoice(clip: RecordedVoiceClip, owner: String): Boolean {
@@ -190,6 +190,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         requireVoiceOwner(owner)
         if (client !== api) throw AccountChangedException()
         return text
+    }
+    suspend fun uploadAttachment(id: String, name: String, mediaType: String, bytes: ByteArray, owner: String): UploadedAttachment {
+        requireVoiceOwner(owner)
+        val client = api ?: throw AccountChangedException()
+        val file = withContext(Dispatchers.IO) { client.uploadAttachment(id, name, mediaType, bytes) }
+        currentCoroutineContext().ensureActive(); requireVoiceOwner(owner)
+        if (client !== api) throw AccountChangedException()
+        return file
     }
     private fun requireVoiceOwner(owner: String) {
         if (state.value.account?.requestScope != owner || auth.state.value.account?.requestScope != owner)
@@ -235,11 +243,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         launch("scheduleSave") { client -> client.deleteScheduledTask(source.id, source.revision); ensureCurrentAccount(); refreshSchedules(); done() }
     }
     fun refreshTasks() { launch("tasks", replacePrevious = true) { client -> val rows = client.tasks(); ensureCurrentAccount(); mutable.update { it.copy(tasks = rows) } } }
-    fun createTask(text: String, opened: (String) -> Unit) {
+    fun createTask(text: String, attachmentIds: List<String> = emptyList(), opened: (String) -> Unit) {
         val creator = taskCreator ?: return
         launch("createTask") {
             try {
-                val receipt = creator.create(text)
+                val receipt = creator.create(text, attachmentIds)
                 ensureCurrentAccount()
                 refreshTasks(); opened(receipt.taskId); creator.acknowledge(receipt.taskId)
             } finally { updatePendingTaskIfCurrent(creator) }

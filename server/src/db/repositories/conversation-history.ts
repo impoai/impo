@@ -1,3 +1,4 @@
+import { hydrateAttachments } from './attachment-repository.js';
 import { and, asc, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import type { Database } from '../client.js';
@@ -41,7 +42,7 @@ const pageLimit = 100, maxPages = 50;
  */
 export async function hydrateMessages<T extends Row>(db: Database, history: HistoryReader | undefined, userId: string, rows: T[], signal?: AbortSignal, options: { files?: boolean } = {}): Promise<T[]> {
   const empty = rows.filter(row => !row.text && row.parts.length === 0 && row.status !== 'accepted' && row.status !== 'streaming');
-  if (!history || empty.length === 0) return rows;
+  if (!history || empty.length === 0) return hydrateAttachments(db, userId, rows);
   const ids = empty.map(row => row.id);
   const submissions = await db.select({
     createdAt: runtimeSubmissions.createdAt, bindingId: runtimeSubmissions.bindingId, turnId: runtimeSubmissions.providerTurnId,
@@ -92,7 +93,7 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
     const files = turnFiles(artifacts.get(submission.sessionId!) ?? [], submission.turnId!, submission.bindingId);
     text.set(submission.assistantMessageId, { text: answer, parts: [...(answer ? [{ type: 'text' as const, text: answer }] : []), ...files] });
   }
-  return rows.map(row => { const filled = text.get(row.id); return filled && ids.includes(row.id) ? { ...row, ...filled } : row; });
+  return hydrateAttachments(db, userId, rows.map(row => { const filled = text.get(row.id); return filled && ids.includes(row.id) ? { ...row, ...filled } : row; }));
 }
 
 /**

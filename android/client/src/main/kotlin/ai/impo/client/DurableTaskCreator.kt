@@ -13,13 +13,13 @@ class DurableTaskCreator(
     suspend fun pendingCommand(): MessageCommand? = mutex.withLock {
         assertOwner(); store.load(accountId, CREATION_LANE)?.pending?.command
     }
-    suspend fun create(text: String): TaskReceipt = mutex.withLock {
+    suspend fun create(text: String, attachmentIds: List<String> = emptyList()): TaskReceipt = mutex.withLock {
         assertOwner()
         require(text.length <= 4000) { "Task descriptions must be at most 4,000 characters" }
         val saved = store.load(accountId, CREATION_LANE)
-        if (saved != null && saved.pending?.command?.text != text)
+        if (saved != null && (saved.pending?.command?.text != text || saved.pending?.command?.attachmentIds != attachmentIds))
             throw IllegalStateException("Recover your pending task before creating another task")
-        val entry = saved ?: OutboxEntry(PendingMessage(accountId, MessageCommand.create(text), taskId = CREATION_LANE)).also { store.save(it) }
+        val entry = saved ?: OutboxEntry(PendingMessage(accountId, MessageCommand.create(text, attachmentIds = attachmentIds), taskId = CREATION_LANE)).also { store.save(it) }
         submit(entry)
     }
     suspend fun retry(): TaskReceipt? = mutex.withLock {

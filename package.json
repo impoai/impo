@@ -54,6 +54,7 @@
     "test:echo-schedule": "node scripts/test-db.mjs --echo-schedule",
     "test:notifications": "node scripts/test-db.mjs --notifications",
     "check:secrets": "node scripts/check-secrets.mjs",
-    "test:accounts": "node scripts/test-db.mjs --accounts"
+    "test:accounts": "node scripts/test-db.mjs --accounts",
+    "test:attachments": "node scripts/test-db.mjs --attachments"
   }
 }

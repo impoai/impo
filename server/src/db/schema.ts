@@ -11,3 +11,4 @@ export * from './entities/profile.js';
 export * from './entities/notifications.js';
 export * from './entities/account-deletion.js';
 export * from './entities/scheduled-tasks.js';
+export * from './entities/attachments.js';

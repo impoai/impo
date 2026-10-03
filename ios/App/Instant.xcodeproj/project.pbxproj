@@ -45,6 +45,7 @@
 		51CE80B32E11A2EF1EDF4602 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F897FDA93B47CDDCE46A2460 /* Assets.xcassets */; };
 		52E68EB809208BF47B61DAC7 /* DeviceDataOutputBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5A5069362E2A0398B55351 /* DeviceDataOutputBudget.swift */; };
 		561E97B1969B058E29A03872 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531080FA5D34CA882D8A9DA3 /* OnboardingView.swift */; };
+		589BFBDBB8B9F9F0114CBF1E /* AttachmentPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4502660706456EDEBEEAF97 /* AttachmentPicker.swift */; };
 		59918BEF798D1B6EEC6C33C5 /* TodayCityReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23621106CD2E40A3C8791F98 /* TodayCityReader.swift */; };
 		5A6389233D5247DDAA7EA8A5 /* ListeningVAD.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE69D887C740239E030683B5 /* ListeningVAD.swift */; };
 		5BA402EE85DB8CDEE86A2DDF /* NotificationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876D1C3EA178A74BC875C45A /* NotificationUITests.swift */; };
@@ -281,6 +282,7 @@
 		A79C48B354DE82D20733CE74 /* EchoMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoMeterTests.swift; sourceTree = "<group>"; };
 		AE4DE642393DA209BF213736 /* EchoLocationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoLocationTests.swift; sourceTree = "<group>"; };
 		B3B8ADE5361A08C4238C5A61 /* ListeningSpeechSegmenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningSpeechSegmenter.swift; sourceTree = "<group>"; };
+		B4502660706456EDEBEEAF97 /* AttachmentPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentPicker.swift; sourceTree = "<group>"; };
 		B57D6EDEAF016DFD34180D4B /* EchoTimelineList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoTimelineList.swift; sourceTree = "<group>"; };
 		B9F0636D0590CE030B968173 /* ListeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningTests.swift; sourceTree = "<group>"; };
 		BA9410CC91F6CE6088EA55EB /* DeviceRemindersContacts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceRemindersContacts.swift; sourceTree = "<group>"; };
@@ -323,7 +325,7 @@
 		F897FDA93B47CDDCE46A2460 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F94425CBABA1F787B13400E3 /* DeleteAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteAccountView.swift; sourceTree = "<group>"; };
 		FE73AA4D127EEE24ED05CEB8 /* ListeningDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningDiagnostics.swift; sourceTree = "<group>"; };
-		"TEMP_F943EFD0-46ED-4A31-9A11-CA85C3AA7861" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		"TEMP_66ADAE38-D01A-458E-BA8F-F92A205360EE" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -348,6 +350,7 @@
 			children = (
 				75ACA717D3EA82FDD9A2E4C8 /* AppModel.swift */,
 				D10AE47580BAF0723956F8DB /* AssistantMarkdown.swift */,
+				B4502660706456EDEBEEAF97 /* AttachmentPicker.swift */,
 				9586B627E638123E64D4A5FC /* ClerkConfig.swift */,
 				E6E341E25AD8CD57DD40BF1D /* ClerkTokenProvider.swift */,
 				1A8AC915905FA12B2F87AF47 /* ClientPermissions.swift */,
@@ -570,10 +573,10 @@
 			path = NativeTests;
 			sourceTree = "<group>";
 		};
-		"TEMP_BA61AC40-FED4-4F55-B809-304400B011AF" /* App */ = {
+		"TEMP_0A280F37-BB49-4102-B525-944F985BAE5C" /* App */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_F943EFD0-46ED-4A31-9A11-CA85C3AA7861" /* Config.xcconfig */,
+				"TEMP_66ADAE38-D01A-458E-BA8F-F92A205360EE" /* Config.xcconfig */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -796,6 +799,7 @@
 			files = (
 				79D6FEAE6B35924A40CE5DF2 /* AppModel.swift in Sources */,
 				A21A16E83ADB23E5685FEA3A /* AssistantMarkdown.swift in Sources */,
+				589BFBDBB8B9F9F0114CBF1E /* AttachmentPicker.swift in Sources */,
 				0B29885004595B23CF7DF0AB /* ClerkConfig.swift in Sources */,
 				963F371F392A6AEA9D7C544F /* ClerkTokenProvider.swift in Sources */,
 				329078958F0189962B7C54D0 /* ClientPermissions.swift in Sources */,
@@ -1025,7 +1029,7 @@
 		};
 		44E8F053EFDA9D9118394472 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_F943EFD0-46ED-4A31-9A11-CA85C3AA7861" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_66ADAE38-D01A-458E-BA8F-F92A205360EE" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -1060,7 +1064,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 56;
+				CURRENT_PROJECT_VERSION = 57;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1166,7 +1170,7 @@
 		};
 		C5DC81EBB3D1465AA28E40C2 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_F943EFD0-46ED-4A31-9A11-CA85C3AA7861" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_66ADAE38-D01A-458E-BA8F-F92A205360EE" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -1201,7 +1205,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 56;
+				CURRENT_PROJECT_VERSION = 57;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

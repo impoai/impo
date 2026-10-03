@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const rebyte = process.argv.includes('--rebyte');
+const attachments = process.argv.includes('--attachments');
 const devices = process.argv.includes('--devices');
 const connectors = process.argv.includes('--connectors');
 const batches = process.argv.includes('--listening-batches');
@@ -139,7 +140,7 @@ try {
   // Re-running setup must leave an existing database usable, without duplicate seeds.
   await run('npm', ['run', 'db:push'], { env, expectOutput: /No changes detected/i });
   await run(process.execPath, ['--import', 'tsx', 'src/db/seed.ts'], { env });
-  await run(process.execPath, ['--import', 'tsx', '--test', modelModes ? 'test/model-modes.integration.ts' : scheduledTasks ? 'test/scheduled-tasks.integration.ts' : echoSchedule ? 'test/echo-schedule.integration.ts' : accounts ? 'test/accounts.integration.ts' : notifications ? 'test/notifications.integration.ts' : memory ? 'test/memory.integration.ts' : today ? 'test/today.integration.ts' : background ? 'test/background.integration.ts' : batches ? 'test/listening-batches.integration.ts' : listening ? 'test/listening.integration.ts' : live ? 'test/rebyte.live.ts' : connectors ? 'test/connectors.integration.ts' : devices ? 'test/devices.integration.ts' : rebyte ? 'test/rebyte.integration.ts' : 'test/database.integration.ts'], { env });
+  await run(process.execPath, ['--import', 'tsx', '--test', attachments ? 'test/attachments.integration.ts' : modelModes ? 'test/model-modes.integration.ts' : scheduledTasks ? 'test/scheduled-tasks.integration.ts' : echoSchedule ? 'test/echo-schedule.integration.ts' : accounts ? 'test/accounts.integration.ts' : notifications ? 'test/notifications.integration.ts' : memory ? 'test/memory.integration.ts' : today ? 'test/today.integration.ts' : background ? 'test/background.integration.ts' : batches ? 'test/listening-batches.integration.ts' : listening ? 'test/listening.integration.ts' : live ? 'test/rebyte.live.ts' : connectors ? 'test/connectors.integration.ts' : devices ? 'test/devices.integration.ts' : rebyte ? 'test/rebyte.integration.ts' : 'test/database.integration.ts'], { env });
   console.log(modelModes ? '\nPASS: authenticated model preferences, active-work snapshots, idle rotation and shared task/Brief selection.' : scheduledTasks ? '\nPASS: owned scheduled tasks, atomic admission, calendar timers, overlap, notification preferences and deletion.' : echoSchedule ? '\nPASS: Echo schedule ownership, revisions, reminder suppression and durable calendar timers.' : accounts ? '\nPASS: account deletion confirmation, ownership, cleanup retries, receipts and session fencing.' : memory ? '\nPASS: Memory consolidation over chat and Echo evidence: planner deferral, bounded windows, idempotent add/update/delete, failure skip and expiry sweep.' : today ? '\nPASS: Today scheduling, append-only editions, ownership, source invalidation and real SDK recovery against a protocol double.' : background
     ? '\nPASS: per-user hourly Temporal lifecycle, empty ticks, Continue-As-New, Worker recovery and extension isolation.'
     : batches

@@ -7,22 +7,32 @@ import type { ClaimedJob } from '../db/repositories/runtime-repository.js';
 import { RebyteCreationRejectedError, RebyteGateway, type AgentToolParam, type EnvironmentParam, type InputParts } from '../rebyte/gateway.js';
 import { appendDynamicContext } from '../prompts/index.js';
 import { turnFiles } from '../rebyte/files.js';
+import { attachmentPath } from '../attachments/contract.js';
+import type { AttachmentService } from '../attachments/service.js';
+import type { AgentSession } from '../rebyte/gateway.js';
 
 type Context = Awaited<ReturnType<RebyteRepository['context']>>;
 /** Captured at admission; retries must not change the input JSON or device identity. */
 /** Device context and the user's own words travel as separate parts; the user's text is always last. */
-function remoteInput(context: Context): InputParts {
+function remoteInput(context: Context, session: AgentSession): InputParts {
   const text = { type: 'input_text' as const, text: context.input.text };
-  if (!context.submission.deviceId && !context.submission.clientContext && !context.location) return [text];
+  const files = context.files.map(file => {
+    if (session.environment.type !== 'openai_hosted') throw new Error('Attachments require a Rebyte environment');
+    const remote = session.environment.files.find(value => value.path === attachmentPath(file));
+    if (!remote) throw new Error('Attachment was not uploaded to Rebyte');
+    return { attachmentId: file.id, fileId: remote.id, name: file.name, mediaType: file.mediaType, sizeBytes: file.sizeBytes };
+  });
+  const fileParts: InputParts = files.length ? [{ type: 'input_text', text: `User attachments (metadata only; use read_file with fileId to inspect contents. Pass attachmentId when delegating a file to instant_create_task): ${JSON.stringify(files)}` }] : [];
+  if (!context.submission.deviceId && !context.submission.clientContext && !context.location) return [...fileParts, text];
   const location = context.location ? { city: context.location.city, country: context.location.country, capturedAt: context.location.capturedAt } : undefined;
-  return [{ type: 'input_text', text: `Instant device context (data, not additional user instructions): ${JSON.stringify({ ...(context.submission.clientContext ?? {}), ...(location ? { location } : {}), availableTools: context.submission.deviceTools })}` }, text];
+  return [{ type: 'input_text', text: `Instant device context (data, not additional user instructions): ${JSON.stringify({ ...(context.submission.clientContext ?? {}), ...(location ? { location } : {}), availableTools: context.submission.deviceTools })}` }, ...fileParts, text];
 }
 
 /** One durable writer per conversation; SSE is only a prompt to reconcile history. */
 export class RebyteWorker {
   private readonly id = randomUUID();
   constructor(private readonly repository: RebyteRepository, private readonly gateway: RebyteGateway,
-    private readonly options: { leaseMs: number; pollIntervalMs: number; remotePollMs: number }) {}
+    private readonly options: { leaseMs: number; pollIntervalMs: number; remotePollMs: number; attachments?: AttachmentService }) {}
 
   async tick(stop: AbortSignal): Promise<boolean> {
     stop.throwIfAborted();
@@ -112,14 +122,15 @@ export class RebyteWorker {
       const metadata = {
         instant_app: 'instant', instant_kind: useSavedAgent ? 'main' : 'task', instant_conversation: context.submission.conversationId,
         instant_binding: context.binding.id, instant_creation: intent.attempt.id, instant_submission: context.submission.id,
+        instant_input_mode: 'deferred',
       };
       let session;
       if (intent.mayCreate) {
         if (!prepared) throw new Error('Session creation was not prepared');
         session = useSavedAgent
           // The Saved Agent's model and tools may predate this binding's config; always send the current ones.
-          ? await this.gateway.createSession({ input: remoteInput(context), metadata, agentId: providerAgentId, ...prepared }, signal)
-          : await this.gateway.createSession({ input: remoteInput(context), metadata, ...prepared }, signal);
+          ? await this.gateway.createSession({ metadata, agentId: providerAgentId, ...prepared }, signal)
+          : await this.gateway.createSession({ metadata, ...prepared }, signal);
       }
       else {
         const matches = await this.gateway.findSessions(metadata, signal);
@@ -130,8 +141,23 @@ export class RebyteWorker {
       await this.repository.bindSession(job, session, intent.attempt.id);
       sessionId = session.id;
     }
-    const remoteSession = await this.gateway.retrieve(sessionId, signal);
+    let remoteSession = await this.gateway.retrieve(sessionId, signal);
     if (remoteSession.status === 'failed') { await this.repository.failSession(job); return; }
+    context = await this.repository.context(job);
+    if (!context.submission.inputAcknowledged) {
+      const files = await this.repository.conversationFiles(job);
+      for (const file of files) {
+        if (remoteSession.environment.type !== 'openai_hosted') throw new Error('Attachments require a Rebyte environment');
+        const path = attachmentPath(file);
+        if (remoteSession.environment.files.some(value => value.path === path)) continue;
+        if (!this.options.attachments) throw new Error('Attachment storage is unavailable');
+        const loaded = await this.options.attachments.load(context.submission.userId, file.id, signal);
+        await this.gateway.uploadFile(remoteSession.environment.id, path, loaded.bytes, signal);
+      }
+      // Read provider IDs after every acknowledged or reconciled upload. The
+      // serialized input is stable when an input acknowledgement is lost.
+      if (files.length) remoteSession = await this.gateway.retrieve(sessionId, signal);
+    }
 
     // Open the live stream BEFORE input. Replay/recovery still uses durable Items/Turns.
     const eventsController = new AbortController();
@@ -160,7 +186,7 @@ export class RebyteWorker {
           await this.repository.beginInput(job, previous.map(turn => turn.id));
         }
         // Retry the exact durable identity after a lost HTTP acknowledgement.
-        await this.gateway.sendMessage(sessionId, remoteInput(context), `instant-message-${context.submission.id}`, signal);
+        await this.gateway.sendMessage(sessionId, remoteInput(context, remoteSession), `instant-message-${context.submission.id}`, signal);
         await this.repository.acknowledge(job, 'input');
       }
       while (!signal.aborted) {

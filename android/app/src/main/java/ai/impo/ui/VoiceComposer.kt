@@ -70,6 +70,7 @@ import ai.impo.nativebridge.*
     placeholder: String = "Tap to type · Hold to talk",
     maxLength: Int = 32768,
     showSendControl: Boolean = true,
+    hasAttachments: Boolean = false,
     recorderFactory: VoiceRecorderFactory? = null,
 ) {
     val context = LocalContext.current
@@ -132,9 +133,9 @@ import ai.impo.nativebridge.*
         } else controller.begin()
     }
     fun submit() {
-        if (value.isNotBlank() && value.length <= maxLength && !busy && allowSend && isCurrent()) { onSend(value.trim()); onValueChange("") }
+        if ((value.isNotBlank() || hasAttachments) && value.length <= maxLength && !busy && allowSend && isCurrent()) { onSend(value.trim()); onValueChange("") }
     }
-    val holdEnabled = value.isEmpty() && allowVoice && !voicePending
+    val holdEnabled = value.isEmpty() && !hasAttachments && allowVoice && !voicePending
     val beginCurrent by rememberUpdatedState { begin() }
     val tapCurrent by rememberUpdatedState { focus.requestFocus(); keyboard?.show() }
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -229,7 +230,7 @@ import ai.impo.nativebridge.*
             } else if (voice.active) FilledIconButton(onClick = { controller.cancel() },
                 modifier = Modifier.size(52.dp).onGloballyPositioned { cancelVoiceBounds = it.boundsInWindow() }.testTag("$prefix.voice.cancel")) {
                 Icon(Icons.Outlined.Close, "Cancel voice input")
-            } else if (!busy && showSendControl) FilledIconButton(onClick = { submit() }, enabled = value.isNotBlank() && value.length <= maxLength && allowSend,
+            } else if (!busy && showSendControl) FilledIconButton(onClick = { submit() }, enabled = (value.isNotBlank() || hasAttachments) && value.length <= maxLength && allowSend,
                 modifier = Modifier.size(52.dp).testTag("$prefix.send")) {
                 Icon(Icons.AutoMirrored.Outlined.Send, "Send message")
             }

@@ -46,7 +46,7 @@ export function parseUploadManifest(input: unknown, userId: string): AcceptedBat
 /** Stage URLs cannot write the durable object consumed by the Worker. */
 export class S3AudioObjectStore implements AudioObjectStore {
   private readonly client:S3Client;
-  constructor(private readonly bucket:string,region:string,client?:S3Client){this.client=client??new S3Client({region});}
+  constructor(private readonly bucket:string,region:string,client?:S3Client,private readonly contentType = 'application/json',private readonly maxObjectBytes = maxBatchBytes){this.client=client??new S3Client({region});}
   private staging(source:BatchAudioSource){return source.key.replace(/^users\//,'users/_uploads/');}
   private checksum(source:BatchAudioSource){return Buffer.from(source.sha256,'hex').toString('base64');}
   private async head(source:BatchAudioSource,key:string){
@@ -59,10 +59,10 @@ export class S3AudioObjectStore implements AudioObjectStore {
   async prepare(source:BatchAudioSource):Promise<AudioUploadTicket|null>{
     if(await this.head(source,source.key) || await this.head(source,this.staging(source)))return null;
     const checksum=this.checksum(source);
-    const command=new PutObjectCommand({Bucket:this.bucket,Key:this.staging(source),ContentType:'application/json',
+    const command=new PutObjectCommand({Bucket:this.bucket,Key:this.staging(source),ContentType:this.contentType,
       ContentLength:source.byteLength,ChecksumSHA256:checksum});
     const url=await getSignedUrl(this.client,command,{expiresIn:900,signableHeaders:new Set(['content-type','content-length']),unhoistableHeaders:new Set(['x-amz-checksum-sha256'])});
-    return {url,headers:{'Content-Type':'application/json','Content-Length':String(source.byteLength),'x-amz-checksum-sha256':checksum},expiresAt:new Date(Date.now()+900000).toISOString()};
+    return {url,headers:{'Content-Type':this.contentType,'Content-Length':String(source.byteLength),'x-amz-checksum-sha256':checksum},expiresAt:new Date(Date.now()+900000).toISOString()};
   }
   async commit(source:BatchAudioSource){
     if(await this.head(source,source.key))return;
@@ -75,7 +75,7 @@ export class S3AudioObjectStore implements AudioObjectStore {
   }
   async load(source:BatchAudioSource,signal?:AbortSignal){
     const result=await this.client.send(new GetObjectCommand({Bucket:this.bucket,Key:source.key,ChecksumMode:'ENABLED'}),{abortSignal:signal});
-    if(result.ContentLength!==source.byteLength || source.byteLength>maxBatchBytes)throw invalid();
+    if(result.ContentLength!==source.byteLength || source.byteLength>this.maxObjectBytes)throw invalid();
     const bytes=Buffer.from(await result.Body!.transformToByteArray());
     if(bytes.length!==source.byteLength || createHash('sha256').update(bytes).digest('hex')!==source.sha256)throw new ServiceError(422,'upload_checksum_mismatch','Stored audio failed its integrity check.');
     return bytes;

@@ -303,6 +303,24 @@ class ImpoClient(
     suspend fun deleteEchoRecord(recordId: String) { delete(listOf("listening", "segments", identifier(recordId)), "deleted") }
     suspend fun reviewEchoSpeakers(recordId: String, review: EchoSpeakerReview): EchoRecord =
         send<SegmentResponse>("PATCH", listOf("listening", "segments", identifier(recordId), "speakers"), ProtocolJson.encodeToJsonElement(review)).segment
+    suspend fun uploadAttachment(id: String, name: String, mediaType: String, bytes: ByteArray): UploadedAttachment {
+        require(bytes.isNotEmpty() && bytes.size <= 10 * 1024 * 1024)
+        val owner = currentAccountId()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val ticket: AttachmentUploadTicket = send("POST", listOf("attachments", "prepare"), ProtocolJson.encodeToJsonElement(AttachmentManifest(id, name, mediaType, bytes.size, hash)))
+        if (currentAccountId() != owner) throw AccountChangedException()
+        when (ticket.status) {
+            "upload" -> uploadAudio(UploadTicket("upload", ticket.url, ticket.headers), bytes)
+            "uploaded", "ready" -> Unit
+            else -> throw ProtocolException("Invalid file upload status")
+        }
+        if (currentAccountId() != owner) throw AccountChangedException()
+        val file: UploadedAttachment = send("POST", listOf("attachments", identifier(id), "complete"))
+        if (currentAccountId() != owner) throw AccountChangedException()
+        if (file.id != id || file.status != "ready" || file.sizeBytes != bytes.size.toLong()) throw ProtocolException("File acknowledgment does not match this upload")
+        return file
+    }
+
     suspend fun prepareAudioUpload(manifest: UploadManifest): UploadTicket = send("POST", listOf("listening", "uploads"), ProtocolJson.encodeToJsonElement(manifest))
     suspend fun completeAudioUpload(batchId: String): BatchReceipt = send("POST", listOf("listening", "uploads", identifier(batchId), "complete"), expected = 202)
     suspend fun batchStatus(batchId: String): BatchStatus = get(listOf("listening", "batches", identifier(batchId)))
@@ -327,7 +345,7 @@ class ImpoClient(
                 throw ProtocolException("Upload ticket attempted to set a credential or routing header")
             builder.header(name, value)
         }
-        uploadHttp.newCall(builder.build()).awaitResponse().use { if (!it.isSuccessful) throw ApiException(it.code, "upload_http_error", "Audio upload failed (HTTP ${it.code})", it.code == 429 || it.code >= 500) }
+        uploadHttp.newCall(builder.build()).awaitResponse().use { if (!it.isSuccessful) throw ApiException(it.code, "upload_http_error", "File upload failed (HTTP ${it.code})", it.code == 429 || it.code >= 500) }
     }
 
     private suspend inline fun <reified T> get(path: List<String>, query: Map<String, String> = emptyMap()): T = send("GET", path, null, query)

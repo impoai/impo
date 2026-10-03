@@ -1,4 +1,6 @@
 import { modelModes } from './model-modes.js';
+import { AttachmentService, attachmentObjects } from './attachments/service.js';
+import { AttachmentRepository } from './db/repositories/attachment-repository.js';
 import { ConnectorService } from './composio/connector-service.js';
 import { ConnectorRepository } from './db/repositories/connector-repository.js';
 import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
@@ -52,7 +54,8 @@ try {
   const repository = createRuntimeRepository(database.db, config, { memories: memoryStore });
   await repository.health();
   const worker = repository instanceof RebyteRepository && config.rebyte
-    ? new RebyteWorker(repository, new RebyteGateway(config.rebyte), config)
+    ? new RebyteWorker(repository, new RebyteGateway(config.rebyte), { ...config,
+      ...(config.transcriptArchive ? { attachments: new AttachmentService(new AttachmentRepository(database.db), attachmentObjects(config.transcriptArchive.bucket, config.transcriptArchive.region)) } : {}) })
     : new DevelopmentWorker(repository, config);
   process.stdout.write(JSON.stringify({ event: 'worker_ready', mode: 'development', runtime: config.runtime }) + '\n');
   const transcriber = config.runtime === 'development' ? new DevelopmentTranscriber()

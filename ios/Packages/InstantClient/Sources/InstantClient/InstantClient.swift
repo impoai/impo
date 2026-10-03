@@ -181,8 +181,9 @@ public struct InstantClient: Sendable {
         ]))
     }
 
-    public func sendMessage(clientMessageId: String, text: String, scenario: String? = nil, deviceId: String? = nil, clientContext: MessageClientContext? = nil) async throws -> MessageReceipt {
+    public func sendMessage(clientMessageId: String, text: String, scenario: String? = nil, deviceId: String? = nil, clientContext: MessageClientContext? = nil, attachmentIds: [String] = []) async throws -> MessageReceipt {
         var body: [String: JSONValue] = ["clientMessageId": .string(clientMessageId), "text": .string(text)]
+        if !attachmentIds.isEmpty { body["attachmentIds"] = .array(attachmentIds.map(JSONValue.string)) }
         if let scenario { body["scenario"] = .string(scenario) }
         if let deviceId { body["deviceId"] = .string(deviceId) }
         if let clientContext {
@@ -305,6 +306,16 @@ public struct InstantClient: Sendable {
         return try JSONDecoder().decode(ListeningUploadTicket.self, from: data)
     }
 
+    public func prepareAttachment(id: String, name: String, mediaType: String, sizeBytes: Int, sha256: String) async throws -> AttachmentUploadTicket {
+        try await send("POST", ["attachments", "prepare"], body: .object([
+            "id": .string(id), "name": .string(name), "mediaType": .string(mediaType), "sizeBytes": .number(Double(sizeBytes)), "sha256": .string(sha256),
+        ]))
+    }
+
+    public func completeAttachment(_ id: String) async throws -> UploadedAttachment {
+        try await send("POST", ["attachments", id, "complete"], body: .object([:]))
+    }
+
     public func completeListeningUpload(_ batchId: String) async throws -> ListeningBatchReceipt {
         try await send("POST", ["listening", "uploads", batchId, "complete"], body: .object([:]))
     }
@@ -395,8 +406,8 @@ public struct InstantClient: Sendable {
     }
 
     /// Retrying with the same clientMessageId returns the same task instead of creating another.
-    public func createTask(clientMessageId: String, text: String, clientContext: MessageClientContext? = nil) async throws -> TaskReceipt {
-        try await send("POST", ["tasks"], body: .object(messageBody(clientMessageId: clientMessageId, text: text, clientContext: clientContext)))
+    public func createTask(clientMessageId: String, text: String, clientContext: MessageClientContext? = nil, attachmentIds: [String] = []) async throws -> TaskReceipt {
+        try await send("POST", ["tasks"], body: .object(messageBody(clientMessageId: clientMessageId, text: text, clientContext: clientContext, attachmentIds: attachmentIds)))
     }
 
     public func taskConversation(_ taskId: String, afterSequence: Int = 0, limit: Int = 100) async throws -> TaskConversationPage {
@@ -406,12 +417,13 @@ public struct InstantClient: Sendable {
         ])
     }
 
-    public func sendTaskMessage(_ taskId: String, clientMessageId: String, text: String, clientContext: MessageClientContext? = nil) async throws -> MessageReceipt {
-        try await send("POST", ["tasks", taskId, "messages"], body: .object(messageBody(clientMessageId: clientMessageId, text: text, clientContext: clientContext)))
+    public func sendTaskMessage(_ taskId: String, clientMessageId: String, text: String, clientContext: MessageClientContext? = nil, attachmentIds: [String] = []) async throws -> MessageReceipt {
+        try await send("POST", ["tasks", taskId, "messages"], body: .object(messageBody(clientMessageId: clientMessageId, text: text, clientContext: clientContext, attachmentIds: attachmentIds)))
     }
 
-    private func messageBody(clientMessageId: String, text: String, clientContext: MessageClientContext?) -> [String: JSONValue] {
+    private func messageBody(clientMessageId: String, text: String, clientContext: MessageClientContext?, attachmentIds: [String] = []) -> [String: JSONValue] {
         var body: [String: JSONValue] = ["clientMessageId": .string(clientMessageId), "text": .string(text)]
+        if !attachmentIds.isEmpty { body["attachmentIds"] = .array(attachmentIds.map(JSONValue.string)) }
         if let clientContext {
             body["clientContext"] = .object(["timeZone": .string(clientContext.timeZone), "currentDate": .string(clientContext.currentDate)])
         }
