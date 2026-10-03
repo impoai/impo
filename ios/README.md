@@ -51,3 +51,11 @@ Mode Settings synchronize `Balanced` and `Power`. The UI describes each tier's
 benefit without exposing provider or model names.
 Current clients identify their catalog to the API; older builds keep their disabled
 preview instead of displaying the wrong model.
+
+## Client actions
+
+Main Chat can offer Open link, Open video and Get directions cards. The iOS
+adapter opens HTTPS links through the system and builds Apple Maps directions
+from typed destinations. Cards execute only after a foreground tap and restore
+from owned message history. See [capabilities v1](../contracts/capabilities.md).
+Timers and additional system actions are future adapters, not enabled features.

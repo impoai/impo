@@ -65,6 +65,10 @@ public struct UIMessageState: Equatable, Sendable {
     public var status: String?
     public var text: String { textOrder.map { textParts[$0] ?? "" }.joined() }
     public var tools: [String: ToolState] = [:]
+    public var actions: [ClientAction] {
+        var seen = Set<String>()
+        return tools.values.sorted { $0.toolCallId < $1.toolCallId }.compactMap { ClientAction(toolName: $0.name, output: $0.output) }.filter { seen.insert($0.id).inserted }
+    }
     public var deviceRequests: [String: DeviceRequest] = [:]
     /// Intermediate steps in first-seen order; updated in place by ID.
     public var steps: [StreamStep] = []

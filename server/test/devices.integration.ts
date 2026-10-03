@@ -418,6 +418,40 @@ test('device tools persist dispatch and immutable receipts through HTTP, Postgre
       } finally { await stop(worker); }
     });
 
+    await t.test('client actions finish without a foreground dispatch and survive stream and history replay', async () => {
+      const device = await register(randomUUID(), ['impo_open_link', 'impo_navigate']);
+      const id = await submit([
+        { name: 'impo_open_link', arguments: { url: 'https://youtu.be/example' } },
+        { name: 'impo_navigate', arguments: { destination: 'Union Square, San Francisco', mode: 'walking' } },
+      ], device);
+      const worker = start('src/worker-main.ts');
+      try {
+        await completed(id);
+        assert.deepEqual(await pending(device), [], 'ready cards never enter the automatic device poller');
+        const chunks = await replayChunks(id);
+        assert.ok(!chunks.some(chunk => chunk.type === 'data-instant-device-request'));
+        const cards = chunks.filter(chunk => chunk.type === 'tool-output-available').map(chunk => chunk.output);
+        assert.equal(cards.length, 2);
+        assert.ok(cards.every(card => card.kind === 'client_action' && card.status === 'ready' && card.interaction === 'tap'));
+        assert.deepEqual(await replayChunks(id), chunks);
+        const stored = await pool.query('SELECT part FROM message_client_actions WHERE message_id=(SELECT assistant_message_id FROM runtime_submissions WHERE id=$1) ORDER BY created_at, id', [id]);
+        assert.deepEqual(stored.rows.map(row => row.part.output).sort((a, b) => a.actionId.localeCompare(b.actionId)), [...cards].sort((a, b) => a.actionId.localeCompare(b.actionId)));
+        const history = await request('/conversation?limit=100');
+        assert.equal(history.status, 200);
+        const restored = history.body.messages.flatMap((message: JSONRecord) => message.parts).filter((part: JSONRecord) => part.output?.kind === 'client_action');
+        assert.equal(restored.length, 2);
+        const foreign = await request('/conversation?limit=100', undefined, 'bob');
+        assert.ok(foreign.body.messages.every((message: JSONRecord) => message.parts.every((part: JSONRecord) => part.output?.kind !== 'client_action')));
+        const before = fake.sessions.length;
+        const unsupported = await submit([{ name: 'impo_open_link', arguments: { url: 'https://example.com' } }], aliceDevice);
+        await completed(unsupported);
+        assert.ok(fake.sessions.length > before, 'capability changes rotate the idle Session');
+        assert.ok(!fake.sessions.at(-1)!.agent.tools.some((tool: JSONRecord) => tool.name === 'impo_open_link'));
+        const errors = (await replayChunks(unsupported)).filter(chunk => chunk.type === 'tool-output-error');
+        assert.equal(errors.length, 1); assert.match(errors[0].errorText, /device_capability_unavailable/);
+      } finally { await stop(worker); }
+    });
+
     await t.test('database ownership constraints prevent a dispatch from targeting another user’s device', async () => {
       const invocation = await pool.query('SELECT invocation_id FROM device_dispatches LIMIT 1');
       assert.equal(invocation.rowCount, 1);

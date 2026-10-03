@@ -9,6 +9,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var text: String
     /// Files delivered with an assistant reply; never saved with the offline Demo chat.
     var files: [DeliveredFile] = []
+    var actions: [ClientAction] = []
 
     private enum CodingKeys: String, CodingKey { case id, role, text }
 }
@@ -793,8 +794,8 @@ final class AppModel {
             guard finishedPages else { throw InstantClientError.invalidResponse }
             let ordered = all.sorted { $0.sequence < $1.sequence }
             var seen = Set<String>()
-            messages = ordered.filter { (!$0.text.isEmpty || !$0.files.isEmpty) && seen.insert($0.id).inserted }
-                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files) }
+            messages = ordered.filter { (!$0.text.isEmpty || !$0.files.isEmpty || !$0.actions.isEmpty) && seen.insert($0.id).inserted }
+                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files, actions: $0.actions) }
             chatError = nil
             failedReplyInput = nil
             if active.isEmpty, let lastReply = ordered.last, lastReply.role == "assistant" {
@@ -826,9 +827,9 @@ final class AppModel {
             try check(context)
             deviceToolStatus = state.status == "waiting_device" ? "Waiting for your iPhone to read the requested data…" : nil
             liveSteps = state.done ? [] : state.steps
-            if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty {
-                if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files }
-                else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files)) }
+            if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty || !state.actions.isEmpty {
+                if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files; messages[index].actions = state.actions }
+                else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files, actions: state.actions)) }
             }
             if !state.errors.isEmpty || state.status == "failed" { chatError = "This reply couldn't be completed. You can send a new message." }
             if state.aborted || state.status == "cancelled" { chatError = "This reply was cancelled." }
@@ -901,7 +902,7 @@ final class AppModel {
 
     private var availableDeviceTools: [String] {
         // Advertising an opted-in capability does not promise that HealthKit has data.
-        var tools: [String] = []
+        var tools: [String] = ClientAction.capabilities
         if calendarEnabled && deviceData.canReadCalendar { tools.append("ios_list_calendar_events") }
         if healthEnabled && deviceData.healthAccessRequested { tools.append("ios_get_health_summary") }
         if remindersEnabled && deviceData.canUseReminders { tools += ["impo_list_reminders", "impo_create_reminder"] }

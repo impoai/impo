@@ -1,7 +1,10 @@
+import { clientActionCatalog, clientActionNames, isClientAction } from './client-actions.js';
 import { createHash } from 'node:crypto';
 import { ServiceError } from '../errors.js';
 
 export const deviceToolNames = ['impo_list_calendar_events', 'impo_get_health_summary', 'ios_list_calendar_events', 'ios_get_health_summary', 'impo_list_reminders', 'impo_create_reminder', 'impo_search_contacts', 'impo_get_current_location'] as const;
+export const deviceCapabilityNames = [...deviceToolNames, ...clientActionNames];
+export const isDeviceCapability = (name: string) => isDeviceTool(name) || isClientAction(name);
 export type DeviceToolName = typeof deviceToolNames[number];
 export interface ClientContext { timeZone: string; currentDate: string }
 const invalid = (message: string) => new ServiceError(400, 'invalid_request', message);
@@ -143,5 +146,17 @@ export const deviceTools = [
 /** A user's other devices never add capabilities to the device attached to this turn. */
 export function selectDeviceTools<T extends { name?: unknown }>(tools: T[], capabilities: readonly string[]): T[] {
   const enabled = new Set(capabilities);
-  return tools.filter(tool => typeof tool.name !== 'string' || !isDeviceTool(tool.name) || enabled.has(tool.name));
+  return tools.filter(tool => typeof tool.name !== 'string' || !isDeviceCapability(tool.name) || enabled.has(tool.name));
+}
+
+/** Registration describes availability on this installation, never on all of a user's devices. */
+export function describeDeviceCapabilities(names: readonly string[]) {
+  return names.map(name => {
+    const action = clientActionCatalog.find(candidate => candidate.name === name);
+    if (action) return action;
+    const reminder = name.includes('reminder');
+    return { name, intent: name.replace(/^(ios|impo)_/, ''), version: 1, execution: 'device',
+      interaction: 'tool', effect: name === 'impo_create_reminder' ? 'write' : 'read',
+      platforms: reminder || name.startsWith('ios_') || name === 'impo_get_current_location' ? ['ios'] : ['ios', 'android'] };
+  });
 }

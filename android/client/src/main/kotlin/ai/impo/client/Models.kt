@@ -71,6 +71,7 @@ fun wireTimestamp(instant: Instant): String = timestampFormatter.format(instant)
     val id: String, val role: String, val sequence: Int, val text: String,
     val status: String, val createdAt: String, val parts: List<JsonElement> = emptyList(),
 ) {
+    val actions: List<ClientAction> get() = if (role == "assistant") parts.mapNotNull(ClientAction::fromPart).distinctBy { it.id } else emptyList()
     /** Files delivered with an assistant reply, from its `data-instant-file` parts. */
     val files: List<DeliveredFile> get() = parts.mapNotNull { part ->
         val value = part as? JsonObject ?: return@mapNotNull null

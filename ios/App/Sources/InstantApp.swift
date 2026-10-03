@@ -26,7 +26,8 @@ struct InstantApp: App {
         WindowGroup {
             Group {
                 #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("--response-render-fixture") { ResponseRenderingFixture() }
+                if ProcessInfo.processInfo.arguments.contains("--client-actions-fixture") { ClientActionsFixture() }
+                else if ProcessInfo.processInfo.arguments.contains("--response-render-fixture") { ResponseRenderingFixture() }
                 else if ProcessInfo.processInfo.arguments.contains("--account-deletion-fixture") { DeleteAccountView() }
                 else { appContent }
                 #else

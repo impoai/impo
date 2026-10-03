@@ -2,7 +2,7 @@ import { hydrateAttachments } from './attachment-repository.js';
 import { and, asc, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import type { Database } from '../client.js';
-import { messages, runtimeSubmissions, sessionBindings } from '../schema.js';
+import { messages, messageClientActions, runtimeSubmissions, sessionBindings } from '../schema.js';
 import type { HistoryEntry, HistoryPage, SessionArtifact } from '../../rebyte/gateway.js';
 import { turnFiles } from '../../rebyte/files.js';
 import { ServiceError } from '../../errors.js';
@@ -33,6 +33,23 @@ export function userText(input: HistoryEntry['input']): string {
 }
 
 type Row = { id: string; role: string; status: string; text: string; parts: UIMessage['parts'] };
+/** Only an owned, server-prepared record can add an executable card to history. */
+async function hydrateProductParts<T extends Row>(db: Database, userId: string, rows: T[]): Promise<T[]> {
+  const hydrated = await hydrateAttachments(db, userId, rows);
+  const ids = rows.filter(row => row.role === 'assistant').map(row => row.id);
+  if (!ids.length) return hydrated;
+  const cards = await db.select().from(messageClientActions)
+    .where(and(eq(messageClientActions.userId, userId), inArray(messageClientActions.messageId, ids)))
+    .orderBy(asc(messageClientActions.createdAt), asc(messageClientActions.id));
+  return hydrated.map(row => {
+    const parts = [...row.parts];
+    for (const card of cards.filter(card => card.messageId === row.id)) {
+      const saved = card.part;
+      if (saved.type === 'dynamic-tool' && !parts.some(part => part.type === 'dynamic-tool' && part.toolCallId === saved.toolCallId)) parts.push(saved);
+    }
+    return { ...row, parts };
+  });
+}
 const pageLimit = 100, maxPages = 50;
 
 /**
@@ -42,7 +59,7 @@ const pageLimit = 100, maxPages = 50;
  */
 export async function hydrateMessages<T extends Row>(db: Database, history: HistoryReader | undefined, userId: string, rows: T[], signal?: AbortSignal, options: { files?: boolean } = {}): Promise<T[]> {
   const empty = rows.filter(row => !row.text && row.parts.length === 0 && row.status !== 'accepted' && row.status !== 'streaming');
-  if (!history || empty.length === 0) return hydrateAttachments(db, userId, rows);
+  if (!history || empty.length === 0) return hydrateProductParts(db, userId, rows);
   const ids = empty.map(row => row.id);
   const submissions = await db.select({
     createdAt: runtimeSubmissions.createdAt, bindingId: runtimeSubmissions.bindingId, turnId: runtimeSubmissions.providerTurnId,
@@ -93,7 +110,7 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
     const files = turnFiles(artifacts.get(submission.sessionId!) ?? [], submission.turnId!, submission.bindingId);
     text.set(submission.assistantMessageId, { text: answer, parts: [...(answer ? [{ type: 'text' as const, text: answer }] : []), ...files] });
   }
-  return hydrateAttachments(db, userId, rows.map(row => { const filled = text.get(row.id); return filled && ids.includes(row.id) ? { ...row, ...filled } : row; }));
+  return hydrateProductParts(db, userId, rows.map(row => { const filled = text.get(row.id); return filled && ids.includes(row.id) ? { ...row, ...filled } : row; }));
 }
 
 /**

@@ -111,8 +111,9 @@ import ai.impo.data.AppViewModel
                         }
                     } else {
                         if (message.text.isNotBlank()) RichResponse(message.text, Modifier.fillMaxWidth(), message.status in setOf("queued", "running", "waiting_device"), onSelectionChanged = { active -> selecting = if (active) selecting + message.id else selecting - message.id })
-                        else if (conversation.busy && conversation.pendingVoice == null && message.files.isEmpty()) Text("Thinking…", color = Muted)
+                        else if (conversation.busy && conversation.pendingVoice == null && message.files.isEmpty() && message.actions.isEmpty()) Text("Thinking…", color = Muted)
                         if (message.files.isNotEmpty()) DeliveredFiles(message.files, download)
+                        if (message.actions.isNotEmpty()) ClientActions(message.actions)
                         if (message.status in setOf("failed", "cancelled")) Text(humanStatus(message.status), style = MaterialTheme.typography.labelSmall, color = Muted)
                     }
                 }

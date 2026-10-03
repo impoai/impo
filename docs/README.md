@@ -1,6 +1,7 @@
 # Documentation
 
 - [Architecture](architecture.md): clients, API, workers, agent execution and storage.
+- [Capabilities and client actions](../contracts/capabilities.md): cloud, native and user-tapped action routing with platform adapters.
 - [Client API](client-api.md): commands, streams, ownership and recovery.
 - [Application protocol v1](../contracts/client-protocol.md): cross-platform models, commands, events and recovery.
 - [Android guide](../android/README.md): native Kotlin/Compose features, protocol boundaries, build commands and emulator validation.

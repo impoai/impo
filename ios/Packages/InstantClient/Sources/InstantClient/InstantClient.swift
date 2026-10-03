@@ -74,6 +74,7 @@ public struct ConversationMessage: Decodable, Sendable {
     public let createdAt: String
     /// Files delivered with an assistant reply, from its `data-instant-file` parts.
     public let files: [DeliveredFile]
+    public let actions: [ClientAction]
 
     private enum CodingKeys: String, CodingKey { case id, role, sequence, text, status, createdAt, parts }
 
@@ -91,6 +92,8 @@ public struct ConversationMessage: Decodable, Sendable {
             if let file = DeliveredFile(part["data"]), !files.contains(where: { $0.fileId == file.fileId }) { files.append(file) }
         }
         self.files = files
+        var seen = Set<String>()
+        self.actions = role == "assistant" ? parts.compactMap(ClientAction.from).filter { seen.insert($0.id).inserted } : []
     }
 }
 public struct ActiveSubmission: Decodable, Sendable {

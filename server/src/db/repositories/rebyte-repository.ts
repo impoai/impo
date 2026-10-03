@@ -1,10 +1,11 @@
+import { isClientAction } from '../../tools/client-actions.js';
 import { attachmentIds } from '../../attachments/contract.js';
 import { attachments, messageAttachments } from '../entities/attachments.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { UIMessage, UIMessageChunk } from 'ai';
 import { currentBriefLocation } from '../../today/contract.js';
-import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, deviceDispatches, toolInvocations, productEvents, todaySettings } from '../schema.js';
+import { actions, agentConfigVersions, agentCreationAttempts, conversations, messages, messageItemBindings, outboxJobs, runtimeSubmissions, sessionBindings, sessionCreationAttempts, userAgents, devices, deviceCapabilities, messageClientActions, deviceDispatches, toolInvocations, productEvents, todaySettings } from '../schema.js';
 import { RuntimeRepository, type ClaimedJob, type Submission, type Transaction } from './runtime-repository.js';
 import { historyContext, hydrateMessages } from './conversation-history.js';
 import { normalizeAnswerText } from '../../rebyte/citations.js';
@@ -239,8 +240,9 @@ export class RebyteRepository extends RuntimeRepository {
           try { jsonValue(input); if (input && typeof input === 'object' && !Array.isArray(input)) args = input as Record<string, unknown>; } catch { /* retain empty object */ }
         }
         const isDevice = isDeviceTool(action.name);
-        if (isDevice && !failure && !submission.deviceId) failure = { code: 'device_unavailable', message: 'This message has no associated device' };
-        else if (isDevice && !failure && (!submission.deviceTools.includes(action.name) || !capabilities.includes(action.name))) failure = { code: 'device_capability_unavailable', message: 'This device did not enable the requested capability' };
+        const needsDevice = isDevice || isClientAction(action.name);
+        if (needsDevice && !failure && !submission.deviceId) failure = { code: 'device_unavailable', message: 'This message has no associated device' };
+        else if (needsDevice && !failure && (!submission.deviceTools.includes(action.name) || !capabilities.includes(action.name))) failure = { code: 'device_capability_unavailable', message: 'This device did not enable the requested capability' };
         const argumentsHash = deviceHash(action.arguments);
         let [invocation] = await tx.select().from(toolInvocations).where(and(eq(toolInvocations.bindingId, submission.bindingId), eq(toolInvocations.turnId, turn.id), eq(toolInvocations.callId, action.call_id)));
         if (invocation) {
@@ -289,6 +291,10 @@ export class RebyteRepository extends RuntimeRepository {
           const part: UIMessage['parts'][number] = payload.success
             ? { type: 'dynamic-tool', toolCallId: invocation.callId, toolName: invocation.toolName, input: invocation.arguments, state: 'output-available', output: invocation.result.data }
             : { type: 'dynamic-tool', toolCallId: invocation.callId, toolName: invocation.toolName, input: invocation.arguments, state: 'output-error', errorText: payload.error };
+          if (payload.success && isClientAction(invocation.toolName)) {
+            await tx.insert(messageClientActions).values({ id: invocation.id, userId: submission.userId,
+              messageId: submission.assistantMessageId, part }).onConflictDoNothing();
+          }
           parts = parts.map(existing => existing.type === 'dynamic-tool' && existing.toolCallId === invocation.callId ? part : existing);
           await tx.update(toolInvocations).set({ resultProjected: true }).where(eq(toolInvocations.id, invocation.id));
         }

@@ -257,7 +257,8 @@ class ConversationSession(
                         val existing = old.messages.firstOrNull { it.id == messageId }
                         val message = ConversationMessage(messageId, "assistant", existing?.sequence ?: ((old.messages.maxOfOrNull { it.sequence } ?: 0) + 1),
                             stream.text, stream.status ?: active.status, existing?.createdAt ?: java.time.Instant.now().toString(),
-                            parts = if (stream.files.isEmpty()) existing?.parts.orEmpty() else stream.files.map { it.part() })
+                            parts = if (stream.files.isEmpty() && stream.tools.isEmpty()) existing?.parts.orEmpty() else
+                                stream.files.map { it.part() } + stream.tools.map { it.part() })
                         val terminal = stream.done || stream.status in setOf("completed", "failed", "cancelled")
                         val ids = if (terminal) old.activeSubmissionIds - active.submissionId else old.activeSubmissionIds
                         old.copy(messages = old.messages.filterNot { it.id == messageId } + message, steps = stream.steps, tools = stream.tools,

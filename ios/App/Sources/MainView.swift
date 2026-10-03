@@ -242,6 +242,7 @@ private struct ChatView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 if !message.text.isEmpty { bubble(message.text, user: message.role == "user") }
                                 if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
+                                if message.role == "assistant" && !message.actions.isEmpty { ClientActionsView(actions: message.actions) }
                             }.id(message.id)
                         }
                     }

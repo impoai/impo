@@ -148,7 +148,7 @@ class DeviceCoordinator internal constructor(context: Context, private val lock:
         val tools = adapter.enabledTools(preferences.getBoolean("calendar_$key", false), preferences.getBoolean("health_$key", false),
             preferences.getBoolean("contacts_$key", false))
         requireCurrent(account)
-        return tools
+        return tools + ClientAction.capabilities
     }
     private fun requireCurrent(account: NativeAccount) { if (NativeBridge.account() !== account) throw AccountChangedException() }
     private fun clearIdentity() { identity = null; registeredAccount = null; registeredTools = null; mutableDeviceId.value = null }

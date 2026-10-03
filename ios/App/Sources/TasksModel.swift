@@ -264,9 +264,9 @@ final class TaskThreadModel {
                     status = "in_progress"
                     for try await state in api.stream(submissionId: active.submissionId) {
                         if Task.isCancelled { return }
-                        if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty {
-                            if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files }
-                            else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files)) }
+                        if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty || !state.actions.isEmpty {
+                            if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files; messages[index].actions = state.actions }
+                            else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files, actions: state.actions)) }
                         }
                         steps = state.done ? [] : state.steps
                         if state.done { break }
@@ -303,7 +303,7 @@ final class TaskThreadModel {
         }
         all.sort { $0.sequence < $1.sequence }
         startedAt = parseDate(all.first?.createdAt)
-        messages = all.filter { !$0.text.isEmpty || !$0.files.isEmpty }.map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files) }
+        messages = all.filter { !$0.text.isEmpty || !$0.files.isEmpty || !$0.actions.isEmpty }.map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files, actions: $0.actions) }
         let last = all.last { $0.role == "assistant" }?.status
         let finalStatus = last == "failed" ? "failed" : last == "cancelled" ? "cancelled" : "completed"
         if finalStatus == "failed" { error = "This task couldn't be completed. You can send a follow-up to try again." }

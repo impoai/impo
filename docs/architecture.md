@@ -141,3 +141,16 @@ The [attachment contract](../contracts/attachments.md) defines uploads, ownershi
 history and retries. Impo stores originals and forwards admitted files into the
 owned Rebyte Session before sending input. Rebyte provides `list_files` and
 `read_file` and handles document parsing and typed image conversion for models.
+
+### Capability routing and user-tapped actions
+
+Cloud providers keep server-side authorization and execution through connector
+tools. Native reads and writes use the attached installation's permissioned
+adapters. User-tapped actions use a separate preparation path: the server saves
+an owned card, the model receives `ready`, and only a foreground tap invokes the
+platform adapter. Link and directions actions share typed inputs across iOS and
+Android; each client constructs its native destination and presentation.
+`message_client_actions` preserves this product metadata independently of
+transient chat/tool projections and is removed during account deletion.
+See [capabilities v1](../contracts/capabilities.md) for availability, result and
+extension rules. Timer adapters are not implemented by this foundation.

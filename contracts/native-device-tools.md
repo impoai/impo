@@ -4,7 +4,7 @@ The API accepts `impo_list_calendar_events` and `impo_get_health_summary` for
 platform-neutral device reads. Installed iOS clients may continue to advertise
 `ios_list_calendar_events` and `ios_get_health_summary`; their output remains
 compatible with the existing iOS adapter. Registration accepts each implemented
-name at most once (currently eight), replaces capabilities for the owned installation, and accepts `[]` to
+name at most once (eight data tools plus two client actions), replaces capabilities for the owned installation, and accepts `[]` to
 revoke all capabilities. A client should advertise only names it implements and
 whose capability the user enabled.
 
@@ -16,6 +16,11 @@ are fixed. An active Session returns `409 config_upgrade_pending`; retry the
 same message after the current run settles. Task conversations have no device
 tools. The existing pending → claim → durable result receipt flow and ownership
 checks apply equally to the neutral names and iOS aliases.
+
+Client action names and their separate proposal/tap lifecycle are defined in
+[Capabilities and client actions](capabilities.md). They never enter the
+automatic native-tool poller. Registration also returns descriptors for the
+accepted capabilities.
 
 ## Inputs
 

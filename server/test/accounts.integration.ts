@@ -41,6 +41,9 @@ test('deletion removes owned relational data atomically, captures cloud handles 
   const f = await fixture();
   for (const userId of [f.alice, f.bob]) {
     await runtime.acceptMessage(userId, { clientMessageId: randomUUID(), text: 'Private text' });
+    const [message] = await database.db.select().from(s.messages).where(eq(s.messages.userId, userId));
+    await database.db.insert(s.messageClientActions).values({ id: randomUUID(), userId, messageId: message!.id,
+      part: { type: 'dynamic-tool', toolName: 'impo_open_link', toolCallId: randomUUID(), state: 'output-available', input: {}, output: { kind: 'client_action' } } });
     await database.db.insert(s.userProfiles).values({ userId });
     await database.db.insert(s.memoryDatabases).values({ userId, databaseName: `impo-mem-${userId}`, url: 'file:unused' });
     await database.db.insert(s.memoryState).values({ userId });
@@ -53,7 +56,7 @@ test('deletion removes owned relational data atomically, captures cloud handles 
   const job = await f.repo.work(receipt.requestId);
   assert.equal(job!.manifest!.connections[0]!.entityId, `owned-${f.alice}`);
   assert.equal(job!.manifest!.conversationIds.length, 1);
-  for (const table of [s.userProfiles, s.conversations, s.messages, s.runtimeSubmissions, s.outboxJobs, s.memoryDatabases, s.memoryState, s.connectorConnections, s.notificationSettings, s.pushInstallations]) {
+  for (const table of [s.messageClientActions, s.userProfiles, s.conversations, s.messages, s.runtimeSubmissions, s.outboxJobs, s.memoryDatabases, s.memoryState, s.connectorConnections, s.notificationSettings, s.pushInstallations]) {
     assert.equal((await database.db.select().from(table).where(eq(table.userId, f.alice))).length, 0);
     assert.ok((await database.db.select().from(table).where(eq(table.userId, f.bob))).length > 0);
   }

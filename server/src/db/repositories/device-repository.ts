@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, sql, isNull } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { devices, deviceCapabilities, deviceDispatches, runtimeSubmissions, toolInvocations, users } from '../schema.js';
 import { ServiceError } from '../../errors.js';
-import { deviceHash, deviceToolNames, isDeviceTool, jsonValue } from '../../tools/device-tools.js';
+import { deviceHash, deviceCapabilityNames, isDeviceCapability, describeDeviceCapabilities, jsonValue } from '../../tools/device-tools.js';
 import type { Transaction } from './runtime-repository.js';
 
 const missing = () => new ServiceError(404, 'not_found', 'Resource not found');
@@ -15,7 +15,7 @@ export class DeviceRepository {
   constructor(private readonly db: Database) {}
 
   async register(userId: string, input: { installationId: string; tools: string[] }) {
-    if (!input.installationId.trim() || input.installationId.length > 256 || input.installationId.includes('\0') || !Array.isArray(input.tools) || input.tools.length > deviceToolNames.length || new Set(input.tools).size !== input.tools.length || input.tools.some(name => !isDeviceTool(name))) {
+    if (!input.installationId.trim() || input.installationId.length > 256 || input.installationId.includes('\0') || !Array.isArray(input.tools) || input.tools.length > deviceCapabilityNames.length || new Set(input.tools).size !== input.tools.length || input.tools.some(name => !isDeviceCapability(name))) {
       throw new ServiceError(400, 'invalid_request', 'Invalid installation ID or device tools');
     }
     return this.db.transaction(async tx => {
@@ -26,7 +26,7 @@ export class DeviceRepository {
         .onConflictDoUpdate({ target: [devices.userId, devices.installationId], set: { lastSeenAt: new Date() } }).returning();
       await tx.delete(deviceCapabilities).where(eq(deviceCapabilities.deviceId, device!.id));
       if (input.tools.length) await tx.insert(deviceCapabilities).values(input.tools.map(toolName => ({ userId, deviceId: device!.id, toolName })));
-      return { deviceId: device!.id };
+      return { deviceId: device!.id, capabilities: describeDeviceCapabilities(input.tools) };
     });
   }
 
