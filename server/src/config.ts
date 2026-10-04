@@ -13,6 +13,12 @@ function integer(name: string, fallback: number, minimum: number, maximum: numbe
 // clerk mode also allows 0.0.0.0: a container binds every interface in its own
 // network namespace, and exposure is actually controlled by the security group,
 // not by this bind address; local-dev keeps the stricter loopback/private check.
+function gadgetGatewayServiceToken(): string | undefined {
+  const token = process.env.GADGET_GATEWAY_SERVICE_TOKEN;
+  if (token !== undefined && token.length < 32) throw new Error('GADGET_GATEWAY_SERVICE_TOKEN must be at least 32 characters');
+  return token;
+}
+
 function developmentHost(authMode: 'local-dev' | 'clerk'): string {
   const host = process.env.HOST ?? '127.0.0.1';
   if (['localhost', '::1'].includes(host)) return host;
@@ -105,6 +111,8 @@ export function loadConfig(role: 'api' | 'worker') {
     fcm: role === 'worker' && process.env.FCM_SERVICE_ACCOUNT_JSON ? parseFCMCredentials(process.env.FCM_SERVICE_ACCOUNT_JSON) : undefined,
     temporal, transcriptArchive, memory,
     authMode: authMode as 'local-dev' | 'clerk', clerk,
+    // Shared with the gadget gateway (server/gadget-gateway); unset disables gadget chat.
+    gadgetGatewayServiceToken: gadgetGatewayServiceToken(),
     listening: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com', timeoutMs: 120_000 } : undefined,
     // Hold-to-talk composer transcription; the client waits on this request.
     voice: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com',

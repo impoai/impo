@@ -65,7 +65,7 @@ async function openNoise(request, env, url) {
   if (!claims || claims.vm !== url.searchParams.get('vm_id') || !VM_ID.test(claims.vm)) {
     return json({ error: 'unauthorized' }, 401);
   }
-  return hub(env, claims.vm).fetch(new Request(`https://hub/connect?pairing=${claims.pid}`, request));
+  return hub(env, claims.vm).fetch(new Request(`https://hub/connect?pairing=${claims.pid}&vm=${claims.vm}`, request));
 }
 
 // -- Admin routes (Impo server only) --------------------------------------------

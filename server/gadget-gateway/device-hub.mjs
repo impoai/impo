@@ -17,7 +17,7 @@ const IDENTITY_PATH = '/identity';
 const AGENT_NAME = 'Impo';
 const DEFAULT_INVOKE_TIMEOUT_MS = 30_000;
 const MAX_INVOKE_WAIT_MS = 620_000;
-const MAX_CHAT_BODY_BYTES = 256 * 1024;
+const MAX_CHAT_BODY_BYTES = 1536 * 1024;   // a 20 s voice note is about 0.9 MB of base64
 const CHAT_HISTORY = 50;
 const MAX_REPLY_CHARS = 16_000;
 const encoder = new TextEncoder();
@@ -39,6 +39,7 @@ class Connection {
     this.ws = ws;
     const saved = ws.deserializeAttachment() ?? {};
     this.pairingId = saved.pairingId;
+    this.vmId = saved.vmId ?? null;
     this.connectedAt = saved.connectedAt;
     this.nodeId = saved.nodeId ?? null;
     this.controlStream = saved.controlStream ?? null;
@@ -51,6 +52,7 @@ class Connection {
     const cipher = (state) => state && [toBase64Url(state.rawKey), state.nonce];
     this.ws.serializeAttachment({
       pairingId: this.pairingId,
+      vmId: this.vmId,
       connectedAt: this.connectedAt,
       nodeId: this.nodeId,
       controlStream: this.controlStream,
@@ -83,7 +85,7 @@ export class DeviceHub extends DurableObject {
   async fetch(request) {
     const url = new URL(request.url);
     const segments = url.pathname.split('/').filter(Boolean);
-    if (segments[0] === 'connect') return this.connect(request, url.searchParams.get('pairing'));
+    if (segments[0] === 'connect') return this.connect(request, url.searchParams.get('pairing'), url.searchParams.get('vm'));
     if (segments[0] === 'pairings' && request.method === 'POST') return this.createPairing(await request.json());
     if (segments[0] === 'pairings' && request.method === 'GET') {
       return (await this.ctx.storage.get(`pairing:${segments[1]}`)) ? json({ active: true }) : json({ active: false }, 404);
@@ -160,24 +162,14 @@ export class DeviceHub extends DurableObject {
 
   // -- Replies ------------------------------------------------------------------
 
-  // Delivers one assistant message to every gadget subscribed on this route, as
-  // the reply events the gadget firmware reads from POST /chat/subscribe.
-  async reply({ text, reply_to_message_id: replyTo, message_id: messageId }) {
-    if (typeof text !== 'string' || !text.trim() || text.length > MAX_REPLY_CHARS) {
-      return json({ ok: false, error: 'text_required' }, 400);
-    }
+  // Writes reply events to every gadget holding POST /chat/subscribe on this route.
+  async emit(events) {
     const subscribers = this.live().filter((c) => c.subscribeStream !== null && c.send);
-    if (!subscribers.length) return json({ ok: false, error: 'no_subscriber' }, 409);
-    const id = typeof messageId === 'string' && messageId ? messageId : crypto.randomUUID();
+    if (!subscribers.length) return 0;
     let seq = (await this.ctx.storage.get('reply_seq')) ?? 0;
-    const pieces = text.match(/[\s\S]{1,400}/gu);
-    const events = [
-      ['delta.message_start', { message_id: id, reply_to_message_id: replyTo ?? null }],
-      ...pieces.map((piece) => ['delta.text_append', { message_id: id, text: piece }]),
-      ['delta.message_done', { message_id: id, display_text: text }],
-    ].map(([event, payload]) => `${JSON.stringify({ type: 'event', seq: (seq += 1), event, payload })}\n`);
+    const lines = events.map(([event, payload]) => `${JSON.stringify({ type: 'event', seq: (seq += 1), event, payload })}\n`);
     await this.ctx.storage.put('reply_seq', seq);
-    const body = encoder.encode(events.join(''));
+    const body = encoder.encode(lines.join(''));
     let delivered = 0;
     for (const connection of subscribers) {
       try {
@@ -187,17 +179,82 @@ export class DeviceHub extends DurableObject {
         // That gadget went away; the others still get the reply.
       }
     }
-    return json({ ok: delivered > 0, message_id: id, delivered });
+    return delivered;
+  }
+
+  // Delivers one complete assistant message, for callers that already have its text.
+  async reply({ text, reply_to_message_id: replyTo, message_id: messageId }) {
+    if (typeof text !== 'string' || !text.trim() || text.length > MAX_REPLY_CHARS) {
+      return json({ ok: false, error: 'text_required' }, 400);
+    }
+    const id = typeof messageId === 'string' && messageId ? messageId : crypto.randomUUID();
+    const delivered = await this.emit([
+      ['delta.message_start', { message_id: id, reply_to_message_id: replyTo ?? null }],
+      ...text.match(/[\s\S]{1,400}/gu).map((piece) => ['delta.text_append', { message_id: id, text: piece }]),
+      ['delta.message_done', { message_id: id, display_text: text }],
+    ]);
+    if (!delivered) return json({ ok: false, error: 'no_subscriber' }, 409);
+    return json({ ok: true, message_id: id, delivered });
+  }
+
+  // -- Impo agent ---------------------------------------------------------------
+
+  impoRequest(vmId, path, init = {}) {
+    return fetch(`${this.env.IMPO_API_URL}/api/v1${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${this.env.IMPO_SERVICE_TOKEN}`,
+        'X-Impo-Gadget-Subject': vmId,
+        'Content-Type': 'application/json',
+        ...init.headers,
+      },
+    });
+  }
+
+  // Streams the agent's reply to one accepted message out to the gadgets.
+  async relayReply(vmId, submissionId, userMessageId) {
+    const replyId = crypto.randomUUID();
+    let text = '';
+    let started = false;
+    const append = async (delta) => {
+      const events = started ? [] : [['delta.message_start', { message_id: replyId, reply_to_message_id: userMessageId }]];
+      started = true;
+      text += delta;
+      await this.emit([...events, ['delta.text_append', { message_id: replyId, text: delta }]]);
+    };
+    try {
+      const response = await this.impoRequest(vmId, `/submissions/${submissionId}/stream`, { headers: { Accept: 'text/event-stream' } });
+      if (!response.ok) throw new Error(`stream ${response.status}`);
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for await (const chunk of response.body) {
+        buffer += decoder.decode(chunk, { stream: true });
+        for (let end = buffer.search(/\r?\n\r?\n/); end >= 0; end = buffer.search(/\r?\n\r?\n/)) {
+          const data = buffer.slice(0, end).split(/\r?\n/).filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart()).join('\n');
+          buffer = buffer.slice(end).replace(/^\r?\n\r?\n/, '');
+          if (!data || data === '[DONE]') continue;
+          const part = JSON.parse(data);
+          if (part.type === 'text-delta' && part.delta) await append(part.delta);
+          if (part.type === 'error') throw new Error('agent error');
+        }
+      }
+    } catch (error) {
+      console.error('gadget reply relay failed', error?.message ?? error);
+      if (!text) await append('Sorry, I could not get a reply just now.');
+    }
+    if (!started) await append('Done.');
+    await this.emit([['delta.message_done', { message_id: replyId, display_text: text }]]);
   }
 
   // -- WebSocket lifecycle ------------------------------------------------------
 
-  async connect(request, pairingId) {
+  async connect(request, pairingId, vmId) {
     if (request.headers.get('Upgrade') !== 'websocket') return json({ error: 'upgrade_required' }, 426);
     if (!pairingId || !(await this.ctx.storage.get(`pairing:${pairingId}`))) return json({ error: 'unpaired' }, 401);
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ pairingId, connectedAt: Date.now() });
+    server.serializeAttachment({ pairingId, vmId, connectedAt: Date.now() });
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -340,25 +397,79 @@ export class DeviceHub extends DurableObject {
   }
 
   async onChat(connection, streamId, blob) {
+    const refuse = (status) => connection.sendEnvelope(encodeResponse(streamId, { status, endBody: true }));
     let body;
     try {
       body = JSON.parse(await blob.text());
     } catch {
       body = null;
     }
-    if (!body || typeof body.message !== 'string' || !body.message.trim()) {
-      return connection.sendEnvelope(encodeResponse(streamId, { status: 400, endBody: true }));
-    }
+    const note = voiceNote(body);
+    if (!body || typeof body.message !== 'string' || (!body.message.trim() && !note)) return refuse(400);
+
     const messageId = crypto.randomUUID();
+    let text = body.message;
+    let submissionId = null;
+    const connected = this.env.IMPO_API_URL && this.env.IMPO_SERVICE_TOKEN && connection.vmId;
+    if (connected) {
+      // A voice note is transcribed and accepted as one chat message by the Impo API.
+      const response = await this.impoRequest(connection.vmId, note ? '/conversation/voice-messages' : '/conversation/messages', {
+        method: 'POST',
+        body: JSON.stringify(note ? { clientMessageId: messageId, audio: note, mimeType: 'audio/wav' } : { clientMessageId: messageId, text }),
+      });
+      if (!response.ok) {
+        console.error('impo rejected a gadget message', response.status);
+        return refuse(response.status === 422 ? 422 : 502);
+      }
+      const receipt = await response.json();
+      submissionId = receipt.submissionId;
+      text = receipt.text ?? text;
+    } else if (note) {
+      return refuse(501);
+    }
+
     const history = (await this.ctx.storage.get('chat')) ?? [];
     history.push({
       message_id: messageId, at: Date.now(),
       node_id: connection.nodeId ?? (typeof body.device_id === 'string' ? body.device_id : null),
-      session_id: typeof body.session_id === 'string' ? body.session_id : null, message: body.message,
+      session_id: typeof body.session_id === 'string' ? body.session_id : null, message: text, voice: Boolean(note),
     });
     await this.ctx.storage.put('chat', history.slice(-CHAT_HISTORY));
-    return connection.sendEnvelope(encodeResponse(streamId, {
+    await connection.sendEnvelope(encodeResponse(streamId, {
       status: 200, body: encoder.encode(JSON.stringify({ message_id: messageId })), endBody: true,
     }));
+    if (submissionId) this.ctx.waitUntil(this.relayReply(connection.vmId, submissionId, messageId));
   }
+}
+
+// The base64 WAV of a gadget voice note, with the streaming "unknown length"
+// header replaced by the real sizes; null when the body carries no note.
+function voiceNote(body) {
+  const item = Array.isArray(body?.items) ? body.items[0] : null;
+  if (!item || item.type !== 'file' || item.mime_type !== 'audio/wav' || typeof item.data_base64 !== 'string') return null;
+  try {
+    const wav = fromBase64(item.data_base64);
+    if (wav.length <= 44) return null;
+    const view = new DataView(wav.buffer);
+    view.setUint32(4, wav.length - 8, true);
+    view.setUint32(40, wav.length - 44, true);
+    return toBase64(wav);
+  } catch {
+    return null;
+  }
+}
+
+function fromBase64(text) {
+  const binary = atob(text);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function toBase64(bytes) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
 }

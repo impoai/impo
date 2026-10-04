@@ -46,6 +46,7 @@ async function main(): Promise<void> {
     scheduledTasks: config.temporal ? new ScheduledTaskRepository(database.db, repository.runtime) : undefined,
     echoSchedules: config.temporal ? new EchoScheduleRepository(database.db) : undefined,
     accounts: new AccountDeletionService(new AccountDeletionRepository(database.db), config.clerk?.secretKey, config.appleSignIn ? new AppleGrantRevoker(config.appleSignIn) : undefined), accountDeletionEnabled: Boolean(config.temporal),
+    gadgetGateway: config.gadgetGatewayServiceToken ? { serviceToken: config.gadgetGatewayServiceToken } : undefined,
     dictation: config.voice ? new GeminiDictation(config.voice) : config.runtime === 'development' ? new DevelopmentDictation() : undefined });
   let stopping = false;
   async function shutdown(): Promise<void> {

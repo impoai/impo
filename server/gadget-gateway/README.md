@@ -13,15 +13,19 @@ Production: `https://gadgets.impo.ai` (API and WebSocket on the same host; the
 `workers.dev` route is disabled). `GET /` serves the developer landing page from
 `home.mjs`; keep its "What works today" list in step with this file.
 
-Status: deployed and verified against the upstream Linux client, the Impo fork
-(`impogadget`) and the fork's ESP32 firmware on an Espressif ESP-SparkBot, which
-registers and serves invokes. It is not yet connected to the Impo API, accounts
-or device-tool dispatch, and no Impo client pairs gadgets. `GET /identity`
-returns a fixed name. Gadget messages are stored for the admin state route, and
-replies reach gadgets only when a caller posts them to the replies route; nothing
-in the Impo server does that yet. Voice (`/api/voice/dictation`),
+Status: live. Gadget text and voice notes posted on `POST /chat/stream` are
+forwarded to the Impo API as chat or voice messages for the account whose
+subject is the route (`vm_id`), and the streamed reply is relayed to gadgets on
+`POST /chat/subscribe`. Verified with the Linux clients and the fork's ESP32
+firmware on an Espressif ESP-SparkBot. The agent cannot yet invoke gadget
+commands, no Impo client pairs gadgets, and `/api/voice/dictation`,
 `/device_token/mint` and the home-network tunnel (`/link-tunnel`) are not
 implemented.
+
+The route is the account's identity-provider subject. `IMPO_API_URL` (a
+variable) and `IMPO_SERVICE_TOKEN` (a secret, equal to the API's
+`GADGET_GATEWAY_SERVICE_TOKEN`) enable the forwarding; without them messages
+are only stored.
 
 ## Protocol
 

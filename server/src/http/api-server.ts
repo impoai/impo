@@ -10,7 +10,7 @@ import { memoryCategories, type MemoryCategory } from '../memory/contract.js';
 import type { ListeningBatchService } from '../listening/temporal/client.js';
 import { parseListeningBatch } from '../listening/batch-input.js';
 import { maxBatchBytes } from '../listening/batch-contract.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -64,6 +64,8 @@ export interface ApiOptions {
   streamKeepAliveMs?: number;
   /** local-dev is the fixed fixture identity; clerk verifies a real Bearer session token. */
   auth?: { mode: 'local-dev' } | { mode: 'clerk'; secretKey: string };
+  /** Lets the gadget gateway act for the account a gadget is paired to, on chat routes only. */
+  gadgetGateway?: { serviceToken: string };
 }
 
 function messageInput(data: Record<string, unknown>, maxLength: number) {
@@ -159,6 +161,31 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
     return repository.findOrCreateUser('clerk', claims.sub, 'Impo user');
   }
 
+  /**
+   * The gadget gateway vouches for the account subject a gadget is paired to. It may
+   * only post chat and voice messages and read their submissions; every other route
+   * still requires the user's own session.
+   */
+  async function gadgetGatewayUser(req: IncomingMessage, path: string, method: string): Promise<{ id: string } | undefined> {
+    const subject = req.headers['x-impo-gadget-subject'];
+    if (subject === undefined) return undefined;
+    const presented = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice('Bearer '.length) : '';
+    const digest = (value: string) => createHash('sha256').update(value).digest();
+    if (!options.gadgetGateway || !presented || !timingSafeEqual(digest(presented), digest(options.gadgetGateway.serviceToken))) {
+      throw new ServiceError(401, 'unauthorized', 'Gadget gateway credential required');
+    }
+    const allowed = (method === 'POST' && ['/api/v1/conversation/messages', '/api/v1/conversation/voice-messages'].includes(path))
+      || (method === 'GET' && /^\/api\/v1\/submissions\/[^/]+(?:\/stream)?$/.test(path));
+    if (!allowed) throw new ServiceError(403, 'forbidden', 'The gadget gateway cannot use this route');
+    if (typeof subject !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(subject)) throw new ServiceError(400, 'invalid_request', 'Invalid gadget subject');
+    if (auth.mode === 'local-dev') {
+      if (subject !== 'alice' && subject !== 'bob') throw new ServiceError(401, 'unauthorized', 'Local development identity required');
+      return repository.findUser(subject);
+    }
+    if (await options.accounts?.closedIdentity('clerk', subject)) throw new ServiceError(410, 'account_deleted', 'This account has been deleted.');
+    return repository.findOrCreateUser('clerk', subject, 'Impo user');
+  }
+
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let url: URL;
     try { url = new URL(req.url ?? '/', 'http://127.0.0.1'); }
@@ -184,7 +211,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       const token = req.headers.authorization?.replace(/^Bearer /, '') ?? '';
       sendJSON(res, 200, await options.accounts.status(uuid(receiptPath[1]), token)); return;
     }
-    const user = await authenticate(req, path === '/api/v1/account' && method === 'DELETE');
+    const user = await gadgetGatewayUser(req, path, method ?? '') ?? await authenticate(req, path === '/api/v1/account' && method === 'DELETE');
     if (path === '/api/v1/account/deletion-challenge' || path === '/api/v1/account') {
       if (!options.accounts || !options.accountDeletionEnabled) throw new ServiceError(503, 'account_deletion_unavailable', 'Account deletion is temporarily unavailable. Please try again.', true);
       if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');

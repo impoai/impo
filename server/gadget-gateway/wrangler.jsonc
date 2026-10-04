@@ -7,5 +7,7 @@
     "bindings": [{ "name": "DEVICE_HUB", "class_name": "DeviceHub" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
+  // The Impo API that gadget messages go to; IMPO_SERVICE_TOKEN is a secret.
+  "vars": { "IMPO_API_URL": "https://mcp.xyznot.com/instant" },
   "observability": { "enabled": true }
 }
