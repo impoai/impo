@@ -13,6 +13,8 @@
     "build:android:release": "node scripts/android-app.mjs release",
     "android:signing:init": "node scripts/android-app.mjs signing-init",
     "test:android:downloads": "node --test server/downloads/*.test.mjs",
+    "test:gadget-gateway": "node --test server/gadget-gateway/*.test.mjs",
+    "deploy:gadget-gateway": "wrangler deploy --cwd server/gadget-gateway",
     "deploy:android:downloads": "wrangler pages deploy --cwd server/downloads --project-name impo-ai --branch main --commit-dirty=true",
     "publish:android": "node scripts/publish-android.mjs",
     "publish:ios:update": "node scripts/publish-ios-update.mjs",

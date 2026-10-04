@@ -1,0 +1,11 @@
+{
+  "name": "impo-gadget-gateway",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-08-08",
+  "routes": [{ "pattern": "gadgets.impo.ai", "custom_domain": true }],
+  "durable_objects": {
+    "bindings": [{ "name": "DEVICE_HUB", "class_name": "DeviceHub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeviceHub"] }],
+  "observability": { "enabled": true }
+}
