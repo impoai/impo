@@ -82,6 +82,9 @@ async function admin(request, env, url, segments) {
   if (resource === 'invoke' && request.method === 'POST') {
     return stub.fetch('https://hub/invoke', { method: 'POST', body: await request.text() });
   }
+  if (resource === 'replies' && request.method === 'POST') {
+    return stub.fetch('https://hub/replies', { method: 'POST', body: await request.text() });
+  }
   if (resource === 'pairings' && !resourceId && request.method === 'POST') {
     const body = await request.json().catch(() => ({}));
     const created = await stub.fetch('https://hub/pairings', { method: 'POST', body: JSON.stringify({ label: body.label }) });

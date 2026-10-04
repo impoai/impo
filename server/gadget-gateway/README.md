@@ -17,8 +17,9 @@ Status: deployed and verified against the upstream Linux client, the Impo fork
 (`impogadget`) and the fork's ESP32 firmware on an Espressif ESP-SparkBot, which
 registers and serves invokes. It is not yet connected to the Impo API, accounts
 or device-tool dispatch, and no Impo client pairs gadgets. `GET /identity`
-returns a fixed name and `POST /chat/subscribe` stays open without events, so
-gadget messages are stored but never answered. Voice (`/api/voice/dictation`),
+returns a fixed name. Gadget messages are stored for the admin state route, and
+replies reach gadgets only when a caller posts them to the replies route; nothing
+in the Impo server does that yet. Voice (`/api/voice/dictation`),
 `/device_token/mint` and the home-network tunnel (`/link-tunnel`) are not
 implemented.
 
@@ -46,6 +47,7 @@ All require `Authorization: Bearer $ADMIN_TOKEN`. They are for the Impo server.
 | `POST /admin/vms/:vm_id/pairings` | Create a pairing. `pairing` in the response is the record a gadget stores as `pairing.json`. |
 | `DELETE /admin/vms/:vm_id/pairings/:pairing_id` | Unpair and disconnect. |
 | `GET /admin/vms/:vm_id` | Pairings, registered gadgets with their commands, and the last 50 gadget messages. |
+| `POST /admin/vms/:vm_id/replies` | `{text, reply_to_message_id?, message_id?}`; delivers one assistant message to every gadget holding `POST /chat/subscribe` on the route, as `delta.message_start`, `delta.text_append` and `delta.message_done` events. `409 no_subscriber` when none is connected. |
 | `POST /admin/vms/:vm_id/invoke` | `{command, params, timeout_ms?, node_id?}`; waits for the gadget's result. `409 device_offline` when no gadget is connected. |
 
 `system.run` executes shell commands on the gadget. Callers must enforce account

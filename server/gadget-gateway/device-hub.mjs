@@ -19,6 +19,7 @@ const DEFAULT_INVOKE_TIMEOUT_MS = 30_000;
 const MAX_INVOKE_WAIT_MS = 620_000;
 const MAX_CHAT_BODY_BYTES = 256 * 1024;
 const CHAT_HISTORY = 50;
+const MAX_REPLY_CHARS = 16_000;
 const encoder = new TextEncoder();
 
 const json = (body, status = 200) => Response.json(body, { status });
@@ -41,6 +42,7 @@ class Connection {
     this.connectedAt = saved.connectedAt;
     this.nodeId = saved.nodeId ?? null;
     this.controlStream = saved.controlStream ?? null;
+    this.subscribeStream = saved.subscribeStream ?? null;
     this.send = saved.send ? new CipherState(fromBase64Url(saved.send[0]), saved.send[1]) : null;
     this.recv = saved.recv ? new CipherState(fromBase64Url(saved.recv[0]), saved.recv[1]) : null;
   }
@@ -52,6 +54,7 @@ class Connection {
       connectedAt: this.connectedAt,
       nodeId: this.nodeId,
       controlStream: this.controlStream,
+      subscribeStream: this.subscribeStream,
       send: cipher(this.send),
       recv: cipher(this.recv),
     });
@@ -88,6 +91,7 @@ export class DeviceHub extends DurableObject {
     if (segments[0] === 'pairings' && request.method === 'DELETE') return this.deletePairing(segments[1]);
     if (segments[0] === 'state') return this.state();
     if (segments[0] === 'invoke' && request.method === 'POST') return this.invoke(await request.json());
+    if (segments[0] === 'replies' && request.method === 'POST') return this.reply(await request.json());
     return json({ error: 'not_found' }, 404);
   }
 
@@ -152,6 +156,38 @@ export class DeviceHub extends DurableObject {
     this.invokes.delete(id);
     const { method: _method, id: _id, ...outcome } = result;
     return json({ node_id: connection.nodeId, ...outcome });
+  }
+
+  // -- Replies ------------------------------------------------------------------
+
+  // Delivers one assistant message to every gadget subscribed on this route, as
+  // the reply events the gadget firmware reads from POST /chat/subscribe.
+  async reply({ text, reply_to_message_id: replyTo, message_id: messageId }) {
+    if (typeof text !== 'string' || !text.trim() || text.length > MAX_REPLY_CHARS) {
+      return json({ ok: false, error: 'text_required' }, 400);
+    }
+    const subscribers = this.live().filter((c) => c.subscribeStream !== null && c.send);
+    if (!subscribers.length) return json({ ok: false, error: 'no_subscriber' }, 409);
+    const id = typeof messageId === 'string' && messageId ? messageId : crypto.randomUUID();
+    let seq = (await this.ctx.storage.get('reply_seq')) ?? 0;
+    const pieces = text.match(/[\s\S]{1,400}/gu);
+    const events = [
+      ['delta.message_start', { message_id: id, reply_to_message_id: replyTo ?? null }],
+      ...pieces.map((piece) => ['delta.text_append', { message_id: id, text: piece }]),
+      ['delta.message_done', { message_id: id, display_text: text }],
+    ].map(([event, payload]) => `${JSON.stringify({ type: 'event', seq: (seq += 1), event, payload })}\n`);
+    await this.ctx.storage.put('reply_seq', seq);
+    const body = encoder.encode(events.join(''));
+    let delivered = 0;
+    for (const connection of subscribers) {
+      try {
+        await connection.sendEnvelope(encodeBodyChunk(connection.subscribeStream, body));
+        delivered += 1;
+      } catch {
+        // That gadget went away; the others still get the reply.
+      }
+    }
+    return json({ ok: delivered > 0, message_id: id, delivered });
   }
 
   // -- WebSocket lifecycle ------------------------------------------------------
@@ -243,7 +279,9 @@ export class DeviceHub extends DurableObject {
       return connection.sendEnvelope(encodeResponse(streamId, { status: 200, body, endBody: true }));
     }
     if (request.verb === 'POST' && path === SUBSCRIBE_PATH) {
-      // Reply events are not produced yet; the stream stays open and silent.
+      // Stays open; reply() writes NDJSON reply events to it.
+      connection.subscribeStream = streamId;
+      connection.persist();
       return connection.sendEnvelope(encodeResponse(streamId, { status: 200 }));
     }
     if (request.verb === 'POST' && path === CONTROL_PATH) {
