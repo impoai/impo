@@ -99,6 +99,23 @@ final class GadgetPairingTests: XCTestCase {
                                 "token_type": "device", "username": "", "api_url_v2": "https://gadgets.impo.ai", "noise_host": "gadgets.impo.ai"])
     }
 
+    func testWifiScanResultsAreDeduplicatedAndSortedByStrength() throws {
+        let event = Data(#"{"type":"wifi_scan_result","networks":[{"ssid":"Far","rssi":-80,"secure":true},{"ssid":"Home","rssi":-70,"secure":true},{"ssid":"","rssi":-20,"secure":false},{"ssid":"Home","rssi":-40,"secure":true}]}"#.utf8)
+        XCTAssertEqual(GadgetPairingSession.networks(of: event)?.map(\.ssid), ["Home", "Far"])
+        XCTAssertEqual(GadgetPairingSession.networks(of: event)?.first?.rssi, -40)
+        XCTAssertNil(GadgetPairingSession.networks(of: Data(#"{"type":"status","status":"auth_ok"}"#.utf8)))
+    }
+
+    func testAPairingRecordBecomesTheProvisioningCommand() throws {
+        let record = try JSONDecoder().decode(GadgetPairingRecord.self, from: Data(#"{"pairingId":"p1","accessToken":"a","refreshToken":"r","apiURL":"https://gadgets.example","noiseHost":"gadgets.example"}"#.utf8))
+        let command = try XCTUnwrap(JSONSerialization.jsonObject(with: GadgetPairingSession.provisionCommand(record.provisioning(ssid: "Home", password: "secret"))) as? [String: String])
+        XCTAssertEqual(command["access_token"], "a")
+        XCTAssertEqual(command["refresh_token"], "r")
+        XCTAssertEqual(command["api_url_v2"], "https://gadgets.example")
+        XCTAssertEqual(command["noise_host"], "gadgets.example")
+        XCTAssertEqual(command["ssid"], "Home")
+    }
+
     func testFramingSplitsAndReassemblesMessages() {
         let message = Data((0..<500).map { UInt8($0 % 251) })
         let packets = GadgetBLE.packets(for: message, maximumWriteLength: 182)

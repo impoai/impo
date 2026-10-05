@@ -13,6 +13,14 @@ function integer(name: string, fallback: number, minimum: number, maximum: numbe
 // clerk mode also allows 0.0.0.0: a container binds every interface in its own
 // network namespace, and exposure is actually controlled by the security group,
 // not by this bind address; local-dev keeps the stricter loopback/private check.
+function gadgetGatewayAdmin(): { url: string; adminToken: string } | undefined {
+  const url = process.env.GADGET_GATEWAY_URL, adminToken = process.env.GADGET_GATEWAY_ADMIN_TOKEN;
+  if (!url && !adminToken) return undefined;
+  if (!url || !adminToken) throw new Error('Set GADGET_GATEWAY_URL and GADGET_GATEWAY_ADMIN_TOKEN together, or neither');
+  if (!/^https:\/\/[^/]+$/.test(url) || adminToken.length < 32) throw new Error('Invalid gadget gateway admin configuration');
+  return { url, adminToken };
+}
+
 function gadgetGatewayServiceToken(): string | undefined {
   const token = process.env.GADGET_GATEWAY_SERVICE_TOKEN;
   if (token !== undefined && token.length < 32) throw new Error('GADGET_GATEWAY_SERVICE_TOKEN must be at least 32 characters');
@@ -113,6 +121,8 @@ export function loadConfig(role: 'api' | 'worker') {
     authMode: authMode as 'local-dev' | 'clerk', clerk,
     // Shared with the gadget gateway (server/gadget-gateway); unset disables gadget chat.
     gadgetGatewayServiceToken: gadgetGatewayServiceToken(),
+    // The API manages each account's gadget pairings through the gateway's admin routes.
+    gadgetGatewayAdmin: gadgetGatewayAdmin(),
     listening: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com', timeoutMs: 120_000 } : undefined,
     // Hold-to-talk composer transcription; the client waits on this request.
     voice: process.env.GEMINI_API_KEY ? { apiKey: process.env.GEMINI_API_KEY, baseURL: 'https://generativelanguage.googleapis.com',

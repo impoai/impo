@@ -78,6 +78,12 @@ export class RuntimeRepository {
   }
 
   /** Just-in-time provisioning for a real auth provider: first verified sight creates the row. */
+  /** The user's subject at one identity provider, or nothing when they signed in another way. */
+  async identitySubject(userId: string, authProvider: string): Promise<string | undefined> {
+    const [user] = await this.db.select({ subject: users.authSubject }).from(users).where(and(eq(users.id, userId), eq(users.authProvider, authProvider)));
+    return user?.subject;
+  }
+
   async findOrCreateUser(authProvider: string, authSubject: string, name: string): Promise<{ id: string }> {
     return this.db.transaction(async tx => {
       const fingerprint = identityHash(authProvider, authSubject);

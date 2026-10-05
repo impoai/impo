@@ -238,6 +238,14 @@ public struct GadgetPairingSession: Sendable {
         return object["status"] as? String
     }
 
+    /// The networks in a decrypted `{"type":"wifi_scan_result"}` event, strongest first, one entry per name.
+    public static func networks(of event: Data) -> [GadgetNetwork]? {
+        struct Result: Decodable { let type: String; let networks: [GadgetNetwork] }
+        guard let result = try? JSONDecoder().decode(Result.self, from: event), result.type == "wifi_scan_result" else { return nil }
+        var seen = Set<String>()
+        return result.networks.sorted { $0.rssi > $1.rssi }.filter { !$0.ssid.isEmpty && seen.insert($0.ssid).inserted }
+    }
+
     // MARK: Encoding
 
     private static func nonce(direction: UInt8, counter: UInt64) -> AES.GCM.Nonce {

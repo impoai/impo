@@ -17,8 +17,9 @@ Status: live. Gadget text and voice notes posted on `POST /chat/stream` are
 forwarded to the Impo API as chat or voice messages for the account whose
 subject is the route (`vm_id`), and the streamed reply is relayed to gadgets on
 `POST /chat/subscribe`. Verified with the Linux clients and the fork's ESP32
-firmware on an Espressif ESP-SparkBot. The agent cannot yet invoke gadget
-commands, no Impo client pairs gadgets, and `/api/voice/dictation`,
+firmware on an Espressif ESP-SparkBot. The iOS app pairs gadgets over BLE with a
+pairing the Impo API issues through the admin routes (`/api/v1/gadgets`). The
+agent cannot yet invoke gadget commands, and `/api/voice/dictation`,
 `/device_token/mint` and the home-network tunnel (`/link-tunnel`) are not
 implemented.
 

@@ -19,6 +19,8 @@ import { ToolRegistry } from './tools/registry.js';
 import { ConnectorService } from './composio/connector-service.js';
 import { ConnectorRepository } from './db/repositories/connector-repository.js';
 import { memoryToolRegistry, type MemoryReader } from './tools/memory-tools.js';
+import { GadgetGateway } from './gadgets/gateway.js';
+import { gadgetInstructions, gadgetToolRegistry } from './tools/gadget-tools.js';
 
 export function createRuntimeRepository(db: Database, config: ReturnType<typeof loadConfig>, options: { memories?: MemoryReader } = {}): RuntimeRepository | RebyteRepository {
   if (!config.rebyte) return new RuntimeRepository(db);
@@ -32,13 +34,15 @@ export function createRuntimeRepository(db: Database, config: ReturnType<typeof 
     return new ScheduledTaskRepository(db, repository.runtime).create(userId, invocationId, input);
   }) : undefined;
   const catalog = catalogToolRegistry();
-  const serverTools = ToolRegistry.merge(...(connectors ? [connectors] : []), task, memory, clientActionToolRegistry(), catalog, ...(scheduling ? [scheduling] : []));
+  // A gadget route is the account's identity-provider subject; local fixture identities have none.
+  const gadgets = config.gadgetGatewayAdmin ? gadgetToolRegistry(new GadgetGateway(config.gadgetGatewayAdmin), userId => repository.identitySubject(userId, 'clerk')) : undefined;
+  const serverTools = ToolRegistry.merge(...(connectors ? [connectors] : []), task, memory, clientActionToolRegistry(), catalog, ...(gadgets ? [gadgets] : []), ...(scheduling ? [scheduling] : []));
   // Each Session gets a Rebyte Sandbox (shell, files, patches) with network access, plus live web search.
   // These are the full catalogs; each user's Session receives only the tools currently usable for them.
   const environment = rebyteSandbox({ network: { access: 'enabled' } });
   const webSearch = { type: 'web_search', context_size: 'medium', mode: 'live' };
   const agentConfig = {
-    provider: 'rebyte', model: config.rebyte.model, baseURL: config.rebyte.baseURL, instructions: `${mainInstructions}\n\n${catalogInstructions}`, promptVersion: mainPromptVersion, useSavedAgent: true,
+    provider: 'rebyte', model: config.rebyte.model, baseURL: config.rebyte.baseURL, instructions: `${mainInstructions}\n\n${catalogInstructions}${gadgets ? `\n\n${gadgetInstructions}` : ''}`, promptVersion: mainPromptVersion, useSavedAgent: true,
     environment, tools: [...deviceTools, ...serverTools.functionDefinitions(), webSearch],
   };
   // A task never gets device Function tools (it may run with no foreground device) or

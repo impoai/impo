@@ -1,3 +1,4 @@
+import { GadgetGateway } from './gadgets/gateway.js';
 import { AttachmentService, attachmentObjects } from './attachments/service.js';
 import { AttachmentRepository } from './db/repositories/attachment-repository.js';
 import { ScheduledTaskRepository } from './db/repositories/scheduled-task-repository.js';
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
     echoSchedules: config.temporal ? new EchoScheduleRepository(database.db) : undefined,
     accounts: new AccountDeletionService(new AccountDeletionRepository(database.db), config.clerk?.secretKey, config.appleSignIn ? new AppleGrantRevoker(config.appleSignIn) : undefined), accountDeletionEnabled: Boolean(config.temporal),
     gadgetGateway: config.gadgetGatewayServiceToken ? { serviceToken: config.gadgetGatewayServiceToken } : undefined,
+    gadgets: config.gadgetGatewayAdmin ? new GadgetGateway(config.gadgetGatewayAdmin) : undefined,
     dictation: config.voice ? new GeminiDictation(config.voice) : config.runtime === 'development' ? new DevelopmentDictation() : undefined });
   let stopping = false;
   async function shutdown(): Promise<void> {

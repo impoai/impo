@@ -390,6 +390,30 @@ Provider account IDs and credentials stay server-side. Connector tool calls
 appear in run events; the phone does not execute them. Per-action confirmation
 is planned, not an implemented protocol feature.
 
+## Gadgets
+
+| Method and path | Request | Success |
+| --- | --- | --- |
+| `GET /gadgets` | No query | 200 `{gadgets: Gadget[]}` |
+| `POST /gadgets/pairings` | `{}` | 201 `GadgetPairing` |
+| `DELETE /gadgets/pairings/{pairingId}` | No body | 200 `{}` |
+
+```text
+Gadget = { pairingId: uuid, nodeId: string, name: string, platform: string | null,
+           version: string | null, online: boolean }
+GadgetPairing = { pairingId: uuid, accessToken: string, refreshToken: string,
+                  apiURL: string, noiseHost: string }
+```
+
+A gadget is hardware that speaks the open-source gadget link protocol and
+reaches Impo through the gadget gateway. The server only ever acts on the
+gateway route of the session's own account. `GadgetPairing` holds device
+credentials: the client sends them to the gadget in `provision_v2` over the
+encrypted BLE setup session and does not store them. Responses are
+`Cache-Control: no-store`. Delete a pairing whose setup did not finish.
+Issuing a pairing retires the account's pairings that no gadget used within an
+hour. `503 gadgets_unavailable` is retryable. Only the iOS client pairs gadgets.
+
 ## Echo history and annotations
 
 | Method and path | Request | Success |

@@ -20,6 +20,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createUIMessageStream, createUIMessageStreamResponse, type UIMessageChunk } from 'ai';
 import { verifyToken } from '@clerk/backend';
 import { ServiceError } from '../errors.js';
+import type { GadgetAPI } from '../gadgets/gateway.js';
 import { boundedFileBytes, contentDisposition, type FileDownloads } from '../rebyte/files.js';
 import type { RuntimeRepository } from '../db/repositories/runtime-repository.js';
 import { clientContext } from '../tools/device-tools.js';
@@ -67,6 +68,8 @@ export interface ApiOptions {
   auth?: { mode: 'local-dev' } | { mode: 'clerk'; secretKey: string };
   /** Lets the gadget gateway act for the account a gadget is paired to, on chat routes only. */
   gadgetGateway?: { serviceToken: string };
+  /** Pairs and lists the signed-in account's gadgets on the gadget gateway. */
+  gadgets?: GadgetAPI;
 }
 
 function messageInput(data: Record<string, unknown>, maxLength: number) {
@@ -137,7 +140,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
   const auth = options.auth ?? { mode: 'local-dev' as const };
 
   /** local-dev matches a fixed fixture header; clerk verifies a real Bearer session token. */
-  async function authenticate(req: IncomingMessage, allowDeleted = false): Promise<{ id: string }> {
+  async function authenticate(req: IncomingMessage, allowDeleted = false): Promise<{ id: string; subject?: string }> {
     const header = req.headers.authorization;
     if (auth.mode === 'local-dev') {
       const subject = header === 'Bearer instant-dev-alice' ? 'alice' : header === 'Bearer instant-dev-bob' ? 'bob' : undefined;
@@ -147,7 +150,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
         if (allowDeleted) return { id: deleted.userId };
         throw new ServiceError(410, 'account_deleted', 'This account has been deleted.');
       }
-      return repository.findUser(subject);
+      return { ...await repository.findUser(subject), subject };
     }
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
     if (!token) { throw new ServiceError(401, 'unauthorized', 'A session token is required'); }
@@ -159,7 +162,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       if (allowDeleted) return { id: deleted.userId };
       throw new ServiceError(410, 'account_deleted', 'This account has been deleted.');
     }
-    return repository.findOrCreateUser('clerk', claims.sub, 'Impo user');
+    return { ...await repository.findOrCreateUser('clerk', claims.sub, 'Impo user'), subject: claims.sub };
   }
 
   /**
@@ -167,7 +170,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
    * only post chat and voice messages and read their submissions; every other route
    * still requires the user's own session.
    */
-  async function gadgetGatewayUser(req: IncomingMessage, path: string, method: string): Promise<{ id: string } | undefined> {
+  async function gadgetGatewayUser(req: IncomingMessage, path: string, method: string): Promise<{ id: string; subject?: string } | undefined> {
     const subject = req.headers['x-impo-gadget-subject'];
     if (subject === undefined) return undefined;
     const presented = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice('Bearer '.length) : '';
@@ -572,6 +575,23 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       const data = await readJSON(req, requestTimeoutMs, voiceBodyBytes);
       onlyFields(data, ['audio', 'mimeType']);
       sendJSON(res, 200, { text: await transcribeRequest(options.dictation, dictationAudio(data.audio, data.mimeType), requestSignal(res)) }); return;
+    }
+    const gadgetPath = /^\/api\/v1\/gadgets(?:\/pairings(?:\/([^/]+))?)?$/.exec(path);
+    if (gadgetPath) {
+      // The gateway route is the session's own subject, so one account cannot reach another's gadgets.
+      if (!options.gadgets || !user.subject) throw new ServiceError(503, 'gadgets_unavailable', 'Gadgets are temporarily unavailable.', true);
+      if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+      res.setHeader('Cache-Control', 'no-store');
+      if (path === '/api/v1/gadgets' && method === 'GET') { sendJSON(res, 200, await options.gadgets.list(user.subject)); return; }
+      if (path === '/api/v1/gadgets/pairings' && method === 'POST') {
+        onlyFields(await readJSON(req, requestTimeoutMs), []);
+        sendJSON(res, 201, await options.gadgets.pair(user.subject)); return;
+      }
+      if (gadgetPath[1] && method === 'DELETE') {
+        await options.gadgets.unpair(user.subject, uuid(gadgetPath[1]));
+        sendJSON(res, 200, {}); return;
+      }
+      throw new ServiceError(404, 'not_found', 'Gadget route not found');
     }
     if (path.startsWith('/api/v1/devices/') || path.startsWith('/api/v1/device-tool-invocations/')) {
       if (!repository.devices) throw new ServiceError(404, 'not_found', 'Device routes are unavailable');

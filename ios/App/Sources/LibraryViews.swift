@@ -48,6 +48,9 @@ struct SettingsView: View {
                                 settingsRow("Connections", detail: "Calendar, Health, Gmail and 100+ apps") { sheet = .connections }
                                     .accessibilityIdentifier("settings.connections")
                                 divider
+                                settingsRow("Gadgets", detail: "Set up hardware that talks to \(model.assistantName)") { sheet = .gadgets }
+                                    .accessibilityIdentifier("settings.gadgets")
+                                divider
                                 settingsRow("Notifications", detail: "Chat, tasks, Brief and Echo reminders") {
                                     sheet = .notifications
                                 }.accessibilityIdentifier("settings.notifications")
@@ -119,6 +122,7 @@ struct SettingsView: View {
                 switch route {
                 case .debug: ListeningDebugView()
                 case .connections: LibraryConnectionsView()
+                case .gadgets: GadgetsView()
                 case .notifications: NotificationSettingsView()
                 case .echoSchedule: EchoScheduleView()
                 case .profile: ProfileDetailView()
@@ -329,7 +333,7 @@ struct SettingsView: View {
     }
 
     private enum SettingsSheet: String, Identifiable {
-        case connections, profile, plan, usage, debug, notifications, echoSchedule
+        case connections, gadgets, profile, plan, usage, debug, notifications, echoSchedule
         var id: String { rawValue }
     }
 }
