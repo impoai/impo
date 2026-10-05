@@ -15,6 +15,7 @@ struct OnboardingView: View {
     @State private var styleOffset = 0
     @State private var authError: String?
     @State private var isAuthenticating = false
+    @State private var showingPasswordSignIn = false
     @FocusState private var nameFocused: Bool
 
     private let introText = "Hey, there you are.\n\nWe should probably introduce ourselves."
@@ -43,6 +44,13 @@ struct OnboardingView: View {
             if let service = selectedService { permissionOverlay(service) }
         }
         .preferredColorScheme(.light)
+        .sheet(isPresented: $showingPasswordSignIn) {
+            PasswordSignInView {
+                try model.finishPasswordSignIn()
+                if await model.restoreAccountProfile() { return }
+                showingConsent = true
+            }
+        }
         .onChange(of: photoSelection) { _, selection in
             Task {
                 guard let data = try? await selection?.loadTransferable(type: Data.self),
@@ -100,7 +108,7 @@ struct OnboardingView: View {
                     Text("Meet Impo,")
                     // "open" carries the message: accent colour and italic.
                     (Text("an ") + Text("open").font(InstantStyle.serif(28, weight: .semibold, italic: true)).foregroundColor(InstantStyle.accent)
-                        + Text(" assistant that captures everything around your life."))
+                        + Text(" personal agent that captures everything around your life."))
                 }
                 .font(InstantStyle.serif(28))
                 .lineSpacing(3)
@@ -117,7 +125,7 @@ struct OnboardingView: View {
     }
 
     private var login: some View {
-        GeometryReader { geometry in
+        fittingPage {
             VStack(spacing: 0) {
                 Spacer(minLength: 24)
                 DotMark(vertical: true, size: 17)
@@ -132,6 +140,13 @@ struct OnboardingView: View {
                 VStack(spacing: 14) {
                     loginButton("Continue with Google", brand: .google, identifier: "onboarding.login")
                     loginButton("Continue with Apple", brand: .apple, identifier: "onboarding.login.apple")
+                    Button { authError = nil; showingPasswordSignIn = true } label: {
+                        Label("Sign in with email", systemImage: "envelope")
+                            .font(.system(size: 17)).frame(maxWidth: .infinity, minHeight: 52)
+                            .paperSurface(cornerRadius: 16)
+                    }
+                    .buttonStyle(.plain).disabled(isAuthenticating)
+                    .accessibilityIdentifier("onboarding.login.email")
                 }
                 if let authError {
                     Text(authError)
@@ -149,7 +164,6 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, 22)
             .padding(.bottom, 16)
-            .frame(height: geometry.size.height)
         }
     }
 
@@ -424,7 +438,7 @@ struct OnboardingView: View {
                 .font(InstantStyle.serif(24))
                 .foregroundStyle(InstantStyle.forest)
                 .padding(.horizontal, 27)
-                TextField("Name your assistant...", text: $nameDraft)
+                TextField("Name your personal agent...", text: $nameDraft)
                     .font(InstantStyle.serif(24))
                     .multilineTextAlignment(.trailing)
                     .textInputAutocapitalization(.words)
@@ -504,7 +518,7 @@ struct OnboardingView: View {
                     Image(uiImage: image).resizable().scaledToFill().frame(width: diameter, height: diameter).clipShape(RoundedRectangle(cornerRadius: diameter * 0.28))
                         .overlay(RoundedRectangle(cornerRadius: diameter * 0.28).strokeBorder(InstantStyle.accent, lineWidth: 3))
                         .position(x: geometry.size.width * 0.5, y: geometry.size.height * 0.57)
-                        .accessibilityLabel("Your uploaded assistant photo")
+                        .accessibilityLabel("Your uploaded personal agent photo")
                 }
             }
             .frame(maxHeight: 333)

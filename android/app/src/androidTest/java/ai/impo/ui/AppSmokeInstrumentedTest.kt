@@ -170,7 +170,7 @@ class AppSmokeInstrumentedTest {
 
         compose.onNodeWithTag("nav.chat").performClick()
         compose.onNodeWithTag("settings.open").performClick()
-        compose.onNodeWithText("Your assistant").performClick()
+        compose.onNodeWithText("Your personal agent").performClick()
         compose.onNodeWithTag("onboarding.name").performTextReplacement("Android Explorer")
         compose.onNodeWithTag("onboarding.assistant").performTextReplacement("Robin Android")
         compose.onNodeWithTag("onboarding.avatar.1").performScrollTo().performClick()
@@ -201,7 +201,7 @@ class AppSmokeInstrumentedTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Robin Android").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("settings.open").performClick()
         compose.onNodeWithText("Android Explorer").assertExists()
-        compose.onNodeWithText("Your assistant").performClick()
+        compose.onNodeWithText("Your personal agent").performClick()
         compose.onNodeWithTag("onboarding.avatar.1").assertIsSelected()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithContentDescription("Back").performClick()

@@ -10,6 +10,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     /// Files delivered with an assistant reply; never saved with the offline Demo chat.
     var files: [DeliveredFile] = []
     var actions: [ClientAction] = []
+    var products: [ProductSelection] = []
 
     private enum CodingKeys: String, CodingKey { case id, role, text }
 }
@@ -155,6 +156,11 @@ final class AppModel {
     func signIn(ticket: String) async throws {
         try requireAuthConfiguration()
         _ = try await Clerk.shared.auth.signInWithTicket(ticket)
+        try didSignIn()
+    }
+
+    func finishPasswordSignIn() throws {
+        try requireAuthConfiguration()
         try didSignIn()
     }
 
@@ -539,6 +545,14 @@ final class AppModel {
         return downloaded
     }
 
+    func shoppingProducts(messageID: String, selectionID: String, productID: String? = nil) async throws -> ShoppingProducts {
+        guard let scope = listeningScope, let api = listeningClient() else { throw CancellationError() }
+        let result = try await api.shoppingProducts(messageId: messageID, selectionId: selectionID, productId: productID)
+        try Task.checkCancellation()
+        guard listeningScope == scope else { throw CancellationError() }
+        return result
+    }
+
     /// Audio queues are isolated by endpoint AND the actual signed-in account.
     var listeningScope: String? {
         guard useLiveBackend, let url = try? endpoint() else { return nil }
@@ -601,7 +615,7 @@ final class AppModel {
                     return false
                 }
                 var pending = PendingInput(clientID: UUID().uuidString, text: text,
-                    clientContext: MessageClientContext(timeZone: TimeZone.current.identifier, currentDate: ISO8601DateFormatter().string(from: Date())))
+                    clientContext: MessageClientContext.current())
                 pending.attachmentIds = attachments.isEmpty ? nil : attachments.map(\.id)
                 pending.attachments = attachments.isEmpty ? nil : attachments
                 // Save the retry identity before starting HTTP. Mode changes and
@@ -666,7 +680,7 @@ final class AppModel {
                 return false
             }
             let pending = PendingInput(clientID: UUID().uuidString, text: "",
-                clientContext: MessageClientContext(timeZone: TimeZone.current.identifier, currentDate: ISO8601DateFormatter().string(from: Date())),
+                clientContext: MessageClientContext.current(),
                 audio: clip.data, audioMimeType: clip.mimeType)
             pendingInputs[scope] = pending
             messages.append(ChatMessage(id: pending.clientID, role: "user", text: ""))
@@ -794,8 +808,8 @@ final class AppModel {
             guard finishedPages else { throw InstantClientError.invalidResponse }
             let ordered = all.sorted { $0.sequence < $1.sequence }
             var seen = Set<String>()
-            messages = ordered.filter { (!$0.text.isEmpty || !$0.files.isEmpty || !$0.actions.isEmpty) && seen.insert($0.id).inserted }
-                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files, actions: $0.actions) }
+            messages = ordered.filter { (!$0.text.isEmpty || !$0.files.isEmpty || !$0.actions.isEmpty || !$0.products.isEmpty) && seen.insert($0.id).inserted }
+                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files, actions: $0.actions, products: $0.products) }
             chatError = nil
             failedReplyInput = nil
             if active.isEmpty, let lastReply = ordered.last, lastReply.role == "assistant" {
@@ -827,9 +841,9 @@ final class AppModel {
             try check(context)
             deviceToolStatus = state.status == "waiting_device" ? "Waiting for your iPhone to read the requested data…" : nil
             liveSteps = state.done ? [] : state.steps
-            if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty || !state.actions.isEmpty {
-                if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files; messages[index].actions = state.actions }
-                else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files, actions: state.actions)) }
+            if let id = state.messageId, !state.text.isEmpty || !state.files.isEmpty || !state.actions.isEmpty || !state.products.isEmpty {
+                if let index = messages.firstIndex(where: { $0.id == id }) { messages[index].text = state.text; messages[index].files = state.files; messages[index].actions = state.actions; messages[index].products = state.products }
+                else { messages.append(ChatMessage(id: id, role: "assistant", text: state.text, files: state.files, actions: state.actions, products: state.products)) }
             }
             if !state.errors.isEmpty || state.status == "failed" { chatError = "This reply couldn't be completed. You can send a new message." }
             if state.aborted || state.status == "cancelled" { chatError = "This reply was cancelled." }

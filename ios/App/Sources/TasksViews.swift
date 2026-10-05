@@ -358,6 +358,7 @@ struct TaskDetailView: View {
                                     if !message.text.isEmpty { assistantText(message.text) }
                                     if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
                                     if !message.actions.isEmpty { ClientActionsView(actions: message.actions) }
+                                if !message.products.isEmpty { ProductResultsView(messageID: message.id, selections: message.products) }
                                 }
                             }
                             // Same as Chat: "…" holds the message's place until its text arrives.

@@ -7,8 +7,10 @@ Calendar Provider, Health Connect and Contacts adapters, hold-to-talk input,
 and server-backed account/profile settings.
 The debug and signed release builds, unit tests and API 35 emulator acceptance
 have passed. Download the signed testing build from
-[impo.ai/android.apk](https://impo.ai/android.apk). Production Google/Apple login
-pages are verified; full account login and physical-device behavior remain pending.
+[impo.ai/android.apk](https://impo.ai/android.apk). Production password login and
+protected reads are verified on an API 35 emulator with a signed, minified APK.
+Google/Apple login pages are verified; complete social-provider login and
+physical-device behavior remain pending.
 
 ## Local setup
 
@@ -96,7 +98,20 @@ impo.clerkKey=pk_test_your_publishable_key
 The API base URL excludes `/api/v1`. Matching Gradle properties can also be
 supplied by the build environment. Configure the corresponding Clerk
 application and your own API deployment. The app uses Clerk's native SDK for
-Google and Apple sign-in/sign-up, session observation, token refresh and sign-out.
+Google and Apple sign-in/sign-up, email/password sign-in, session observation,
+token refresh and sign-out. Email sign-in is for existing accounts; new users
+can continue with Apple or Google. Enable email sign-in and passwords in Clerk
+to use this entry point. Both Impo Clerk environments already expose password
+sign-in and email password reset as of 2026-10-04.
+
+The native password form handles email reset codes, new passwords, Device Trust
+and MFA (email, SMS, authenticator and backup codes). Incomplete verification
+cannot activate a session; the existing account/session flow remains authoritative.
+Passwords and codes stay in memory, outside saved instance state and preferences.
+Resetting a password signs out other sessions. `PasswordSignInTest` covers state
+transitions; `PasswordSignInInstrumentedTest` exercises the Compose form with a
+synthetic service. Production password login on physical Android remains unverified.
+
 Enable the Native API and both social providers in your Clerk instance, including
 their production web OAuth credentials. The pinned Clerk Android SDK 1.0.1 uses
 `clerk://<applicationId>.oauth`; allowlist `clerk://ai.impo.android.oauth` for the
@@ -165,6 +180,14 @@ Release builds disable debuggability and cleartext traffic, omit debug launch
 identities and instrumentation audio, and include the same production Silero
 model as the debug app. A signed build verifies packaging; it does not replace
 live account/provider or physical-device acceptance.
+
+Keep the Gson `TypeToken` class, subclasses and generic signatures in the
+release shrinker rules. The pinned Clerk SDK uses Auth0 JWTDecode to read token
+expiration; stripping that metadata makes valid cached tokens appear expired.
+Before publishing authentication changes, use the signed, minified APK with a
+dedicated production test account to check login, protected reads, cached-token
+reuse, refresh after token expiry, and cold-start session restoration. Debug
+instrumentation alone does not cover release shrinking.
 
 ### Publish the Android download
 
@@ -248,11 +271,11 @@ and native dispatch; another account never uploads a previous account's audio.
 | Rich responses | Markdown/headings/lists/code/GFM tables, offline LaTeX, horizontal overflow, copy and native text selection frozen during streaming. |
 | Brief | Editions, dates, sources, deletion, time/locale/city settings; complete paginated PDF and PNG sharing through FileProvider. |
 | Memories | Echo timeline/ID hydration/date jumps/details/place labels; About you categories and forgetting. |
-| Echo capture | User-started microphone foreground service, ongoing pause/stop notification, bundled Silero VAD, WAV segments and durable upload batches. |
+| Echo capture | Center Echo/Stop button between Brief and Tasks, shared recording consent with Memories → Echo, user-started microphone foreground service, ongoing pause/stop notification, bundled Silero VAD, WAV segments and durable upload batches. |
 | Echo transfer | SHA-256-bound exact-file PUT, owned upload manifests, matching acceptance receipts before cleanup, WorkManager retry and Wi-Fi-only preference. |
 | Device context | Optional recording-time coarse place resolution; no coordinates in uploaded context. Read-only Calendar Provider, Health Connect and Contacts tools with explicit permission checks. |
 | Connections | Optional onboarding connections; discover/search the server shelf, browser authorization, status refresh and disconnect. |
-| Account and settings | Clerk access; server-restored onboarding, assistant name/look and display name; durable pending profile changes; permission explanations, privacy/terms/support, sign-out and notification settings. |
+| Account and settings | Clerk access; server-restored onboarding, personal agent name/look and display name; durable pending profile changes; permission explanations, privacy/terms/support, sign-out and notification settings. |
 
 Native device tools use `impo_list_calendar_events`, `impo_get_health_summary`
 and `impo_search_contacts`; installed iOS aliases remain valid. See the
@@ -276,9 +299,9 @@ Reviewed today's iOS additions through `caf5358` and shared backend changes in
 | --- | --- |
 | Whole-composer hold-to-talk | Hold an empty composer for 350 ms, release to send once, or slide up 65 dp to cancel. A tap edits normally; nonempty drafts retain native selection. Audio levels and transcription status are visible. |
 | Voice lifecycle fixes | Native AAC recording. Permission approval requires a fresh hold; navigation, backgrounding and account changes cancel unreleased capture. Echo and voice input share microphone exclusion. Released Chat commands have their own account-scoped durable lifecycle. |
-| Returning account recovery | `GET/PATCH /profile` restores onboarding, assistant name and shared avatar indices. Display names use existing Brief settings. Pending writes survive process death; responses from old login sessions cannot update the new session. |
+| Returning account recovery | `GET/PATCH /profile` restores onboarding, personal agent name and shared avatar indices. Display names use existing Brief settings. Pending writes survive process death; responses from old login sessions cannot update the new session. |
 | Optional native Contacts | Explicit read-only permission and account-specific opt-in; requested searches return bounded matching contact details, never a bulk address-book upload. Revocation stops capability advertisement and execution. |
-| Onboarding connections and slogan | “Meet Impo, an open assistant that captures everything around your life.” Echo and open source are prominent; native and external connections are optional before entering Chat. |
+| Onboarding connections and slogan | “Meet Impo, an open personal agent that captures everything around your life.” Echo and open source are prominent; native and external connections are optional before entering Chat. |
 | Citation links and Chat city context | Shared server behavior already applies to Android. Native Markdown renders source links; the server uses fresh Brief location, never a city inferred from a time zone. |
 | Apple Reminders | No universal Android provider. Android does not advertise the iOS reminder tools; external task services are available only when returned by the server's connector directory. |
 | iOS custom avatar photo | Photo bytes are device-local on iOS. Android preserves its available avatar for remote index 6; built-in avatars share identical wire indices and existing Android choices migrate once. |

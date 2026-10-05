@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meet Impo — a guided product tour</title>
+  <style>
+    :root{color-scheme:light;--paper:#f3eddf;--ink:#244e40;--line:#c8cbbb;--orange:#e69a59}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:"Avenir Next",Avenir,sans-serif}
+    a{color:inherit}button,a{touch-action:manipulation}button{font:inherit;cursor:pointer}button:disabled{cursor:default;opacity:.45}
+    button:focus-visible,a:focus-visible{outline:3px solid #af642d;outline-offset:5px}
+    header{max-width:1440px;margin:auto;padding:22px 4vw;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+    .brand{display:flex;gap:12px;align-items:center;font:36px Georgia,serif;text-decoration:none;letter-spacing:-1px}.brand img{width:38px;height:38px;border-radius:9px}
+    .label{font-size:12px;letter-spacing:2px;text-transform:uppercase}.primary{display:inline-flex;align-items:center;justify-content:center;padding:12px 22px;min-height:46px;border:1px solid var(--ink);border-radius:24px;background:var(--ink);color:var(--paper);text-decoration:none}
+    main{max-width:1440px;margin:auto;padding:38px 4vw 24px;display:grid;grid-template-columns:320px minmax(0,1fr);gap:42px}
+    h1{font:clamp(38px,4.3vw,62px)/1.06 Georgia,serif;letter-spacing:-2px;margin:16px 0 22px}p{line-height:1.65}.intro{font-size:17px}
+    nav ol{list-style:none;margin:30px 0 0;padding:0;border-top:1px solid var(--line)}nav li{border-bottom:1px solid var(--line)}
+    .step{display:flex;gap:15px;align-items:center;width:100%;min-height:51px;padding:12px 4px;background:transparent;color:var(--ink);border:0;text-align:left}
+    .step span{font-size:11px;opacity:.7}.step[aria-current=step]{font-weight:700}.step[aria-current=step]:after{content:'●';color:#bc7338;margin-left:auto}
+    .stage{background:#dce2d2;min-height:650px;position:relative;display:flex;flex-direction:column;border-radius:3px;overflow:hidden}
+    .stage-header{display:flex;justify-content:space-between;gap:20px;padding:20px 24px;align-items:center}.stage-header p{margin:0;font-size:12px}
+    #count{white-space:nowrap;font-size:12px;letter-spacing:2px}
+    .visual{position:relative;display:flex;align-items:center;justify-content:center;min-height:510px;flex:1;padding:8px 25px 20px}
+    #screen{display:block;max-width:100%;max-height:560px;object-fit:contain;border-radius:15px;box-shadow:0 12px 24px #244e4020;cursor:zoom-in}
+    #screen.wide{border-radius:6px;max-height:none;width:100%}.caption{padding:0 24px 24px;max-width:800px;margin:0 auto;text-align:center}
+    .caption h2{font:29px/1.15 Georgia,serif;margin:10px 0}.caption p{margin:10px 0 0;font-size:15px}.detail-button{margin-top:15px;background:var(--paper);color:var(--ink);border:1px solid var(--ink);border-radius:24px;min-height:44px;padding:8px 22px}
+    .controls{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-top:20px}.secondary{background:transparent;border:1px solid var(--ink);color:var(--ink);border-radius:24px;padding:11px 20px;min-height:46px}
+    .hint{font-size:12px;opacity:.8}footer{max-width:1440px;margin:0 auto;padding:10px 4vw 26px;display:flex;gap:20px;justify-content:space-between;font-size:12px;line-height:1.6}
+    dialog{border:0;padding:15px;background:var(--paper);max-height:94vh;max-width:94vw;border-radius:12px}dialog::backdrop{background:#172c23cc}dialog img{display:block;max-width:88vw;max-height:80vh;object-fit:contain}dialog button{margin-bottom:12px}
+    @media(max-width:900px){main{grid-template-columns:1fr;gap:24px;padding-top:24px}.intro{max-width:620px}h1{margin-bottom:12px}nav ol{display:flex;overflow:auto;border:0;gap:8px;margin-top:18px;padding-bottom:6px}nav li{border:0;flex-shrink:0}.step{border:1px solid var(--line);border-radius:25px;padding:10px 16px;min-height:44px}.step[aria-current=step]{background:var(--ink);color:var(--paper)}.step[aria-current=step]:after{display:none}.stage{min-height:0}.visual{min-height:390px}#screen{max-height:510px}.label{font-size:10px}.hint{display:none}footer{flex-direction:column;gap:8px}}
+    @media(prefers-reduced-motion:no-preference){#screen{animation:arrive .35s ease-out}@keyframes arrive{from{opacity:.4;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}}
+  </style>
+</head>
+<body>
+<header><a class="brand" href="https://impo.ai"><img src="assets/thumbnail-240.png" alt=""><span>impo</span></a><span class="label">A guided product tour</span><a class="primary" href="https://impo.ai/app/" target="_blank" rel="noopener">Try Impo ↗</a></header>
+<main>
+  <aside><span class="label">Your personal agent</span><h1>A little more<br>room for life.</h1><p class="intro">Remember what matters. Get things done. Find your next good buy.</p><nav aria-label="Tour chapters"><ol id="chapters"></ol></nav></aside>
+  <section aria-label="Product walkthrough"><div class="stage"><div class="stage-header"><p>Real app captures · sample personal content</p><span id="count"></span></div><div class="visual"><img id="screen" alt="" tabindex="0" aria-label="Enlarge current app screenshot"></div><div class="caption" aria-live="polite"><h2 id="title"></h2><p id="description"></p><button class="detail-button" id="detail" hidden>Open product details →</button></div></div><div class="controls"><button id="back" class="secondary">← Back</button><span class="hint">Use the arrow keys to explore · select a screen to enlarge</span><button id="next" class="primary">Next →</button></div></section>
+</main>
+<footer><span>Shopping prices are example snapshots. Complete purchases at the merchant.<br>Web and Android available. iOS TestFlight public access pending.</span><span><a href="https://github.com/impoai/impo" target="_blank" rel="noopener">Explore the source</a> · <a href="https://impo.ai/privacy/" target="_blank" rel="noopener">Privacy</a> · <a href="assets/impo-walkthrough-1080p.mp4">Watch the narrated walkthrough</a></span></footer>
+<dialog id="zoom"><button class="secondary" id="closeZoom">Close enlarged image</button><img id="enlarged" alt=""></dialog>
+<script>
+  const steps=[
+    {label:'Meet Impo',title:'A personal agent, with context.',description:'An ongoing conversation for your thoughts, plans, and everyday questions. The useful context you share helps make the next conversation more relevant.',screen:'chat',alt:'Impo chat with a sample quiet weekend plan.'},
+    {label:'Find your next buy',title:'Start with your needs and budget.',description:'Ask for a commuter backpack under $150. Browse product photos, prices, and options from Shopify Catalog. Shopping cards are available on Web and iOS.',screen:'shopping-results',alt:'Real product search results with backpack photos and catalog prices.'},
+    {label:'Explore the details',title:'Get the details. Make the choice.',description:'Open a product to learn more. When you are ready, follow the merchant link to confirm options, shipping, and the final price before buying.',screen:'shopping-detail',alt:'The product detail view for a Cascade Backpack.'},
+    {label:'Capture with Echo',title:'Good thoughts. Kept close.',description:'Start Echo on your phone to record spoken thoughts. Revisit transcripts and confirm which speech is yours before it contributes to personal memory.',screen:'echo',alt:'Echo transcript timeline showing sample recorded thoughts.'},
+    {label:'Remember what matters',title:'Less repeating. More remembering.',description:'Impo retrieves relevant memories for Chat. Browse the context it keeps, or forget what you no longer want remembered.',screen:'memory',alt:'The Memories interface with sample personal context and categories.'},
+    {label:'Hand off a task',title:'Give the work its own space.',description:'Create an independent task for research, planning, or a first draft. Come back to the result, ask a follow-up, or schedule work that repeats.',screen:'task',alt:'A completed independent task with a sample quiet weekend itinerary.'},
+    {label:'Follow through',title:'A little perspective for your day.',description:'Your Feed offers useful next steps based on the context you share. Open a suggestion to continue the conversation and move it forward.',screen:'web-feed',alt:'The real Web Feed with synthetic sample suggestions.'},
+    {label:'Stay in control',title:'Your context. Your choice.',description:'Connections and native permissions are optional. The clients and backend are open source. Start on the web, or try the Android app.',screen:'connections',alt:'Optional native connections and their permission descriptions.'}
+  ];
+  let current=0;const $=id=>document.getElementById(id);
+  const chapterButtons=steps.map((s,i)=>{const li=document.createElement('li'),b=document.createElement('button');b.className='step';b.innerHTML=`<span>${String(i+1).padStart(2,'0')}</span>${s.label}`;b.onclick=()=>show(i);li.append(b);$('chapters').append(li);return b;});
+  function show(i){current=Math.max(0,Math.min(i,steps.length-1));const s=steps[current];$('screen').src=`source/${s.screen}.png`;$('screen').alt=s.alt;$('screen').classList.toggle('wide',s.screen==='web-feed');$('title').textContent=s.title;$('description').textContent=s.description;$('count').textContent=`${String(current+1).padStart(2,'0')} / 08`;$('back').disabled=current===0;$('next').textContent=current===steps.length-1?'Try Impo ↗':'Next →';$('detail').hidden=current!==1;chapterButtons.forEach((b,j)=>{if(j===current)b.setAttribute('aria-current','step');else b.removeAttribute('aria-current');});history.replaceState(null,'',`#${current+1}`);}
+  $('back').onclick=()=>show(current-1);$('next').onclick=()=>{if(current===steps.length-1)window.open('https://impo.ai/app/','_blank','noopener');else show(current+1);};$('detail').onclick=()=>show(2);
+  function enlarge(){$('enlarged').src=$('screen').src;$('enlarged').alt=$('screen').alt;$('zoom').showModal();}
+  $('screen').onclick=enlarge;$('screen').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();enlarge();}};$('closeZoom').onclick=()=>$('zoom').close();
+  document.addEventListener('keydown',e=>{if($('zoom').open)return;if(e.key==='ArrowRight'){e.preventDefault();show(current+1);}if(e.key==='ArrowLeft'){e.preventDefault();show(current-1);}});
+  show((Number(location.hash.slice(1))||1)-1);
+</script>
+</body>
+</html>

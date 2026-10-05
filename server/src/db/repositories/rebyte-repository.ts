@@ -1,4 +1,5 @@
 import { isClientAction } from '../../tools/client-actions.js';
+import { productSelections } from '../../commerce/catalog.js';
 import { attachmentIds } from '../../attachments/contract.js';
 import { attachments, messageAttachments } from '../entities/attachments.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -402,11 +403,11 @@ export class RebyteRepository extends RuntimeRepository {
           .where(eq(sessionBindings.id, submission.bindingId));
         if (answer.length || hadText) chunks.push({ type: 'text-end', id: partId });
         // Delivered files follow the answer; history rebuilds the same parts from Rebyte.
-        if (turn.status === 'completed' && !submission.cancelRequested) chunks.push(...files);
+        if (turn.status === 'completed' && !submission.cancelRequested) chunks.push(...files, ...productSelections(items, turn.id));
         const status = submission.cancelRequested || turn.status === 'cancelled' ? 'cancelled' : turn.status === 'failed' ? 'failed' : 'completed';
         if (status === 'cancelled') chunks.push({ type: 'abort' });
         if (status === 'failed') chunks.push({ type: 'error', errorText: 'rebyte_turn_failed' });
-        await this.finish(tx, submission, status, chunks, status === 'failed' ? { code: 'rebyte_turn_failed', message: 'The assistant could not complete this reply', retryable: false } : undefined);
+        await this.finish(tx, submission, status, chunks, status === 'failed' ? { code: 'rebyte_turn_failed', message: 'The personal agent could not complete this reply', retryable: false } : undefined);
         await this.completeJob(tx, job);
       } else if (chunks.length) await this.appendEvents(tx, submission, chunks);
       return final;
@@ -425,7 +426,7 @@ export class RebyteRepository extends RuntimeRepository {
   /** A definite provider rejection has no remote side effect to reconcile. */
   async rejectCreation(job: ClaimedJob): Promise<void> {
     await this.withLease(job, async (tx, submission) => {
-      const error = { code: 'rebyte_creation_rejected', message: 'The assistant could not start this reply. Please try again.', retryable: false };
+      const error = { code: 'rebyte_creation_rejected', message: 'The personal agent could not start this reply. Please try again.', retryable: false };
       const [binding] = await tx.select().from(sessionBindings).where(eq(sessionBindings.id, submission.bindingId));
       if (!binding || binding.providerSessionId || submission.inputAcknowledged || submission.providerTurnId) throw new Error('Creation rejection cannot change accepted work');
       await tx.update(sessionCreationAttempts).set({ status: 'failed', error, updatedAt: new Date() })
@@ -445,7 +446,7 @@ export class RebyteRepository extends RuntimeRepository {
   async failSession(job: ClaimedJob): Promise<void> {
     await this.withLease(job, async (tx, submission) => {
       await tx.update(sessionBindings).set({ status: 'failed', updatedAt: new Date() }).where(eq(sessionBindings.id, submission.bindingId));
-      await this.finish(tx, submission, 'failed', [{ type: 'error', errorText: 'rebyte_session_failed' }], { code: 'rebyte_session_failed', message: 'The assistant session failed', retryable: false });
+      await this.finish(tx, submission, 'failed', [{ type: 'error', errorText: 'rebyte_session_failed' }], { code: 'rebyte_session_failed', message: 'The personal agent session failed', retryable: false });
       await this.completeJob(tx, job);
     });
   }
@@ -453,7 +454,7 @@ export class RebyteRepository extends RuntimeRepository {
   /** Preserve uncertain remote writes for reconciliation, never recreate/resubmit blindly. */
   async defer(job: ClaimedJob, code: string, delayMs: number): Promise<void> {
     await this.withLease(job, async (tx, submission) => {
-      const error = { code, message: 'Waiting to confirm the assistant reply', retryable: true };
+      const error = { code, message: 'Waiting to confirm the personal agent reply', retryable: true };
       await tx.update(runtimeSubmissions).set({ error, updatedAt: new Date() }).where(eq(runtimeSubmissions.id, submission.id));
       await tx.update(outboxJobs).set({ status: 'pending', leaseToken: null, leaseUntil: null, availableAt: new Date(Date.now() + delayMs), error, updatedAt: new Date() }).where(eq(outboxJobs.id, job.id));
     });

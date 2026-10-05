@@ -1,0 +1,40 @@
+{
+  "name": "Impo",
+  "website": "https://impo.ai",
+  "webApp": "https://impo.ai/app/",
+  "android": "https://impo.ai/android.apk",
+  "github": "https://github.com/impoai/impo",
+  "discord": "https://discord.gg/84ZYn3xcGV",
+  "privacy": "https://impo.ai/privacy/",
+  "support": "https://impo.ai/support/",
+  "tagline": "Open source Muse",
+  "description": "Impo is an open-source personal agent that turns everyday context into useful help. Capture thoughts with Echo, keep memories you control, delegate tasks, and get a personal Feed. Shopping starts with your needs and budget: find products, compare options, and open the merchant to buy. Try it on the web or Android; iOS is in TestFlight.",
+  "firstComment": "Hi Product Hunt, I'm CJ, the maker of Impo.\n\nImpo is a personal agent for the everyday things you want help with: remembering a thought, getting a task done, or deciding what to buy. The idea is simple: the context you choose to share should make the next conversation more useful.\n\nHere's what you can do:\n\n- Shop from a real need. Try “Find a commuter backpack under $150.” Impo searches products, shows photos, prices and details, and helps you compare. Open the merchant when you're ready to buy; checkout happens in the store.\n- Keep spoken thoughts with Echo. Start a recording on your phone, revisit the transcript, and confirm which speech is yours before it contributes to memory.\n- Spend less time repeating yourself. Browse the context Impo remembers and forget what you no longer want kept.\n- Hand off work. Give research, planning or a first draft its own task, then return to the result. You can also schedule recurring tasks.\n- Get a little perspective. Your Feed brings together useful next steps from the context you've shared.\n\nThe clients and backend are open source. Connections and phone permissions are optional, and you choose when Echo records.\n\nStart on the web: https://impo.ai/app/\nAndroid: https://impo.ai/android.apk\nSource: https://github.com/impoai/impo\n\niOS is in TestFlight, with public access still pending. Shopping cards are available on the web and iOS. This is an early release, and we'd love to learn where it fits into your day.\n\nWhat would you want your personal agent to remember or help you buy first?",
+  "preferredTags": [
+    "Artificial Intelligence",
+    "Productivity",
+    "Open Source"
+  ],
+  "pricing": "Free",
+  "shoutouts": [
+    {
+      "product": "Temporal",
+      "reason": "Temporal coordinates Echo processing, personal Feed generation and scheduled tasks. Durable workflows let that background work recover from interruptions and continue independently of an open app."
+    },
+    {
+      "product": "Shopify",
+      "reason": "Shopify Catalog brings real products into Impo, with images, catalog prices, detailed descriptions and merchant links. It gives our personal agent a practical way to help users find and compare things to buy."
+    },
+    {
+      "product": "Clerk",
+      "reason": "Clerk gives Impo a shared account system across Web, iOS and Android. Its sign-in and session tooling lets us focus on the personal agent while keeping account identity consistent across clients."
+    }
+  ],
+  "videoTitle": "Meet Impo: your personal agent for life and shopping",
+  "videoDescription": "Meet Impo, an open-source personal agent for everyday context, tasks and shopping. This narrated product walkthrough uses real app captures, with sample personal content and live catalog examples. Prices shown are illustrative snapshots. Find products in Impo and complete purchases at the merchant. Start on the web: https://impo.ai/app/ • Android: https://impo.ai/android.apk • Source: https://github.com/impoai/impo. iOS TestFlight public access is pending.",
+  "maker": {
+    "name": "CJ",
+    "username": "meowoof",
+    "profile": "https://www.producthunt.com/@meowoof"
+  }
+}

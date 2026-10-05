@@ -104,7 +104,7 @@ key, for example; reconcile its status. `409` conflicts need reconciliation;
 | `PATCH /profile` | Optional `assistantName`, `avatarIndex`, `onboarded` | 200 `AccountProfile` |
 
 `AccountProfile` contains `onboarded: boolean` and optional `displayName`,
-`assistantName`, and `avatarIndex`. The assistant name is trimmed and must have
+`assistantName`, and `avatarIndex`. The personal agent name is trimmed and must have
 1–30 characters without NUL. Avatar indices are stable: fox 0, robin 1, cat 2,
 Impo 3, owl 4, otter 5, and iOS device-local photo 6. The API does not transfer
 photo bytes. `onboarded` may only be set to `true`; old accounts with a user
@@ -574,18 +574,18 @@ an unadvertised alias. No `platform` field or negotiation endpoint is required.
 
 ## Outside the current API
 
-- Onboarding, assistant customization, local preferences, response rendering,
+- Onboarding, personal agent customization, local preferences, response rendering,
   selection, export/sharing and permission explanations belong to the client.
-  There is no general profile/assistant-preference sync API; Brief's display
-  name is a narrower server setting.
+  Shared name, avatar, onboarding and mode use `/profile`; Feed display name and
+  delivery preferences use `/today/settings`.
 - Notification preferences and owned installations use the
   [shared notification contract](notifications.md). Chat, Task and Brief
   delivery runs through Temporal and FCM/APNs.
-- Account deletion currently requests support by email; it is not an immediate
-  account/data deletion command. Sign-out belongs to authentication.
-- Voice chat/hold-to-speak, attachments/camera uploads, billing/subscriptions,
-  diary generation and some onboarding connections
-  are not implemented end-to-end features.
+- Account deletion uses the challenge/confirmation/receipt protocol below.
+  Sign-out belongs to authentication.
+- Short voice messages and input attachments use the shared endpoints documented
+  above. Native capture permissions stay on devices. Billing/subscriptions and
+  diary generation are not implemented end-to-end features.
 - `/health` and `/ready` are unauthenticated operational probes. Health does not
   prove optional providers are configured. Optional features can return errors
   such as `503 today_unavailable`, `memories_unavailable`, `upload_unavailable`,
@@ -634,3 +634,8 @@ is still required before claiming microphone, location, health or background par
 ## Account deletion
 
 Deletion requires an authenticated five-minute challenge and an exact `DELETE` confirmation. The returned receipt token authorizes status checks independently of the removed login identity. Clients persist the confirmation intent before sending, recover accepted requests via the status endpoint after a lost response, and purge only the deleted account’s local data. See [the API and lifecycle](../docs/account-deletion.md).
+
+## Web client
+
+The React/TypeScript client uses this same protocol. See [Web-specific transport,
+recovery and capability boundaries](web-client.md).

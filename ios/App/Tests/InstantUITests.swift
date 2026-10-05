@@ -21,15 +21,9 @@ final class InstantUITests: XCTestCase {
         tap("onboarding.begin")
         require("onboarding.login")
         capture("02 Sign in preview")
-        // Every login option here needs something this regression test can't
-        // provide headlessly: OAuth needs a native system consent sheet, and
-        // this Clerk Application has no password sign-in strategy configured
-        // at all (only OAuth + email code) - see ClerkAuthLiveUITests for how
-        // the opt-in live tests actually exercise real sign-in, with a
-        // server-minted one-time token. So this regression test instead
-        // covers the login screen's own rendering, then relaunches past it
-        // with the existing --onboarding-step bypass to keep covering the
-        // rest of onboarding and chat without a real backend/account.
+        // This fixture test covers the login screen, then continues onboarding
+        // without a real account. PasswordSignInUITests covers the email form
+        // and an opt-in Clerk development account; OAuth needs system consent.
         app.terminate()
         app.launchArguments = ["--onboarding-step", "2"]
         app.launch()
@@ -94,10 +88,10 @@ final class InstantUITests: XCTestCase {
 
     func testTabsSettingsProfileAndMemoryCategories() {
         launchMain()
-        XCTAssertTrue(require("tab.today").label.contains("Brief"))
+        XCTAssertTrue(require("tab.today").label.contains("Feed"))
         tap("tab.today")
-        XCTAssertTrue(app.staticTexts["Today"].firstMatch.waitForExistence(timeout: 5))
-        capture("20 Today")
+        XCTAssertTrue(app.staticTexts["Feed"].firstMatch.waitForExistence(timeout: 5))
+        capture("20 Feed")
         tap("tab.tasks")
         require("task.add")
         require("task.template.priority-list")

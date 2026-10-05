@@ -74,6 +74,7 @@ public struct UIMessageState: Equatable, Sendable {
     public var steps: [StreamStep] = []
     /// Files delivered with the reply, in stream order.
     public var files: [DeliveredFile] = []
+    public var products: [ProductSelection] = []
     public var errors: [String] = []
     public var aborted = false
     public var finished = false
@@ -162,6 +163,10 @@ public struct UIMessageReducer: Sendable {
             // Optional: a malformed file part is ignored rather than failing the reply.
             guard let file = DeliveredFile(chunk["data"]), !state.files.contains(where: { $0.fileId == file.fileId }) else { break }
             state.files.append(file)
+        case "data-impo-products":
+            guard let selection = ProductSelection(chunk["data"]) else { break }
+            if let index = state.products.firstIndex(where: { $0.id == selection.id }) { state.products[index] = selection }
+            else { state.products.append(selection) }
         case "data-instant-device-request":
             guard let data = chunk["data"] else { throw StreamProtocolError.malformedChunk("missing request") }
             let request: DeviceRequest

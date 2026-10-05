@@ -128,8 +128,8 @@ final class VoiceInput {
 }
 
 /// The one message composer used by Chat, new tasks and task conversations: attach, native
-/// multiline text, and a voice button that becomes Send once there is text. Holding anywhere on
-/// an empty composer records; sliding up cancels.
+/// multiline text, and a voice button that becomes Send once there is text. Holding the empty
+/// input or voice control records; sliding up cancels. The attachment menu has its own touch target.
 struct ChatComposer: View {
     @Environment(AppModel.self) private var model
     @Environment(ListeningModel.self) private var listening
@@ -161,8 +161,9 @@ struct ChatComposer: View {
                 }.foregroundStyle(InstantStyle.muted).padding(.leading, 14).padding(.trailing, 4).frame(minHeight: 44)
                     .background(InstantStyle.paperElevated, in: RoundedRectangle(cornerRadius: 16))
             }
-            AttachmentPicker(files: $attachments, blocked: $attachmentBlocked, disabled: sendDisabled)
-            row
+            AttachmentPicker(files: $attachments, blocked: $attachmentBlocked, disabled: sendDisabled) { button in
+                row(attachmentButton: button)
+            }
         }
         .onChange(of: phase) { _, phase in
             if phase == .background || (phase == .inactive && model.dictation.phase != .starting) { voice.cancel(model.dictation) }
@@ -172,47 +173,50 @@ struct ChatComposer: View {
 
     private var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty }
 
-    private var row: some View {
-        HStack(spacing: 9) {
-            ComposerTextView(text: $text, focused: $focused, identifier: "\(identifier).input", onSend: { if !sendDisabled && !attachmentBlocked { onSend() } })
-                .overlay(alignment: .leading) {
-                    if text.isEmpty {
-                        Text(placeholder).font(.system(size: 15)).foregroundStyle(InstantStyle.muted).lineLimit(1)
-                            .allowsHitTesting(false)
+    private func row(attachmentButton: AttachmentButton) -> some View {
+        HStack(spacing: 3) {
+            attachmentButton
+            HStack(spacing: 9) {
+                ComposerTextView(text: $text, focused: $focused, identifier: "\(identifier).input", onSend: { if !sendDisabled && !attachmentBlocked { onSend() } })
+                    .overlay(alignment: .leading) {
+                        if text.isEmpty {
+                            Text(placeholder).font(.system(size: 15)).foregroundStyle(InstantStyle.muted).lineLimit(1)
+                                .allowsHitTesting(false)
+                        }
                     }
-                }
-            if isEmpty {
-                Image(systemName: "waveform").font(.system(size: 21, weight: .regular))
-                    .frame(width: 44, height: 44)
-                    .background(InstantStyle.orangePaper, in: Circle())
-                    .overlay(Circle().strokeBorder(InstantStyle.paperElevated.opacity(0.8), lineWidth: 1))
-                    .foregroundStyle(InstantStyle.forest).contentShape(Rectangle())
-                    .accessibilityElement().accessibilityLabel("Hold to talk")
-                    .accessibilityHint("Release to send. Slide up to cancel.")
-                    .accessibilityIdentifier("\(identifier).voice")
-                    .accessibilityAddTraits(.isButton)
-            } else {
-                Button(action: onSend) {
-                    Image(systemName: "arrow.up").font(.system(size: 21, weight: .semibold))
+                if isEmpty {
+                    Image(systemName: "waveform").font(.system(size: 21, weight: .regular))
                         .frame(width: 44, height: 44)
                         .background(InstantStyle.orangePaper, in: Circle())
-                        .foregroundStyle(InstantStyle.forest)
-                }.frame(width: 44, height: 44).disabled(sendDisabled || attachmentBlocked)
-                    .accessibilityLabel("Send message").accessibilityIdentifier("\(identifier).send")
+                        .overlay(Circle().strokeBorder(InstantStyle.paperElevated.opacity(0.8), lineWidth: 1))
+                        .foregroundStyle(InstantStyle.forest).contentShape(Rectangle())
+                        .accessibilityElement().accessibilityLabel("Hold to talk")
+                        .accessibilityHint("Release to send. Slide up to cancel.")
+                        .accessibilityIdentifier("\(identifier).voice")
+                        .accessibilityAddTraits(.isButton)
+                } else {
+                    Button(action: onSend) {
+                        Image(systemName: "arrow.up").font(.system(size: 21, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .background(InstantStyle.orangePaper, in: Circle())
+                            .foregroundStyle(InstantStyle.forest)
+                    }.frame(width: 44, height: 44).disabled(sendDisabled || attachmentBlocked)
+                        .accessibilityLabel("Send message").accessibilityIdentifier("\(identifier).send")
+                }
             }
+            .gesture(ComposerHoldGesture(enabled: text.isEmpty && attachments.isEmpty && !attachmentBlocked,
+                onBegan: {
+                    focused = false
+                    voice.begin(model.dictation, echoActive: listening.isListening, assistantName: model.assistantName)
+                },
+                onMoved: { voice.move(cancel: $0) },
+                onEnded: { voice.end(model.dictation, deliver: onClip) },
+                onCancelled: { voice.cancel(model.dictation) }))
         }
-        .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 5)
+        .padding(.horizontal, 6).padding(.vertical, 5)
         .foregroundStyle(InstantStyle.forest)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 29))
         .contentShape(RoundedRectangle(cornerRadius: 29))
-        .gesture(ComposerHoldGesture(enabled: text.isEmpty && attachments.isEmpty && !attachmentBlocked,
-            onBegan: {
-                focused = false
-                voice.begin(model.dictation, echoActive: listening.isListening, assistantName: model.assistantName)
-            },
-            onMoved: { voice.move(cancel: $0) },
-            onEnded: { voice.end(model.dictation, deliver: onClip) },
-            onCancelled: { voice.cancel(model.dictation) }))
         .overlay(RoundedRectangle(cornerRadius: 29).strokeBorder(InstantStyle.paperElevated, lineWidth: 1))
         .shadow(color: InstantStyle.forest.opacity(0.06), radius: 7, y: 3)
     }

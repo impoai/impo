@@ -13,11 +13,12 @@ private struct UploadDraft: Identifiable {
 }
 
 /// Both pickers share one upload path. Only ready, account-owned IDs enter message commands.
-struct AttachmentPicker: View {
+struct AttachmentPicker<Content: View>: View {
     @Environment(AppModel.self) private var model
     @Binding var files: [UploadedAttachment]
     @Binding var blocked: Bool
     var disabled = false
+    @ViewBuilder var composer: (AttachmentButton) -> Content
     @State private var importing = false
     @State private var showingPhotos = false
     @State private var pickerOwner: String?
@@ -33,15 +34,7 @@ struct AttachmentPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top) {
-                Menu {
-                    Button { pickerOwner = model.listeningScope; showingPhotos = true } label: {
-                        Label("Photo library", systemImage: "photo")
-                    }
-                    Button { pickerOwner = model.listeningScope; importing = true } label: { Label("Choose files", systemImage: "doc") }
-                } label: { Label("Attach", systemImage: "plus").font(.subheadline).frame(minHeight: 44) }
-                    .disabled(disabled || model.liveClient() == nil || files.count + drafts.count >= 8)
-                    .accessibilityIdentifier("attachments.add")
+            if !files.isEmpty || !drafts.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(files) { file in
@@ -62,9 +55,13 @@ struct AttachmentPicker: View {
                             }.font(.caption).padding(.leading, 10).background(InstantStyle.paperElevated, in: Capsule())
                         }
                     }
-                }.scrollIndicators(.hidden)
+                }.scrollIndicators(.hidden).frame(height: 44)
             }
             if let notice { Text(notice).font(.caption).foregroundStyle(InstantStyle.muted) }
+            composer(AttachmentButton(
+                disabled: disabled || model.liveClient() == nil || files.count + drafts.count >= 8,
+                openPhotos: { pickerOwner = model.listeningScope; showingPhotos = true },
+                openFiles: { pickerOwner = model.listeningScope; importing = true }))
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.data], allowsMultipleSelection: true) { result in
             guard model.listeningScope == pickerOwner else { return }
@@ -144,6 +141,25 @@ struct AttachmentPicker: View {
                 notice = "Upload didn't finish. Retry or remove the file before sending."; jobs[draft.id] = nil; syncBlocked()
             }
         }
+    }
+}
+
+struct AttachmentButton: View {
+    let disabled: Bool
+    let openPhotos: () -> Void
+    let openFiles: () -> Void
+
+    var body: some View {
+        Menu {
+            Button(action: openPhotos) { Label("Photo library", systemImage: "photo") }
+            Button(action: openFiles) { Label("Choose files", systemImage: "doc") }
+        } label: {
+            Image(systemName: "plus").font(.system(size: 22, weight: .regular))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .disabled(disabled)
+        .accessibilityLabel("Attach")
+        .accessibilityIdentifier("attachments.add")
     }
 }
 

@@ -67,6 +67,11 @@ fun openWeb(context: Context, raw: String) {
     var error by remember { mutableStateOf<String?>(null) }
     var development by rememberSaveable { mutableStateOf(false) }
     var endpoint by rememberSaveable { mutableStateOf("http://10.0.2.2:3011") }
+    var passwordSignIn by remember { mutableStateOf<PasswordSignInFlow?>(null) }
+    passwordSignIn?.let { flow ->
+        PasswordSignInScreen(flow) { passwordSignIn = null }
+        return
+    }
     fun signIn(provider: SignInProvider) {
         connecting = provider
         error = null
@@ -81,7 +86,7 @@ fun openWeb(context: Context, raw: String) {
         Spacer(Modifier.height(32.dp))
         AssistantAvatar(3, 80)
         Text("Meet Impo,", style = MaterialTheme.typography.headlineLarge)
-        Text("an open assistant that captures everything around your life.", color = Muted, style = MaterialTheme.typography.bodyLarge)
+        Text("an open personal agent that captures everything around your life.", color = Muted, style = MaterialTheme.typography.bodyLarge)
         PaperCard {
             Text("Capture everything with Echo.", style = MaterialTheme.typography.titleLarge)
             Text("Keep the spoken moments you choose to record. Talk things through, delegate tasks and find your daily perspective in Brief.", color = Muted)
@@ -96,6 +101,8 @@ fun openWeb(context: Context, raw: String) {
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("auth.apple")) {
             Text(if (connecting == SignInProvider.Apple) "Opening Apple…" else "Continue with Apple")
         }
+        OutlinedButton(onClick = { error = null; passwordSignIn = vm.auth.passwordSignInFlow() }, enabled = connecting == null,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("auth.emailLogin")) { Text("Sign in with email") }
         Text("Your memories, conversations and recordings stay connected to your account.", color = Muted, style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(onClick = { openWeb(context, "https://impo.ai/privacy/") }) { Text("Privacy") }
@@ -140,7 +147,7 @@ fun openWeb(context: Context, raw: String) {
         AssistantAvatar(avatar, 96)
         Text("Make yourself at home.", style = MaterialTheme.typography.headlineLarge)
         OutlinedTextField(name, { name = it.take(100) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding.name"))
-        OutlinedTextField(assistant, { assistant = it.take(30) }, label = { Text("Your assistant's name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding.assistant"))
+        OutlinedTextField(assistant, { assistant = it.take(30) }, label = { Text("Your personal agent's name") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding.assistant"))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { avatarChoices.forEach { index ->
             Surface(Modifier.testTag("onboarding.avatar.$index").semantics { contentDescription = "${avatarNames[index]} avatar"; selected = avatar == index }
                 .clickable { avatar = index }, shape = MaterialTheme.shapes.medium, color = if (avatar == index) Sage else Paper) { AssistantAvatar(index, 48) }
@@ -154,10 +161,17 @@ fun openWeb(context: Context, raw: String) {
 private data class MainTab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutline), MainTab("brief", "Brief", Icons.Outlined.WbSunny), MainTab("tasks", "Tasks", Icons.Outlined.CheckCircleOutline), MainTab("memories", "Memories", Icons.Outlined.AutoStories))
 @Composable private fun SignedInApp(vm: AppViewModel, state: AppState) {
+    val context = LocalContext.current
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "chat"
     val recording by NativeBridge.recording.collectAsStateWithLifecycle()
+    var explainEcho by remember { mutableStateOf(false) }
+    var microphoneDenied by remember { mutableStateOf(false) }
+    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        if (grants[Manifest.permission.RECORD_AUDIO] == true) { microphoneDenied = false; NativeBridge.startEcho(context, state.profile.recordingLocation) } else microphoneDenied = true
+    }
+    val requestEcho: () -> Unit = { microphoneDenied = false; explainEcho = true }
     val go: (String) -> Unit = { target -> nav.navigate(target) {
         if (tabs.any { it.route == target }) { popUpTo("chat") { saveState = true }; restoreState = true }
         launchSingleTop = true
@@ -178,11 +192,17 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
     val back: () -> Unit = { nav.popBackStack() }
     Scaffold(containerColor = Paper, contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = { if (tabs.any { it.route == route }) NavigationBar(containerColor = RaisedPaper, tonalElevation = 0.dp) {
-            tabs.forEach { tab -> NavigationBarItem(selected = route == tab.route, onClick = { nav.navigate(tab.route) { popUpTo("chat") { saveState = true }; launchSingleTop = true; restoreState = true } },
-                icon = { Icon(tab.icon, null) }, label = { Text(tab.label) }, modifier = Modifier.testTag("nav.${tab.route}"), colors = NavigationBarItemDefaults.colors(indicatorColor = Sage, selectedTextColor = Forest, selectedIconColor = Forest, unselectedTextColor = Muted, unselectedIconColor = Muted)) }
+            tabs.forEach { tab ->
+                if (tab.route == "tasks") EchoDockButton(recording.isRecording || recording.isPaused, Modifier.weight(1f)) {
+                    if (recording.isRecording || recording.isPaused) NativeBridge.stopEcho(context) else requestEcho()
+                }
+                NavigationBarItem(selected = route == tab.route, onClick = { go(tab.route) },
+                    icon = { Icon(tab.icon, null) }, label = { Text(tab.label, maxLines = 1) }, modifier = Modifier.testTag("nav.${tab.route}"), colors = NavigationBarItemDefaults.colors(indicatorColor = Sage, selectedTextColor = Forest, selectedIconColor = Forest, unselectedTextColor = Muted, unselectedIconColor = Muted))
+            }
         } }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             ErrorNotice(state.errors["profile"], if ("profile" !in state.busy) vm::retryProfile else null)
+            ErrorNotice(if (microphoneDenied) "Microphone permission is needed to record. You can enable it in Android settings." else recording.message)
             if (recording.isRecording || recording.isPaused) Surface(color = Sage, modifier = Modifier.fillMaxWidth().clickable { go("memories") }) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.GraphicEq, null)
@@ -197,9 +217,9 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
                 composable("scheduled-tasks") { ScheduledTasksScreen(vm, state, go, back) }
                 composable("schedule/{id}") { entry -> ScheduledTaskEditor(vm, state, entry.arguments?.getString("id")!!, go, back) }
                 composable("tasks") { TasksScreen(vm, state, go) }
-                composable("memories") { MemoriesScreen(vm, state, go, echoReminderEvent) }
+                composable("memories") { MemoriesScreen(vm, state, go, requestEcho, echoReminderEvent) }
                 composable("settings") { SettingsScreen(vm, state, go, back) }
-                composable("assistant") { Column { PageHeader("Your assistant", back = back); PersonalizeScreen(state.profile, saving = "profile" in state.busy, buttonLabel = "Save changes") { vm.saveProfile(it, onSaved = back) } } }
+                composable("assistant") { Column { PageHeader("Your personal agent", back = back); PersonalizeScreen(state.profile, saving = "profile" in state.busy, buttonLabel = "Save changes") { vm.saveProfile(it, onSaved = back) } } }
                 composable("connections") { ConnectionsScreen(vm, state, back) }
                 composable("connections/{toolkit}") { entry -> ConnectionsScreen(vm, state, back, initialToolkit = entry.arguments?.getString("toolkit")) }
                 composable("echo-schedule") { EchoScheduleScreen(vm, back) }
@@ -210,19 +230,21 @@ private val tabs = listOf(MainTab("chat", "Chat", Icons.Outlined.ChatBubbleOutli
             }
         }
     }
+    if (explainEcho) AlertDialog(onDismissRequest = { explainEcho = false }, title = { Text("Capture a thought") }, text = { Text("Echo listens while you choose to record. Speech is saved on this device, uploaded securely and transcribed into Echo. Confirm your voice before using speech in memories or Brief. A recording notification stays visible, and you can pause or stop at any time.") }, confirmButton = { TextButton(onClick = {
+        explainEcho = false
+        microphonePermission.launch(buildList { add(Manifest.permission.RECORD_AUDIO); if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS) }.toTypedArray())
+    }) { Text("Start recording") } }, dismissButton = { TextButton(onClick = { explainEcho = false }) { Text("Not now") } })
 }
-@Composable fun RecordButton(vm: AppViewModel, profile: UserSettings) {
-    val context = LocalContext.current
-    val recording by NativeBridge.recording.collectAsStateWithLifecycle()
-    var explain by remember { mutableStateOf(false) }
-    var denied by remember { mutableStateOf(false) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants[Manifest.permission.RECORD_AUDIO] == true) { denied = false; NativeBridge.startEcho(context, profile.recordingLocation) } else denied = true
+@Composable private fun EchoDockButton(active: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Button(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).heightIn(min = 56.dp)
+            .testTag("nav.echo").semantics { contentDescription = if (active) "Stop Echo recording" else "Start Echo recording" },
+            colors = ButtonDefaults.buttonColors(containerColor = if (active) Apricot else Forest, contentColor = if (active) Ink else RaisedPaper),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Icon(if (active) Icons.Outlined.Stop else Icons.Outlined.GraphicEq, null, Modifier.size(24.dp))
+                Text(if (active) "Stop" else "Echo", style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
+        }
     }
-    if (!recording.isRecording && !recording.isPaused) OutlinedButton(onClick = { explain = true }, modifier = Modifier.testTag("echo.start")) { Icon(Icons.Outlined.Mic, null); Spacer(Modifier.width(6.dp)); Text("Record Echo") }
-    ErrorNotice(if (denied) "Microphone permission is needed to record. You can enable it in Android settings." else recording.message)
-    if (explain) AlertDialog(onDismissRequest = { explain = false }, title = { Text("Capture a thought") }, text = { Text("Echo listens while you choose to record. Speech is saved on this device, uploaded securely and transcribed into Echo. Confirm your voice before using speech in memories or Brief. A recording notification stays visible, and you can pause or stop at any time.") }, confirmButton = { TextButton(onClick = {
-        explain = false
-        permission.launch(buildList { add(Manifest.permission.RECORD_AUDIO); if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS) }.toTypedArray())
-    }) { Text("Start recording") } }, dismissButton = { TextButton(onClick = { explain = false }) { Text("Not now") } })
 }

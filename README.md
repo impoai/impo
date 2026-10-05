@@ -13,11 +13,11 @@ delegate a task, capture spoken thoughts with Echo, and get daily briefings in B
 The project covers the full stack: client frontends, the application API, background
 workers, data storage, and agent integration. **The backend and native iOS client
 are implemented; the native Kotlin/Compose Android client has passed its build,
-unit tests and local emulator acceptance. Web remains planned.** Clients share the
+unit tests and local emulator acceptance. The React/TypeScript Web client is implemented at [impo.ai/app](https://impo.ai/app/).** Clients share the
 same backend and conversation model, with native capabilities adapted to each
 platform. Work continues on the server when a client disconnects.
 
-[Website](https://impo.ai) · [Discord](https://discord.gg/84ZYn3xcGV) · [Roadmap](#roadmap) · [Documentation](docs/README.md) · [iOS setup](ios/App/README.md) · [Android setup](android/README.md) · [Server setup](server/README.md)
+[Website](https://impo.ai) · [Web app](https://impo.ai/app/) · [Web setup](web/README.md) · [Discord](https://discord.gg/84ZYn3xcGV) · [Roadmap](#roadmap) · [Documentation](docs/README.md) · [iOS setup](ios/App/README.md) · [Android setup](android/README.md) · [Server setup](server/README.md)
 
 ## What Impo does
 
@@ -55,15 +55,14 @@ without fixed release dates.
 | **Backend and agent execution** | Implemented; evolving | Continue improving durable runs, recovery, tool integrations, and developer setup. Keep one API for all clients. |
 | **iOS frontend** | Implemented; evolving | Refine chat, Tasks, Brief, Echo, native permissions, and background behavior. |
 | **Android frontend** | Signed APK; emulator verified | Kotlin/Compose app for Chat, Tasks, Brief, Memories, Echo, connections and native permissions. [Download for testing](https://impo.ai/android.apk); physical-device and full account acceptance remain pending. |
-| **Web frontend** | Planned | Bring chat, task management, Brief, and Echo history to the browser through the same authenticated API. Add browser-supported capture where practical. |
+| **Web frontend** | Implemented | React/TypeScript and Meta Astryx for Chat, Feed, Tasks, Memories, Echo history and settings, with Clerk and the shared API. |
 | **Shared client contracts** | Implemented foundation; expanding | Extend protocol fixtures and recovery tests so clients share consistent identity, history, task state, and tool results. |
 | **Composio integrations** | Rebyte connector shelf implemented | Add per-action confirmation for sensitive writes. |
 | **Personal context** | Background memory and main-chat retrieval implemented | Expand proactive assistance using relevant personal context. |
 
 The repository contains the backend, iOS app, and native Android app plus its
 independent Kotlin protocol library. Android build, unit and emulator checks have
-passed; recording and device tools still require physical-device checks. The Web frontend has not
-been started.
+passed; recording and device tools still require physical-device checks. The Web client supports foreground chat dictation; background Echo and native device tools remain on phones.
 
 ## Architecture
 
@@ -77,7 +76,7 @@ flowchart TB
     subgraph Clients["Impo client frontends"]
         App["iOS: implemented"]
         Android["Android: native implementation"]
-        Web["Web: planned"]
+        Web["Web: React + Astryx"]
     end
     subgraph Backend["Impo backend"]
         API["TypeScript HTTP API"]
@@ -100,7 +99,7 @@ flowchart TB
     App -->|"Signed audio PUT"| S3
     Android <-->|"Same client API"| API
     Android -->|"Signed audio PUT"| S3
-    Web -.->|"Same client API"| API
+    Web -->|"Same client API"| API
     API --> Clerk["Clerk authentication"]
     Worker <-->|"Agents / Sessions / Turns / Items"| Rebyte["Rebyte Agents API"]
     Worker <-->|"Service integration"| Composio["Composio tool layer"]
@@ -111,7 +110,7 @@ flowchart TB
 
 | Component | Owns |
 | --- | --- |
-| **Client frontends** | User interfaces, streamed replies, history recovery, capture, and platform permissions. iOS and Android are implemented; Android has passed local emulator acceptance; Web is planned. |
+| **Client frontends** | User interfaces, streamed replies, history recovery, capture, and platform permissions. iOS and Android are implemented; Android has passed local emulator acceptance; Web uses the same authenticated API. |
 | **Shared client contracts** | Authenticated HTTP commands, SSE message formats, recovery, and device dispatch. Each frontend implements the same protocol using its platform's networking stack. |
 | **API server** | Authentication, resource ownership, command acceptance, history queries, and stream subscriptions. |
 | **Workers** | Agent input submission, runtime reconciliation, tool dispatch, output projection, retries, and recovery after process restarts. |
@@ -163,15 +162,15 @@ preferences. See [scheduled tasks](contracts/scheduled-tasks.md).
 ```text
 ios/          iOS frontend: app, client package, native adapters, and tests
 android/      Kotlin/Compose app, independent protocol client, native adapters and tests
-web/          Web frontend: planned; directory not created yet
+web/          React/TypeScript/Astryx Web client and protocol tests
 server/       Shared API, workers, agent integration, tools, and database schema
 contracts/    Shared client protocol and test fixtures
 docs/         Architecture, client API, and implemented feature behavior
 scripts/      Local development and cross-platform verification
 ```
 
-The planned Web frontend will have its own top-level directory when implementation
-starts. Shared client contracts remain in `contracts/`; all client frontends reuse
+The Web client has its own top-level `web/` directory. Shared client contracts remain
+in `contracts/`; all client frontends reuse
 the API and workers in `server/`.
 
 Impo was previously named Instant. Existing identifiers such as `InstantClient`,

@@ -59,13 +59,13 @@ struct TodayView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 30) {
                 HStack {
-                    Text("Today").font(InstantStyle.serif(36))
+                    Text("Feed").font(InstantStyle.serif(36))
                     Spacer()
                     Button { if let date = visibleDate { capture = TodayCaptureRoute(date: date) } } label: {
                         Image(systemName: "square.on.square").frame(width: 44, height: 44)
                     }.accessibilityLabel("Capture full page").accessibilityIdentifier("today.capture").disabled(visibleDate == nil)
                     Button { showSettings = true } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
-                        .accessibilityLabel("Brief preferences").accessibilityIdentifier("today.settings")
+                        .accessibilityLabel("Feed preferences").accessibilityIdentifier("today.settings")
                     NotificationPermissionButton()
                 }
                 if let error = today.error {

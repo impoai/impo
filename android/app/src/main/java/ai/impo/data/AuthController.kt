@@ -6,6 +6,7 @@ import com.clerk.api.Clerk
 import com.clerk.api.network.serialization.ClerkResult
 import com.clerk.api.network.serialization.errorMessage
 import com.clerk.api.session.GetTokenOptions
+import com.clerk.api.session.Session
 import com.clerk.api.sso.OAuthProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
@@ -22,6 +23,17 @@ data class Account(val id: String, val name: String, val email: String?, val bas
 }
 data class AuthState(val loading: Boolean = true, val account: Account? = null, val error: String? = null)
 enum class SignInProvider { Google, Apple }
+internal fun sessionTokenFailure(status: Session.SessionStatus): ApiException = when (status) {
+    Session.SessionStatus.ABANDONED,
+    Session.SessionStatus.ENDED,
+    Session.SessionStatus.EXPIRED,
+    Session.SessionStatus.REMOVED,
+    Session.SessionStatus.REPLACED,
+    Session.SessionStatus.REVOKED -> ApiException(401, "unauthorized", "Your session ended. Please sign in again.")
+    Session.SessionStatus.PENDING -> ApiException(401, "unauthorized", "Complete sign-in to continue.")
+    Session.SessionStatus.ACTIVE,
+    Session.SessionStatus.UNKNOWN -> ApiException(503, "session_token_unavailable", "Couldn't connect to sign-in services. Check your connection and try again.", retryable = true)
+}
 class AuthController(private val store: SettingsStore, private val scope: CoroutineScope, val configured: Boolean) {
     private val mutable = MutableStateFlow(AuthState())
     val state = mutable.asStateFlow()
@@ -69,6 +81,17 @@ class AuthController(private val store: SettingsStore, private val scope: Corout
             is ClerkResult.Success -> Unit // SDK account flow is the authority, not browser dismissal.
         }
     }
+    internal fun passwordSignInFlow() = PasswordSignInFlow(ClerkPasswordSignInService {
+        check(configured) { "Sign-in is unavailable in this build." }
+        check(state.value.account == null) { "An account is already signed in." }
+        if (Clerk.user?.id?.let { store.isDeleted(it) } == true) {
+            when (val result = Clerk.auth.signOut()) {
+                is ClerkResult.Failure -> error(result.errorMessage)
+                is ClerkResult.Success -> Unit
+            }
+        }
+        mutable.update { it.copy(error = null) }
+    })
     suspend fun signOut() {
         val captured = mutable.value.account ?: return
         if (!captured.development && configured) when (val result = Clerk.auth.signOut(captured.sessionId)) {
@@ -96,7 +119,7 @@ class AuthController(private val store: SettingsStore, private val scope: Corout
             account.requireCurrent(state.value.account, Clerk.user?.id, Clerk.session?.id)
             return when (result) {
                 is ClerkResult.Success -> SessionToken(account.id, result.value)
-                is ClerkResult.Failure -> throw ApiException(401, "unauthorized", "Your session expired. Please sign in again.")
+                is ClerkResult.Failure -> throw sessionTokenFailure(Clerk.session?.status ?: Session.SessionStatus.UNKNOWN)
             }
         }
     }

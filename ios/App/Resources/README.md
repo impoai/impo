@@ -1,6 +1,6 @@
 # App resources
 
-`Assets.xcassets` contains the app icon, mark, assistant avatars and illustrations
+`Assets.xcassets` contains the app icon, mark, personal agent avatars and illustrations
 used by the native interface. These are product assets, not reference screenshots.
 The website has its own required assets under `site/assets/`.
 

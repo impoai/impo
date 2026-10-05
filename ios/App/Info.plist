@@ -67,7 +67,7 @@
   <key>NSMicrophoneUsageDescription</key>
   <string>When you hold the input field, Impo records your voice message and sends it to Impo and Google Gemini to turn it into text. When you tap Echo, Impo records audio, including while your iPhone is locked, and sends it to Impo and Google Gemini to create transcripts in Memories. Tap Stop to end recording.</string>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>Impo uses your local network to connect to your private assistant server.</string>
+  <string>Impo uses your local network to connect to your private personal agent server.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>When you ask about your schedule, Impo reads matching events. In Live chat, event details are sent to the Impo server and our AI service to answer you. Impo does not change your calendars.</string>
   <key>NSRemindersFullAccessUsageDescription</key>

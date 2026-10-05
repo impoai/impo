@@ -6,7 +6,7 @@ export const deviceToolNames = ['impo_list_calendar_events', 'impo_get_health_su
 export const deviceCapabilityNames = [...deviceToolNames, ...clientActionNames];
 export const isDeviceCapability = (name: string) => isDeviceTool(name) || isClientAction(name);
 export type DeviceToolName = typeof deviceToolNames[number];
-export interface ClientContext { timeZone: string; currentDate: string }
+export interface ClientContext { timeZone: string; currentDate: string; language?: string; country?: string; currency?: string }
 const invalid = (message: string) => new ServiceError(400, 'invalid_request', message);
 
 /** Swift JSON encoding does not promise dictionary order; receipts compare JSON values. */
@@ -48,9 +48,13 @@ export function clientContext(value: unknown): ClientContext | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('clientContext must be an object');
   const data = value as Record<string, unknown>;
-  if (Object.keys(data).some(key => !['timeZone', 'currentDate'].includes(key))) throw invalid('Unsupported clientContext field');
+  if (Object.keys(data).some(key => !['timeZone', 'currentDate', 'language', 'country', 'currency'].includes(key))) throw invalid('Unsupported clientContext field');
   instant(data.currentDate);
-  return { timeZone: timeZone(data.timeZone), currentDate: data.currentDate as string };
+  const context: ClientContext = { timeZone: timeZone(data.timeZone), currentDate: data.currentDate as string };
+  for (const [key, pattern] of [['language', /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8}){0,4}$/], ['country', /^[A-Z]{2}$/], ['currency', /^[A-Z]{3}$/]] as const) {
+    if (data[key] !== undefined) { if (typeof data[key] !== 'string' || !pattern.test(data[key])) throw invalid(`Invalid ${key}`); context[key] = data[key]; }
+  }
+  return context;
 }
 function boundedText(value: unknown, field: string, maximum: number, optional = false): void {
   if (optional && value === undefined) return;

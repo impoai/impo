@@ -14,6 +14,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -76,6 +77,41 @@ class NativeControlsInstrumentedTest {
         // between checking the action and obtaining its real PendingIntent.
         val notice = awaitNotification(action)
         checkNotNull(notice.actions.firstOrNull { it.title.toString() == action }).actionIntent.send()
+    }
+
+    @Test fun echoDockStartsFromEveryTabAndStopsAcrossNavigationAndPause() {
+        val dock = compose.onNodeWithTag("nav.echo")
+        dock.assertIsDisplayed().assertContentDescriptionEquals("Start Echo recording")
+            .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val positions = listOf("chat", "brief", "echo", "tasks", "memories").map { route ->
+            compose.onNodeWithTag("nav.$route").fetchSemanticsNode().boundsInRoot.center.x
+        }
+        assertEquals(positions.sorted(), positions)
+        dock.performClick()
+        compose.onNodeWithText("Capture a thought").assertIsDisplayed()
+        assertFalse(NativeBridge.recording.value.isRecording)
+        compose.onNodeWithText("Not now").performClick()
+        assertEquals("stopped", NativeBridge.recording.value.status)
+
+        val routes = listOf("chat", "brief", "tasks", "memories")
+        routes.forEachIndexed { index, route ->
+            compose.onNodeWithTag("nav.$route").performClick().assertIsSelected()
+            dock.assertContentDescriptionEquals("Start Echo recording").performClick()
+            compose.onNodeWithText("Start recording").performClick()
+            compose.waitUntil(25_000) { NativeBridge.recording.value.isRecording && context.getSystemService(AudioManager::class.java).activeRecordingConfigurations.isNotEmpty() }
+            compose.onNodeWithTag("nav.$route").assertIsSelected()
+            dock.assertContentDescriptionEquals("Stop Echo recording").assertTextEquals("Stop")
+            if (route == "tasks") {
+                compose.onNodeWithContentDescription("Pause Echo").performClick()
+                compose.waitUntil(10_000) { NativeBridge.recording.value.isPaused && context.getSystemService(AudioManager::class.java).activeRecordingConfigurations.isEmpty() }
+            }
+            val nextRoute = routes[(index + 1) % routes.size]
+            compose.onNodeWithTag("nav.$nextRoute").performClick().assertIsSelected()
+            dock.assertContentDescriptionEquals("Stop Echo recording").performClick()
+            compose.waitUntil(10_000) { NativeBridge.recording.value.status == "stopped" && recordingNotification() == null && context.getSystemService(AudioManager::class.java).activeRecordingConfigurations.isEmpty() }
+            dock.assertContentDescriptionEquals("Start Echo recording").assertTextEquals("Echo")
+            compose.onNodeWithTag("nav.$nextRoute").assertIsSelected()
+        }
     }
 
     @Test fun microphoneStartsFromUiAndNotificationControlsWorkInBackground() {

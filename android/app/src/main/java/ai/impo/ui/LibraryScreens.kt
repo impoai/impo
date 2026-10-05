@@ -126,7 +126,7 @@ import java.time.LocalDate
     }
 }
 
-@Composable fun MemoriesScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit, echoReminderEvent: String? = null) {
+@Composable fun MemoriesScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit, recordEcho: () -> Unit, echoReminderEvent: String? = null) {
     var about by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(echoReminderEvent) { if (echoReminderEvent != null) about = false }
     Column(Modifier.fillMaxSize()) {
@@ -138,7 +138,7 @@ import java.time.LocalDate
             FilterChip(!about, { about = false }, { Text("Echo") }, modifier = Modifier.testTag("memories.echo"))
             FilterChip(about, { about = true }, { Text("About you") }, modifier = Modifier.testTag("memories.about"))
         }
-        if (about) AboutYou(vm, state, go) else EchoTimelineScreen(vm, state, go)
+        if (about) AboutYou(vm, state, go) else EchoTimelineScreen(vm, state, go, recordEcho)
     }
 }
 @Composable private fun AboutYou(vm: AppViewModel, state: AppState, go: (String) -> Unit) {
@@ -166,7 +166,7 @@ import java.time.LocalDate
 }
 
 private data class TimelineRow(val key: String, val date: String? = null, val recordId: String? = null)
-@Composable private fun EchoTimelineScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit) {
+@Composable private fun EchoTimelineScreen(vm: AppViewModel, state: AppState, go: (String) -> Unit, recordEcho: () -> Unit) {
     val recording by NativeBridge.recording.collectAsStateWithLifecycle()
     val list = rememberLazyListState()
     var dates by remember { mutableStateOf(false) }
@@ -194,7 +194,11 @@ private data class TimelineRow(val key: String, val date: String? = null, val re
         requestedDate = null
     }
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { RecordButton(vm, state.profile) }
+        Box(Modifier.weight(1f)) {
+            if (!recording.isRecording && !recording.isPaused) OutlinedButton(onClick = recordEcho, modifier = Modifier.testTag("echo.start")) {
+                Icon(Icons.Outlined.Mic, null); Spacer(Modifier.width(6.dp)); Text("Record Echo")
+            }
+        }
         Box {
             TextButton(onClick = { dates = true }, enabled = !state.timeline?.days.isNullOrEmpty(), modifier = Modifier.testTag("echo.dates")) { Icon(Icons.Outlined.DateRange, null); Text("Jump to date") }
             DropdownMenu(dates, { dates = false }, modifier = Modifier.heightIn(max = 360.dp)) {

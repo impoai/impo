@@ -11,11 +11,11 @@ struct Scene {
     let background: Color, ink: Color, accent: Color
 }
 let scenes = [
-    Scene(id: "01", title: "A little more\nroom for life.", detail: "Your personal AI, with context.", feature: "MEET IMPO", source: "01-chat", background: forest, ink: paper, accent: orange),
+    Scene(id: "01", title: "A little more\nroom for life.", detail: "Your personal agent, with context.", feature: "MEET IMPO", source: "01-chat", background: forest, ink: paper, accent: orange),
     Scene(id: "02", title: "Good thoughts.\nKept close.", detail: "Speak with Echo. Return to the thought.", feature: "ECHO", source: "02-echo", background: color(0xDCE3D0), ink: forest, accent: color(0xBE7744)),
     Scene(id: "03", title: "Hand it off.\nPick it up later.", detail: "A task gets its own conversation.", feature: "TASKS", source: "03-task-detail", background: paper, ink: forest, accent: color(0xBE7744)),
     Scene(id: "04", title: "Your day.\nA little clearer.", detail: "Personal briefs, from the context you share.", feature: "BRIEF", source: "04-brief", background: color(0xEBCBA8), ink: forest, accent: color(0x876142)),
-    Scene(id: "05", title: "Less repeating.\nMore remembering.", detail: "Useful context, kept close to your assistant.", feature: "MEMORIES", source: "05-memory", background: color(0xE7E9DA), ink: forest, accent: color(0xAD7446)),
+    Scene(id: "05", title: "Less repeating.\nMore remembering.", detail: "Useful context, kept close to your personal agent.", feature: "MEMORIES", source: "05-memory", background: color(0xE7E9DA), ink: forest, accent: color(0xAD7446)),
     Scene(id: "06", title: "Your context.\nYour choice.", detail: "Connect only what you choose to share.", feature: "CONNECTIONS", source: "06-connections", background: color(0x203F36), ink: paper, accent: orange)
 ]
 struct Poster: View {

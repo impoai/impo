@@ -1,6 +1,6 @@
 # Architecture
 
-Impo separates native clients, an application backend, and managed agent execution.
+Impo separates native and Web clients, an application backend, and managed agent execution.
 The [project overview](../README.md#architecture) shows the platform diagram.
 
 ## Clients and commands
@@ -10,8 +10,12 @@ Vercel UI Message Stream v1 subscriptions. The Kotlin Android client uses
 `android/client` for the same commands, SSE framing/reduction and recovery, with
 Compose screens and Android permissions in `android/app`. Android build, unit
 tests and local API 35 emulator acceptance have passed; physical-device and
-deployed-account validation remain. Web remains a planned client of the API.
-The static `site/` directory is the public website, not a Web app.
+deployed-account validation remain. The React/TypeScript Web client in `web/` uses
+Astryx, Clerk and the same commands and SSE protocol. Its same-origin Pages proxy
+forwards authenticated `/api/v1/*` requests to the existing API without caching or
+buffering streams. `site/` preserves the marketing website and hosts generated
+Web assets under `/app/`. See [Web setup](../web/README.md) and the
+[Web protocol](../contracts/web-client.md).
 
 Clients own presentation, native permissions, audio capture and device tool
 execution. Provider credentials stay on the server. Streams may disconnect
@@ -154,3 +158,5 @@ Android; each client constructs its native destination and presentation.
 transient chat/tool projections and is removed during account deletion.
 See [capabilities v1](../contracts/capabilities.md) for availability, result and
 extension rules. Timer adapters are not implemented by this foundation.
+
+Product discovery follows the existing Rebyte function → durable server invocation → Shopify Catalog path. Completed tool history produces versioned product references in the iOS stream and reconstructed conversation history. The API resolves each reference through an owned assistant message and reads current product details; there is no separate shopping execution engine or product cache. The read-only tools and UCP profile, supported parameters, ownership checks and client behavior are specified in [the shopping contract](../contracts/shopping.md).

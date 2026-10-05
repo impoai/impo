@@ -75,7 +75,7 @@ struct TodaySettingsView: View {
                 } header: { Text("Your context") } footer: { Text("Brief uses your city while the app is open. Echo can separately attach nearby places while recording, including with the screen locked. Coordinates stay on your iPhone.") }
                 if busy { ProgressView() }
                 if let error { Text(error).foregroundStyle(.red) }
-            }.navigationTitle("Brief preferences").navigationBarTitleDisplayMode(.inline)
+            }.navigationTitle("Feed preferences").navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {

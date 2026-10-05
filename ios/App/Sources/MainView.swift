@@ -59,7 +59,7 @@ struct MainView: View {
                 composer = draft; model.pendingBriefDraft = nil; composerFocused = true
             } else { chooseBriefDraft = true }
         }
-        .alert("Use this Brief suggestion?", isPresented: $chooseBriefDraft) {
+        .alert("Use this Feed suggestion?", isPresented: $chooseBriefDraft) {
             Button("Replace draft") { composer = model.pendingBriefDraft ?? composer; model.pendingBriefDraft = nil; composerFocused = true }
             Button("Keep current draft", role: .cancel) { model.pendingBriefDraft = nil }
         } message: { Text("You already have a message in progress. Nothing will be sent automatically.") }
@@ -89,7 +89,7 @@ struct MainView: View {
                         AssistantAvatar(index: model.avatarIndex, size: 40)
                         Text(model.assistantName).font(InstantStyle.serif(24, italic: true)).lineLimit(1).minimumScaleFactor(0.75)
                     }.frame(minHeight: 44).padding(.trailing, 3).contentShape(Rectangle())
-                }.buttonStyle(PressStyle()).accessibilityLabel("Your assistant, \(model.assistantName)").accessibilityIdentifier("chat.assistant")
+                }.buttonStyle(PressStyle()).accessibilityLabel("Your personal agent, \(model.assistantName)").accessibilityIdentifier("chat.assistant")
                 Spacer()
                 CircleButton(symbol: "magnifyingglass", label: "Search conversation") { withAnimation { showSearch.toggle(); if !showSearch { search = "" } } }
                     .accessibilityIdentifier("chat.search")
@@ -123,13 +123,11 @@ struct MainView: View {
             if !composerFocused {
                 HStack(spacing: 1) {
                     tab(0, title: "Chat", symbol: "bubble")
-                    tab(1, title: "Brief", symbol: "calendar")
+                    tab(1, title: "Feed", symbol: "calendar")
                     Button { composerFocused = false; listening.toggle() } label: {
-                        VStack(spacing: 2) {
-                            Image(systemName: listening.isListening ? "stop.fill" : "waveform")
-                                .font(.system(size: 21, weight: .medium)).frame(width: 42, height: 32)
-                            Text(listening.isStarting ? "Cancel" : listening.isListening ? "Stop" : "Echo").font(.system(size: 10, weight: .medium))
-                        }.foregroundStyle(InstantStyle.paperElevated)
+                        Image(systemName: listening.isStarting ? "xmark" : listening.isListening ? "stop.fill" : "waveform")
+                            .font(.system(size: 21, weight: .medium))
+                            .foregroundStyle(InstantStyle.paperElevated)
                             .frame(maxWidth: .infinity).frame(height: 50)
                             .background(listening.isListening ? InstantStyle.accent : InstantStyle.forest, in: Capsule())
                     }.buttonStyle(PressStyle())
@@ -151,19 +149,18 @@ struct MainView: View {
             composerFocused = false
             withAnimation(.easeOut(duration: 0.16)) { model.selectedTab = index }
         } label: {
-            VStack(spacing: 2) {
+            Group {
                 if index == 0 { Image(systemName: model.selectedTab == 0 ? "text.bubble.fill" : "text.bubble").font(.system(size: 22)).frame(height: 25) }
                 else if index == 3 { Image(systemName: "books.vertical").font(.system(size: 22)).frame(height: 25) }
                 else if index == 4 { AssistantAvatar(index: model.avatarIndex, size: 25) }
                 else { Image(systemName: symbol).font(.system(size: 23, weight: .regular)).frame(height: 25) }
-                Text(title).font(.system(size: 10, weight: .medium)).lineLimit(1)
             }
             .foregroundStyle(model.selectedTab == index ? InstantStyle.ink : InstantStyle.muted)
             .frame(maxWidth: .infinity).frame(height: 50)
             .background(model.selectedTab == index ? InstantStyle.orangePaper.opacity(0.55) : .clear, in: Capsule())
             .overlay(Capsule().strokeBorder(model.selectedTab == index ? InstantStyle.paperElevated : .clear, lineWidth: 0.7))
             .contentShape(Capsule())
-        }.buttonStyle(PressStyle()).accessibilityIdentifier("tab.\(ids[index])")
+        }.buttonStyle(PressStyle()).accessibilityLabel(title).accessibilityIdentifier("tab.\(ids[index])")
             .accessibilityAddTraits(model.selectedTab == index ? .isSelected : [])
     }
 
@@ -243,6 +240,7 @@ private struct ChatView: View {
                                 if !message.text.isEmpty { bubble(message.text, user: message.role == "user") }
                                 if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
                                 if message.role == "assistant" && !message.actions.isEmpty { ClientActionsView(actions: message.actions) }
+                                if !message.products.isEmpty { ProductResultsView(messageID: message.id, selections: message.products) }
                             }.id(message.id)
                         }
                     }
@@ -264,7 +262,7 @@ private struct ChatView: View {
                 }.padding(.horizontal, 19).padding(.top, 2).padding(.bottom, 10)
             }
             .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
-            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.messages.last?.files.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.awaitingTranscript)],
+            .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.messages.last?.files.count ?? 0), AnyHashable(model.messages.last?.products.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.awaitingTranscript)],
                            enabled: search.isEmpty, identifier: "chat.scrollToBottom")
         }
     }

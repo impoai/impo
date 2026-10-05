@@ -6,6 +6,13 @@ import SwiftUI
 /// entry only while the reader is following the bottom. Once they scroll away, their position
 /// never moves on its own and a "scroll to bottom" button appears. Following is decided by the
 /// reader's scrolling alone: growing content must not count as "no longer at the bottom".
+struct ConversationLayoutRevisionKey: PreferenceKey {
+    static let defaultValue: [String: Int] = [:]
+    static func reduce(value: inout [String: Int], nextValue: () -> [String: Int]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 struct FollowsBottom: ViewModifier {
     let proxy: ScrollViewProxy
     /// ID of the view placed after the last entry.
@@ -19,6 +26,7 @@ struct FollowsBottom: ViewModifier {
     @State private var following = true
     @State private var atBottom = true
     @State private var selectingText = false
+    @State private var layoutFollow: Task<Void, Never>?
 
     func body(content view: Content) -> some View {
         view
@@ -27,9 +35,20 @@ struct FollowsBottom: ViewModifier {
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - geometry.contentInsets.bottom - 40
             } action: { _, value in atBottom = value }
+            .onPreferenceChange(ConversationLayoutRevisionKey.self) { revision in
+                guard revision.values.contains(where: { $0 > 0 }), enabled, following, !selectingText else { return }
+                layoutFollow?.cancel()
+                layoutFollow = Task { @MainActor in
+                    // Let the native cards finish layout before resolving the bottom anchor.
+                    try? await Task.sleep(for: .milliseconds(80))
+                    guard !Task.isCancelled, enabled, following, !selectingText else { return }
+                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(bottomID, anchor: .bottom) }
+                }
+            }
+            .onDisappear { layoutFollow?.cancel() }
             .onScrollPhaseChange { old, new in
                 // A drag stops following; wherever the reader comes to rest decides whether to resume.
-                if new == .interacting { following = false }
+                if new == .interacting { following = false; layoutFollow?.cancel() }
                 if new == .idle, old == .interacting || old == .decelerating { following = atBottom }
             }
             .onChange(of: content) { _, _ in

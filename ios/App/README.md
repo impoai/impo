@@ -68,6 +68,29 @@ restoration on a physical iPhone. A successful build or Clerk sign-in-ticket
 test does not validate the Apple authorization flow. Changing providers with
 different email addresses also needs an explicit account-linking flow.
 
+### Email and password
+
+The native login screen also offers **Sign in with email** for existing accounts.
+`PasswordSignInFlow` uses the headless Clerk SDK for password sign-in, reset codes,
+new passwords, Device Trust and MFA (email, SMS, authenticator and backup codes).
+Only a completed, activated Clerk session enters the existing account restoration
+and consent flow. Passwords and codes stay in memory; resetting a password signs
+out the account's other sessions. New accounts can still use Apple or Google.
+
+Enable email sign-in, passwords, password reset and the Native API in the matching
+Clerk instance. Keep Device Trust/MFA enabled and support the factors configured
+for your users. Impo's production and development instances were checked on
+2026-10-04: both already expose `password` and `reset_password_email_code`.
+
+Run `PasswordSignInTests` through the root iOS test runner for state transitions
+and `PasswordSignInUITests` for form navigation. The optional live UI test and
+`PasswordSignInLiveTests` read `/tmp/impo-password-auth-test.json` containing
+`email`, `password` and `userId` for a disposable development user. Use Clerk's
+[`+clerk_test` email convention](https://clerk.com/docs/guides/development/testing/test-emails-and-phones);
+never use a real account or enable production test mode. The live reset test
+updates that temporary file with the new password. Delete the user and file after
+testing. Without the file, live tests skip; ordinary tests use an injected service.
+
 ## Build and test
 
 Remote notifications use Firebase Messaging and APNs for bundle ID `ai.impo`.
@@ -78,7 +101,7 @@ Apple App ID and refresh automatic provisioning. Debug uses the development
 APNs environment; the signed distribution export must contain
 `aps-environment = production`. Upload the matching APNs keys in Firebase.
 
-Settings → Notifications provides Chat replies, Task updates, Scheduled tasks, Brief and Echo switches
+Settings → Notifications provides Chat replies, Task updates, Scheduled tasks, Feed and Echo switches
 backed by one server-side preference document. Registration follows the signed-in
 account and native permission; sign-out revokes it. Foreground banners stay
 silent and notification taps recheck account registration and expiry. See the
@@ -168,3 +191,7 @@ editing, pause/resume, deletion and paged run history. Chat can also create plan
 Each run opens an ordinary Task conversation. The shared
 [contract](../../contracts/scheduled-tasks.md) defines timing, overlap and retries.
 Offline Demo cannot execute schedules.
+
+Product discovery cards render in chat and task conversations using owned product references from the stream or history. Prices and details are fetched fresh from the Impo API, and merchant links open only on a user tap. Locale suggests market, language and currency. See [the shopping contract](../../contracts/shopping.md). `InstantUITests/ShoppingUITests` checks card presentation and selection; live catalog/account checks require a deployed API and worker.
+
+The second iOS tab is **Feed**; existing `today`/`brief` API identifiers and date labels remain compatible. The shared Chat/Task composer keeps its attachment menu inside the input surface, with selected files above it. Product details show expandable long descriptions and a persistent, high-contrast merchant action.

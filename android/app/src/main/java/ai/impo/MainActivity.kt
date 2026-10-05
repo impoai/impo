@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
             ImpoApp(model)
             if (showHealthPrivacy) AlertDialog(onDismissRequest = { showHealthPrivacy = false },
                 title = { Text("Your health data in Impo") },
-                text = { Text("When you enable Health in Connections, Impo can read the health categories you permit to answer your requests. Requested summaries are sent to your Impo account for your assistant to use. Impo does not write health records. You can turn this connection off or revoke access in Health Connect at any time. Missing samples are treated as unknown.") },
+                text = { Text("When you enable Health in Connections, Impo can read the health categories you permit to answer your requests. Requested summaries are sent to your Impo account for your personal agent to use. Impo does not write health records. You can turn this connection off or revoke access in Health Connect at any time. Missing samples are treated as unknown.") },
                 confirmButton = { TextButton(onClick = { showHealthPrivacy = false }) { Text("Done") } },
                 dismissButton = { TextButton(onClick = { ai.impo.ui.openWeb(this, "https://impo.ai/privacy/") }) { Text("Privacy policy") } })
             if (!showHealthPrivacy) update?.let { release ->

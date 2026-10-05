@@ -1,0 +1,151 @@
+{
+  "checkedAt": "2026-10-04",
+  "launchUrl": "https://www.producthunt.com/posts/new?ref=header",
+  "published": false,
+  "scheduled": false,
+  "draftUrl": "https://www.producthunt.com/products/impo?launch=impo",
+  "savedFields": [
+    "name",
+    "tagline",
+    "mainUrl",
+    "description",
+    "firstComment",
+    "openSource",
+    "additionalLinks",
+    "launchTags",
+    "thumbnail",
+    "gallery",
+    "maker",
+    "pricing",
+    "shoutouts"
+  ],
+  "preparation": {
+    "listing": "listing.json",
+    "thumbnail": "assets/thumbnail-240.png",
+    "galleryCount": 8,
+    "video": "assets/impo-walkthrough-1080p.mp4",
+    "subtitles": "assets/impo-walkthrough.en.srt",
+    "interactiveTour": "tour.html"
+  },
+  "observed": [
+    "Draft was created and read back at the permanent Product Hunt product URL.",
+    "The preview states: This product is a draft and is not scheduled for a launch yet.",
+    "The checklist showed 100% of required fields complete.",
+    "All eight gallery images were uploaded. Product Hunt transcodes them to JPEG, and batch completion changed their intended order.",
+    "Public uploaded images were compared to local originals and matched visually with mean absolute RGB differences below 1.75/255 at review resolution.",
+    "Rebyte was absent from the product search. Three verified products actually used by Impo were selected: Temporal, Shopify, and Clerk.",
+    "The current media form accepts YouTube or Loom links, plus supported interactive demo hosts.",
+    "The edit route became accessible. Saved the requested tagline Open source Muse and verified it in both draft-page headings after navigation; the page still identifies the launch as an unscheduled draft."
+  ],
+  "pending": [
+    "Reorder the gallery so product overview is first and shopping second, then read back.",
+    "Upload the prepared walkthrough to an available YouTube or Loom account and attach its URL.",
+    "Publish a supported interactive demo if an account is available; the local tour is prepared."
+  ],
+  "editUrl": "https://www.producthunt.com/posts/impo/edit",
+  "dashboardUrl": "https://www.producthunt.com/products/impo/impo/prelaunch",
+  "requiredFieldsCompletion": "100%",
+  "savedValues": {
+    "additionalLinks": [
+      "https://github.com/impoai/impo",
+      "https://impo.ai/app/",
+      "https://impo.ai/android.apk",
+      "https://discord.gg/84ZYn3xcGV"
+    ],
+    "launchTags": [
+      "Artificial Intelligence",
+      "Productivity",
+      "Open Source"
+    ],
+    "maker": "CJ (@meowoof)",
+    "pricing": "Free",
+    "shoutouts": [
+      "Temporal",
+      "Shopify",
+      "Clerk"
+    ],
+    "thumbnailImageId": "9c32174b-8e3e-4e3b-9c24-9caf5e40e7e7.png",
+    "gallery": [
+      {
+        "file": "01-meet-impo.png",
+        "imageId": "425132b5-8a82-4034-9edb-52376f7a4228.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 54183,
+        "actualFile": "04-memory.png",
+        "meanAbsolutePixelDifference": 1.102,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "02-shopping.png",
+        "imageId": "019f5aeb-ef95-4af7-85cb-10ca85c4d7ac.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 53224,
+        "actualFile": "03-echo.png",
+        "meanAbsolutePixelDifference": 1.131,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "03-echo.png",
+        "imageId": "063a22e9-7705-4527-822b-b8266d5405ca.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 55938,
+        "actualFile": "07-your-choice.png",
+        "meanAbsolutePixelDifference": 1.102,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "04-memory.png",
+        "imageId": "2099a96d-1da7-4543-a2fc-e136dc747dfc.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 54331,
+        "actualFile": "05-tasks.png",
+        "meanAbsolutePixelDifference": 1.127,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "05-tasks.png",
+        "imageId": "910e4995-b555-47d5-91ad-28270ba1ec0d.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 62097,
+        "actualFile": "08-start.png",
+        "meanAbsolutePixelDifference": 1.156,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "06-feed.png",
+        "imageId": "9d2f1e4a-ea7f-4fe5-9094-429dd8ac7411.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 80658,
+        "actualFile": "02-shopping.png",
+        "meanAbsolutePixelDifference": 1.177,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "07-your-choice.png",
+        "imageId": "0242dc46-c2c1-4e2f-841a-f5bea12c5c31.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 57801,
+        "actualFile": "06-feed.png",
+        "meanAbsolutePixelDifference": 1.742,
+        "remoteFormat": "JPEG"
+      },
+      {
+        "file": "08-start.png",
+        "imageId": "6aa6ef5f-6e0d-4f73-b67d-a10e14cf6a1a.png",
+        "matchesUploadedOriginal": false,
+        "remoteBytes": 76674,
+        "actualFile": "01-meet-impo.png",
+        "meanAbsolutePixelDifference": 1.158,
+        "remoteFormat": "JPEG"
+      }
+    ],
+    "tagline": "Open source Muse"
+  },
+  "intentionallyBlank": {
+    "productXHandle": "No verified product handle supplied.",
+    "promo": "No real promotion/code supplied.",
+    "additionalMakers": "Only CJ was identified.",
+    "investorQuestionnaire": "Optional investor outreach; no founder history, revenue/growth or fundraising request supplied.",
+    "launchDate": "Publication timing was not requested; draft is unscheduled."
+  }
+}

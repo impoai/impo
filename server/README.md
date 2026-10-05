@@ -376,6 +376,8 @@ with both hints:
 npm --workspace @instant/server run db:push -- --hints '[{"type":"create","kind":"check","entity":["public","connector_connections","connector_connections_toolkit_slug_check"]},{"type":"create","kind":"check","entity":["public","device_capabilities","device_capabilities_tool_v2_check"]}]'
 ```
 
-`user_profiles` stores whether an account finished onboarding and its assistant
+`user_profiles` stores whether an account finished onboarding and its personal agent
 name and look (`GET`/`PATCH /api/v1/profile`). Accounts that already chatted
 before this table existed count as onboarded.
+
+Product discovery uses the read-only `impo_search_products` and `impo_get_product` functions through the existing durable worker. Shopify Catalog receives the requested market, language, currency and price bounds. No new credentials, tables or schema changes are required. The API serves the public UCP profile and ownership-checked fresh product reads; see [the shopping contract](../contracts/shopping.md). Deploy both API and worker for this feature.

@@ -1,6 +1,7 @@
 # Impo contributor instructions
 
 - Keep product copy and documentation in English.
+- Use "personal agent" for Impo in product copy, marketing, accessibility labels and store listings. Preserve required protocol role values and existing API identifiers.
 - Write every commit message and all code, pull request, and review comments entirely in English. Do not include Chinese or any other language.
 - Keep a short dated entry in `WORK_LOG.md` for completed work and validation.
 - Read `README.md`, `docs/architecture.md`, and the relevant platform guide.
@@ -17,4 +18,4 @@
 - Preserve the existing paper/forest-green design, readable type, safe areas and accessible touch targets.
 - Regenerate the Xcode project from `ios/App/project.yml` when adding native files.
 - Verify changed behavior with relevant tests. Simulator checks do not replace physical microphone, location or background validation.
-- Android is implemented and emulator-tested; keep physical-device and deployed-account validation limits explicit. Web remains planned. Do not present prototype settings as implemented features.
+- Android and Web are implemented; keep physical-device and deployed-account validation limits explicit. Read `web/README.md` for browser support and native-only capabilities. Do not present prototype settings as implemented features.

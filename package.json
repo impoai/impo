@@ -6,7 +6,8 @@
     "node": ">=22"
   },
   "workspaces": [
-    "server"
+    "server",
+    "web"
   ],
   "scripts": {
     "build:android": "node scripts/android-app.mjs build",
@@ -57,6 +58,15 @@
     "test:notifications": "node scripts/test-db.mjs --notifications",
     "check:secrets": "node scripts/check-secrets.mjs",
     "test:accounts": "node scripts/test-db.mjs --accounts",
-    "test:attachments": "node scripts/test-db.mjs --attachments"
+    "test:attachments": "node scripts/test-db.mjs --attachments",
+    "dev:web": "npm --workspace @impo/web run dev",
+    "build:web": "node scripts/build-web.mjs",
+    "typecheck:web": "npm --workspace @impo/web run typecheck",
+    "test:web": "npm --workspace @impo/web test",
+    "preview:web": "npm --workspace @impo/web run preview",
+    "astryx": "npm --workspace @impo/web run astryx --",
+    "dev:web:fixture": "node --import tsx scripts/android-ui-fixture.ts --port 3041 --public-host 127.0.0.1",
+    "deploy:web": "npm run build:web && wrangler pages deploy --cwd server/downloads --project-name impo-ai --branch main --commit-dirty=true",
+    "format:web": "npm --workspace @impo/web run format"
   }
 }

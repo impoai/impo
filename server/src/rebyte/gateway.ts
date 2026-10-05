@@ -171,7 +171,7 @@ export class RebyteGateway {
   }
 
   /** Existing Items can change in place; callers reconcile by item ID, not append only. */
-  async items(sessionId: string, signal: AbortSignal): Promise<AgentItem[]> {
+  async items(sessionId: string, signal: AbortSignal = AbortSignal.timeout(30_000)): Promise<AgentItem[]> {
     signal.throwIfAborted();
     return collect(this.client.beta.agents.sessions.items.list(sessionId, { order: 'asc', limit: 100 }, { signal }), signal);
   }

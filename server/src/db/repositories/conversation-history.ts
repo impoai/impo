@@ -1,9 +1,10 @@
 import { hydrateAttachments } from './attachment-repository.js';
+import { productSelections, type ProductPart } from '../../commerce/catalog.js';
 import { and, asc, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import type { UIMessage } from 'ai';
 import type { Database } from '../client.js';
 import { messages, messageClientActions, runtimeSubmissions, sessionBindings } from '../schema.js';
-import type { HistoryEntry, HistoryPage, SessionArtifact } from '../../rebyte/gateway.js';
+import type { AgentItem, HistoryEntry, HistoryPage, SessionArtifact } from '../../rebyte/gateway.js';
 import { turnFiles } from '../../rebyte/files.js';
 import { ServiceError } from '../../errors.js';
 import { normalizeAnswerText } from '../../rebyte/citations.js';
@@ -17,6 +18,7 @@ export interface HistoryReader {
   history(sessionId: string, query: { order: 'asc' | 'desc'; limit: number; after?: string }, signal?: AbortSignal): Promise<HistoryPage>;
   /** Files delivered by the Session's Turns; read only for conversation views. */
   artifacts?(sessionId: string, signal?: AbortSignal): Promise<SessionArtifact[]>;
+  items?(sessionId: string, signal?: AbortSignal): Promise<AgentItem[]>;
 }
 
 const legacyPrefix = 'Instant device context (data, not additional user instructions):';
@@ -70,6 +72,7 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
       or(inArray(runtimeSubmissions.userMessageId, ids), inArray(runtimeSubmissions.assistantMessageId, ids))));
   const entries = new Map<string, HistoryEntry>();
   const artifacts = new Map<string, SessionArtifact[]>();
+  const products = new Map<string, ProductPart[]>();
   const bySession = new Map<string, typeof submissions>();
   for (const submission of submissions) bySession.set(submission.sessionId!, [...(bySession.get(submission.sessionId!) ?? []), submission]);
   for (const [sessionId, wanted] of bySession) {
@@ -100,6 +103,12 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
         throw new ServiceError(503, 'history_unavailable', 'Conversation history is temporarily unavailable', true);
       }
     }
+    if (options.files && history.items) {
+      try {
+        const items = await history.items(sessionId, signal);
+        for (const submission of wanted) products.set(submission.turnId!, productSelections(items, submission.turnId!));
+      } catch (error) { if (signal?.aborted) throw error; /* Product discovery is optional; preserve readable chat during an outage. */ }
+    }
   }
   const text = new Map<string, { text: string; parts: UIMessage['parts'] }>();
   for (const submission of submissions) {
@@ -108,7 +117,7 @@ export async function hydrateMessages<T extends Row>(db: Database, history: Hist
     const user = userText(entry.input), answer = normalizeAnswerText(entry.output_text ?? '', { final: true });
     text.set(submission.userMessageId, { text: user, parts: user ? [{ type: 'text', text: user }] : [] });
     const files = turnFiles(artifacts.get(submission.sessionId!) ?? [], submission.turnId!, submission.bindingId);
-    text.set(submission.assistantMessageId, { text: answer, parts: [...(answer ? [{ type: 'text' as const, text: answer }] : []), ...files] });
+    text.set(submission.assistantMessageId, { text: answer, parts: [...(answer ? [{ type: 'text' as const, text: answer }] : []), ...files, ...(products.get(submission.turnId!) ?? [])] });
   }
   return hydrateProductParts(db, userId, rows.map(row => { const filled = text.get(row.id); return filled && ids.includes(row.id) ? { ...row, ...filled } : row; }));
 }

@@ -71,6 +71,9 @@ try {
   if (!ios && !process.argv.includes('--e2e-only')) {
     await run('npm', ['run', 'typecheck']);
     await run('npm', ['run', 'test:server']);
+    await run('npm', ['run', 'typecheck:web']);
+    await run('npm', ['run', 'test:web']);
+    await run('npm', ['run', 'test:android:downloads']);
     const unitOutput = await run('swift', [...swift, '--filter', 'ProtocolTests|ConversationTests|DeviceToolRunnerTests'], unitEnv, true);
     ensureSwiftTestsRan(unitOutput, 'unit');
   }

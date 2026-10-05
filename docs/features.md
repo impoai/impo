@@ -27,7 +27,7 @@ retry until acceptance is recovered. Tasks and busy Chat use transcription-only
 requests, followed by task commands or a composer draft. This is separate from Echo.
 Physical microphone and language behavior still require device acceptance.
 
-Account profiles preserve the assistant's name, avatar selection and onboarding
+Account profiles preserve the personal agent's name, avatar selection and onboarding
 completion across sign-ins. Custom avatar photos stay on the device that chose
 them. Existing accounts with chat history also skip onboarding.
 
@@ -132,6 +132,10 @@ tests with protocol doubles.
 
 Subscription screens and some connection previews remain demos.
 The Kotlin/Compose Android implementation includes the shared features above,
-with build, unit tests and local API 35 emulator acceptance verified. Web and diary generation
-remain planned. Native Android microphone/location/Health Connect behavior also
+with build, unit tests and local API 35 emulator acceptance verified. The Web client implements Chat, Feed, Tasks, Memories, Echo history, connections
+and settings through the shared protocol; diary generation remains planned. Native Android microphone/location/Health Connect behavior also
 requires physical-device validation. See the [Android guide](../android/README.md).
+
+## Product discovery
+
+On iOS and Web, ask the personal agent to find products by destination country, language, currency and budget. Shopify Catalog results appear as product cards with images, merchant names, current prices and details. Tap a product to inspect its options or visit the store. Country and currency requests are passed to the catalog, with independent budget checks on returned prices. Merchant language and delivery coverage vary. This feature supports browsing only; purchasing and Android product cards are not implemented.

@@ -1,0 +1,50 @@
+[
+  {
+    "scene": "01-meet-impo",
+    "start": 0.0,
+    "duration": 7.967,
+    "narration": "Meet Impo, your open-source personal agent. Remember what matters, get things done, and find your next good buy."
+  },
+  {
+    "scene": "02-shopping",
+    "start": 7.967,
+    "duration": 11.787,
+    "narration": "Looking for a commuter backpack under a hundred and fifty dollars? Impo finds products and helps you compare. Explore photos, prices, and details, then open the merchant to buy."
+  },
+  {
+    "scene": "03-echo",
+    "start": 19.754,
+    "duration": 8.683,
+    "narration": "Capture a thought with Echo on your phone. Come back to the transcript, and choose which speech is yours before it becomes personal context."
+  },
+  {
+    "scene": "04-memory",
+    "start": 28.437,
+    "duration": 8.041,
+    "narration": "Impo brings useful memories into your next conversation. You can browse what it remembers and forget what you no longer want kept."
+  },
+  {
+    "scene": "05-tasks",
+    "start": 36.478,
+    "duration": 8.965,
+    "narration": "Give research, planning, or a first draft its own task. Work continues when you leave the app. Schedule recurring tasks, too."
+  },
+  {
+    "scene": "06-feed",
+    "start": 45.443,
+    "duration": 6.563,
+    "narration": "Your Feed turns the context you share into useful next steps. A little perspective for the day ahead."
+  },
+  {
+    "scene": "07-your-choice",
+    "start": 52.006,
+    "duration": 7.986,
+    "narration": "Connections and phone permissions are optional. The clients and backend are open source, so you can explore how Impo works."
+  },
+  {
+    "scene": "08-start",
+    "start": 59.992,
+    "duration": 8.776,
+    "narration": "Try Impo on the web or Android. iOS is in TestFlight, with public access pending. What can your personal agent help with today?"
+  }
+]

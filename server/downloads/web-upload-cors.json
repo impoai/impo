@@ -1,0 +1,10 @@
+{
+  "CORSRules": [{
+    "ID": "ImpoWebSignedUploads",
+    "AllowedOrigins": ["https://impo.ai"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["content-type", "x-amz-*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }]
+}

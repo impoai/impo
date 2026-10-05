@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/android.apk", "/android/latest.json", "/android/releases/*", "/app-releases/*"],
+  "include": ["/android.apk", "/android/latest.json", "/android/releases/*", "/app-releases/*", "/app", "/app/*", "/api/v1/*"],
   "exclude": []
 }

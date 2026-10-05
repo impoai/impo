@@ -1,0 +1,10 @@
+{
+  "chat": "ios/AppStore/screenshots/source/01-chat.png",
+  "echo": "ios/AppStore/screenshots/source/02-echo.png",
+  "task": "ios/AppStore/screenshots/source/03-task-detail.png",
+  "memory": "ios/AppStore/screenshots/source/05-memory.png",
+  "connections": "ios/AppStore/screenshots/source/06-connections.png",
+  "shopping-results": ".local/commerce/live-layout-attachments/F48B59DA-361A-450E-8474-B445E255F6AB.png",
+  "shopping-detail": ".local/commerce/live-layout-attachments/8B15654E-0B3C-4A9B-B8CE-EE5EED6C19AC.png",
+  "web-feed": ".local/web/audit-final-1440-feed.png"
+}

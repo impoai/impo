@@ -1,4 +1,5 @@
 import { attachments, messageAttachments } from '../entities/attachments.js';
+import { productSelections } from '../../commerce/catalog.js';
 import { attachmentIds as parseAttachmentIds } from '../../attachments/contract.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, count, desc, eq, exists, gt, inArray, isNotNull, lt, lte, notExists, notInArray, or, sql } from 'drizzle-orm';
@@ -57,6 +58,17 @@ export class RuntimeRepository {
     await this.db.select({ id: deviceDispatches.id }).from(deviceDispatches).limit(1);
     await this.db.select({ id: attachments.id }).from(attachments).limit(1);
     await this.db.select({ id: messageAttachments.messageId }).from(messageAttachments).limit(1);
+  }
+
+  /** Resolve a catalog reference only through a message owned by the authenticated user. */
+  async productSelection(userId: string, messageId: string, selectionId: string, signal?: AbortSignal) {
+    const [row] = await this.db.select({ sessionId: sessionBindings.providerSessionId, turnId: runtimeSubmissions.providerTurnId })
+      .from(runtimeSubmissions).innerJoin(sessionBindings, eq(sessionBindings.id, runtimeSubmissions.bindingId))
+      .where(and(eq(runtimeSubmissions.userId, userId), eq(sessionBindings.userId, userId), eq(runtimeSubmissions.assistantMessageId, messageId)));
+    if (!row?.sessionId || !row.turnId || !this.runtime.history?.items) throw missing();
+    const selection = productSelections(await this.runtime.history.items(row.sessionId, signal), row.turnId).find(part => part.id === selectionId);
+    if (!selection) throw missing();
+    return selection.data;
   }
 
   async findUser(authSubject: 'alice' | 'bob'): Promise<{ id: string }> {
@@ -230,7 +242,7 @@ export class RuntimeRepository {
       // jsonb reorders object keys; compare canonical JSON, not wire property order.
       if (deviceHash(previous?.config ?? null) !== deviceHash(agentConfig)) {
         const [active] = await tx.select({ id: runtimeSubmissions.id }).from(runtimeSubmissions).where(and(eq(runtimeSubmissions.conversationId, conversation.id), inArray(runtimeSubmissions.status, ['queued', 'running', 'waiting_device']))).limit(1);
-        if (active) throw new ServiceError(409, 'config_upgrade_pending', 'Wait for the current reply before applying the new assistant settings', true);
+        if (active) throw new ServiceError(409, 'config_upgrade_pending', 'Wait for the current reply before applying the new personal agent settings', true);
         // Rebyte 0.2.4 cannot update inline Session tools. Preserve product history
         // and perform this configuration change only after the old queue ends.
         await tx.update(sessionBindings).set({ isCurrent: false, status: 'retired', updatedAt: new Date() }).where(eq(sessionBindings.id, binding.id));

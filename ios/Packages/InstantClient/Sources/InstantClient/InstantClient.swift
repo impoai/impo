@@ -75,6 +75,7 @@ public struct ConversationMessage: Decodable, Sendable {
     /// Files delivered with an assistant reply, from its `data-instant-file` parts.
     public let files: [DeliveredFile]
     public let actions: [ClientAction]
+    public let products: [ProductSelection]
 
     private enum CodingKeys: String, CodingKey { case id, role, sequence, text, status, createdAt, parts }
 
@@ -94,6 +95,8 @@ public struct ConversationMessage: Decodable, Sendable {
         self.files = files
         var seen = Set<String>()
         self.actions = role == "assistant" ? parts.compactMap(ClientAction.from).filter { seen.insert($0.id).inserted } : []
+        seen = []
+        self.products = role == "assistant" ? parts.compactMap(ProductSelection.from).filter { seen.insert($0.id).inserted } : []
     }
 }
 public struct ActiveSubmission: Decodable, Sendable {
@@ -156,9 +159,24 @@ public struct ToolResultReceipt: Decodable, Equatable, Sendable {
 public struct MessageClientContext: Codable, Equatable, Sendable {
     public let timeZone: String
     public let currentDate: String
-    public init(timeZone: String, currentDate: String) {
+    public let language: String?
+    public let country: String?
+    public let currency: String?
+    public init(timeZone: String, currentDate: String, language: String? = nil, country: String? = nil, currency: String? = nil) {
         self.timeZone = timeZone
         self.currentDate = currentDate
+        self.language = language; self.country = country; self.currency = currency
+    }
+    public static func current() -> Self {
+        Self(timeZone: TimeZone.current.identifier, currentDate: ISO8601DateFormatter().string(from: Date()),
+             language: Locale.preferredLanguages.first, country: Locale.current.region?.identifier, currency: Locale.current.currency?.identifier)
+    }
+    var json: JSONValue {
+        var values: [String: JSONValue] = ["timeZone": .string(timeZone), "currentDate": .string(currentDate)]
+        if let language { values["language"] = .string(language) }
+        if let country { values["country"] = .string(country) }
+        if let currency { values["currency"] = .string(currency) }
+        return .object(values)
     }
 }
 
@@ -167,6 +185,12 @@ public struct InstantClient: Sendable {
     private let baseURL: URL
     private let tokenProvider: any InstantTokenProvider
     private let session: URLSession
+
+    public func shoppingProducts(messageId: String, selectionId: String, productId: String? = nil) async throws -> ShoppingProducts {
+        var query = [URLQueryItem(name: "selectionId", value: selectionId)]
+        if let productId { query.append(URLQueryItem(name: "productId", value: productId)) }
+        return try await send("GET", ["messages", messageId, "products"], query: query)
+    }
 
     public init(baseURL: URL, tokenProvider: any InstantTokenProvider, session: URLSession = .shared) {
         self.baseURL = baseURL
@@ -190,7 +214,7 @@ public struct InstantClient: Sendable {
         if let scenario { body["scenario"] = .string(scenario) }
         if let deviceId { body["deviceId"] = .string(deviceId) }
         if let clientContext {
-            body["clientContext"] = .object(["timeZone": .string(clientContext.timeZone), "currentDate": .string(clientContext.currentDate)])
+            body["clientContext"] = clientContext.json
         }
         return try await send("POST", ["conversation", "messages"], body: .object(body))
     }
@@ -201,7 +225,7 @@ public struct InstantClient: Sendable {
         var body: [String: JSONValue] = ["clientMessageId": .string(clientMessageId), "audio": .string(audio.base64EncodedString()), "mimeType": .string(mimeType)]
         if let deviceId { body["deviceId"] = .string(deviceId) }
         if let clientContext {
-            body["clientContext"] = .object(["timeZone": .string(clientContext.timeZone), "currentDate": .string(clientContext.currentDate)])
+            body["clientContext"] = clientContext.json
         }
         return try await send("POST", ["conversation", "voice-messages"], body: .object(body))
     }
@@ -428,7 +452,7 @@ public struct InstantClient: Sendable {
         var body: [String: JSONValue] = ["clientMessageId": .string(clientMessageId), "text": .string(text)]
         if !attachmentIds.isEmpty { body["attachmentIds"] = .array(attachmentIds.map(JSONValue.string)) }
         if let clientContext {
-            body["clientContext"] = .object(["timeZone": .string(clientContext.timeZone), "currentDate": .string(clientContext.currentDate)])
+            body["clientContext"] = clientContext.json
         }
         return body
     }

@@ -1,0 +1,71 @@
+1
+00:00:00,180 --> 00:00:02,917
+Meet Impo, your open-source personal agent.
+
+2
+00:00:02,917 --> 00:00:07,347
+Remember what matters, get things done, and find your next good buy.
+
+3
+00:00:08,147 --> 00:00:14,928
+Looking for a commuter backpack under a hundred and fifty dollars? Impo finds products and helps you compare.
+
+4
+00:00:14,928 --> 00:00:19,134
+Explore photos, prices, and details, then open the merchant to buy.
+
+5
+00:00:19,934 --> 00:00:22,276
+Capture a thought with Echo on your phone.
+
+6
+00:00:22,276 --> 00:00:27,817
+Come back to the transcript, and choose which speech is yours before it becomes personal context.
+
+7
+00:00:28,617 --> 00:00:31,728
+Impo brings useful memories into your next conversation.
+
+8
+00:00:31,728 --> 00:00:35,858
+You can browse what it remembers and forget what you no longer want kept.
+
+9
+00:00:36,658 --> 00:00:40,302
+Give research, planning, or a first draft its own task.
+
+10
+00:00:40,302 --> 00:00:42,799
+Work continues when you leave the app.
+
+11
+00:00:42,799 --> 00:00:44,823
+Schedule recurring tasks, too.
+
+12
+00:00:45,623 --> 00:00:49,116
+Your Feed turns the context you share into useful next steps.
+
+13
+00:00:49,116 --> 00:00:51,386
+A little perspective for the day ahead.
+
+14
+00:00:52,186 --> 00:00:54,918
+Connections and phone permissions are optional.
+
+15
+00:00:54,918 --> 00:00:59,372
+The clients and backend are open source, so you can explore how Impo works.
+
+16
+00:01:00,172 --> 00:01:02,117
+Try Impo on the web or Android.
+
+17
+00:01:02,117 --> 00:01:05,230
+iOS is in TestFlight, with public access pending.
+
+18
+00:01:05,230 --> 00:01:08,148
+What can your personal agent help with today?.

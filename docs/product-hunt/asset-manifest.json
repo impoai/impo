@@ -1,0 +1,62 @@
+[
+  {
+    "file": "assets/01-meet-impo.png",
+    "bytes": 282445,
+    "sha256": "5c26cd08b765e28a3a4b76f4bd6183428c74a2618844d854ac92896aae7dd85e"
+  },
+  {
+    "file": "assets/02-shopping.png",
+    "bytes": 295157,
+    "sha256": "ed55e92e962e6d5423c7bc50b727f6c2f8ddbd72a7c3aeb52823e62a6e248443"
+  },
+  {
+    "file": "assets/03-echo.png",
+    "bytes": 143245,
+    "sha256": "f23f9aba619fa563a75463f6d5aa463415f3320e9dd074c2052f000b9ad8121c"
+  },
+  {
+    "file": "assets/04-memory.png",
+    "bytes": 145222,
+    "sha256": "c37788dcf4562c0d51f2e83d5d57c65b9348ea31cfa3404ddc6264b6ae8a88a8"
+  },
+  {
+    "file": "assets/05-tasks.png",
+    "bytes": 169952,
+    "sha256": "401b93f8c6e3aab29fdc8492950bb6d6ac1696f4dec2e5a9c173c9b22f4ca22b"
+  },
+  {
+    "file": "assets/06-feed.png",
+    "bytes": 316458,
+    "sha256": "9e342b2963caecc18eaf4e7ba003dce4ca85af02d8cc9f7b7f8fef2f91c25926"
+  },
+  {
+    "file": "assets/07-your-choice.png",
+    "bytes": 151705,
+    "sha256": "6079de7364fdc17a5106040fce8651a7cf9ba714903b530753be31fc07a69c7d"
+  },
+  {
+    "file": "assets/08-start.png",
+    "bytes": 161153,
+    "sha256": "b2a8730d279af7584408a4fb02e6dd8afcf39094b139288523bf1dc91140c1e6"
+  },
+  {
+    "file": "assets/contact-sheet.png",
+    "bytes": 589685,
+    "sha256": "65b37ec97aa3070349ba49271c29ee90f1527d961e3916cf513f8b8895628afd"
+  },
+  {
+    "file": "assets/impo-walkthrough-1080p.mp4",
+    "bytes": 3346630,
+    "sha256": "7cbf8af35db6b813d028241596a0ab82cfb797ff6a1e7b0fe565f11105b92a70"
+  },
+  {
+    "file": "assets/impo-walkthrough.en.srt",
+    "bytes": 1646,
+    "sha256": "083e47128d7352785410789a9bb1c5429a21d008a6a7f67455c551cdafaee258"
+  },
+  {
+    "file": "assets/thumbnail-240.png",
+    "bytes": 35751,
+    "sha256": "0ee3b28615becbfe66a34eb82c7c0d994454eaccdffd33f060d96e9482d12b71"
+  }
+]

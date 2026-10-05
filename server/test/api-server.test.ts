@@ -55,3 +55,16 @@ test('local-dev remains the default and its fixed identities keep working unchan
   const wrongMode = await fetch(`${base}/api/v1/conversation`, { headers: { authorization: 'Bearer sk_test_looks_like_a_clerk_token' } });
   assert.equal(wrongMode.status, 401);
 });
+
+test('UCP discovery serves only the public read-only profile with a usable cache lifetime', async t => {
+  const base = await listen(t);
+  for (const path of ['/.well-known/ucp', '/instant/.well-known/ucp']) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=3600');
+    const profile = await response.json();
+    assert.ok(profile.ucp.capabilities['dev.shopify.catalog.global']);
+    assert.ok(!profile.ucp.capabilities['dev.ucp.shopping.checkout']);
+    assert.deepEqual(profile.ucp.payment_handlers, {});
+  }
+});

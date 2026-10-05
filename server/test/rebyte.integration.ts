@@ -378,6 +378,34 @@ test('Rebyte SDK integration recovers remote side effects across local process f
       } finally { fake.nextFiles = []; await stop(worker); }
     });
 
+    await t.test('catalog references survive stream replay and history and remain owned by the message user', async () => {
+      const productId = 'gid://shopify/p/owned-product';
+      fake.nextSteps = [
+        { type: 'function_call', call_id: 'catalog-owned', name: 'impo_search_products', arguments: { query: 'bag' }, status: 'completed' },
+        { type: 'function_call_output', call_id: 'catalog-owned', status: 'completed', output: JSON.stringify({ products: [{ id: productId }], context: { address_country: 'US', currency: 'USD' } }) },
+      ];
+      const created = await request('/tasks', { clientMessageId: randomUUID(), text: 'Catalog reference ownership check' });
+      assert.equal(created.status, 202);
+      const worker = start('src/worker-main.ts');
+      try {
+        const view = await state(created.body.submissionId as string, 'completed');
+        const replay = await fetch(`${baseURL}/api/v1/submissions/${created.body.submissionId}/stream`, { headers: { Authorization: 'Bearer instant-dev-alice' }, signal: AbortSignal.timeout(10000) });
+        const chunks = (await replay.text()).split('\n').filter(line => line.startsWith('data: ') && line !== 'data: [DONE]').map(line => JSON.parse(line.slice(6)));
+        const parts = chunks.filter(part => part.type === 'data-impo-products');
+        assert.equal(parts.length, 1);
+        assert.deepEqual(parts[0].data.productIds, [productId]);
+        const conversation = await request(`/tasks/${created.body.taskId}/conversation`);
+        const answer = (conversation.body.messages as Array<{ id: string; parts: JSONRecord[] }>).find(message => message.id === view.messageId)!;
+        assert.deepEqual(answer.parts.filter(part => part.type === 'data-impo-products'), parts);
+        const path = `/messages/${view.messageId}/products?selectionId=${parts[0].id}`;
+        assert.equal((await request(path, undefined, 'bob')).status, 404);
+        assert.equal((await request(`/messages/${created.body.messageId}/products?selectionId=${parts[0].id}`)).status, 404, 'A user message cannot resolve an assistant selection');
+        assert.equal((await request(path.replace(parts[0].id, 'unrelated'))).status, 404);
+        assert.equal((await request(path + '&productId=gid://shopify/p/not-selected')).status, 404, 'Membership is checked before contacting the catalog');
+        assert.equal((await fetch(`${baseURL}/api/v1${path}`)).status, 401);
+      } finally { await stop(worker); }
+    });
+
     await t.test('a task conversation cannot create another task', async () => {
       // The real Agent config never advertises instant_create_task to a task's own
       // Session (see runtime.ts), so this exercises Instant's own defense-in-depth

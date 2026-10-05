@@ -149,7 +149,7 @@ struct ListeningTimeline: View {
                     }.fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Text("Recordings are source material. Summaries and assistant recall are coming later.")
+            Text("Recordings are source material. Summaries and personal agent recall are coming later.")
                 .font(.caption).foregroundStyle(InstantStyle.muted).padding(.horizontal, 4)
         }.foregroundStyle(InstantStyle.ink)
             .onChange(of: listening.selectedDate) { _, _ in listening.segments = [] }

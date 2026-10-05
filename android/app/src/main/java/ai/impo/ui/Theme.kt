@@ -45,7 +45,7 @@ val avatarResources = listOf(R.drawable.avatarfox, R.drawable.avatarrobin, R.dra
 val avatarChoices = listOf(3, 0, 1, 2, 4, 5)
 val avatarNames = listOf("Fox", "Robin", "Cat", "Impo", "Owl", "Otter")
 @Composable fun AssistantAvatar(index: Int, size: Int = 42) {
-    Image(painterResource(avatarResources.getOrElse(index) { avatarResources[3] }), "Assistant avatar",
+    Image(painterResource(avatarResources.getOrElse(index) { avatarResources[3] }), "Personal agent avatar",
         Modifier.size(size.dp).clip(CircleShape).background(RaisedPaper).padding(3.dp))
 }
 @Composable fun PageHeader(title: String, subtitle: String? = null, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {

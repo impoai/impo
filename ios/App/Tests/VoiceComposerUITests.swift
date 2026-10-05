@@ -50,6 +50,38 @@ final class VoiceComposerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Keep this draft"].waitForExistence(timeout: 3))
     }
 
+    func testAttachmentMenuSharesInputRowAndPreservesDraft() {
+        app.terminate()
+        // Picker presentation must work offline; this loopback endpoint has no server or account.
+        app.launchArguments = ["--reset-demo", "--show-main", "--live-backend", "http://127.0.0.1:1"]
+        app.launch()
+        let input = app.textViews["chat.input"]
+        let attach = app.buttons["attachments.add"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        // New-task drafts stay editable while the offline Chat history retries.
+        app.buttons["tab.tasks"].tap()
+        XCTAssertTrue(attach.isEnabled)
+        XCTAssertEqual(attach.frame.midY, input.frame.midY, accuracy: 4)
+        XCTAssertLessThanOrEqual(attach.frame.maxX, input.frame.minX)
+        input.tap(); input.typeText("Keep this attachment draft")
+        attach.tap()
+        XCTAssertTrue(app.buttons["Choose files"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Photo library"].exists)
+        XCTAssertFalse(element("voice.preview").exists)
+        let menu = XCTAttachment(screenshot: app.screenshot())
+        menu.name = "Attachment menu inside the composer"; menu.lifetime = .keepAlways; add(menu)
+        app.buttons["Choose files"].tap()
+        let cancel = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        XCTAssertEqual(input.value as? String, "Keep this attachment draft")
+        attach.tap(); app.buttons["Photo library"].tap()
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        XCTAssertEqual(input.value as? String, "Keep this attachment draft")
+        XCTAssertFalse(element("voice.preview").exists)
+    }
+
     /// New tasks and task conversations use the same composer and hold-to-talk as Chat.
     func testTaskComposersMatchChatIncludingHoldToTalk() {
         element("tab.tasks").tap()

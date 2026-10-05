@@ -1,10 +1,13 @@
 import downloads from '../server/downloads/worker.mjs';
+import { proxyAPI, webApp } from '../server/downloads/web.mjs';
 
 // Pages owns this hostname. Keep the website's asset serving untouched outside
 // download and release routes; Wrangler bundles the shared module on deployment.
 export default {
   fetch(request, env, context) {
     const path = new URL(request.url).pathname;
+    if (path.startsWith('/api/v1/')) return proxyAPI(request);
+    if (path === '/app' || path.startsWith('/app/')) return webApp(request, env);
     if (path === '/android.apk' || path === '/android/latest.json' ||
         /^\/app-releases\/(ios-testflight|ios-app-store|android-apk)\.json$/.test(path) ||
         /^\/android\/releases\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}-[1-9][0-9]*\/impo\.apk$/.test(path)) {

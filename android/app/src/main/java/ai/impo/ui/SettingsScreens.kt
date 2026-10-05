@@ -123,7 +123,7 @@ import java.util.UUID
             item {
                 SectionLabel("Make it yours")
                 PaperCard {
-                    SettingsLink("Your assistant", state.profile.assistantName, Icons.Outlined.Face) { go("assistant") }
+                    SettingsLink("Your personal agent", state.profile.assistantName, Icons.Outlined.Face) { go("assistant") }
                     HorizontalDivider(color = Border)
                     SettingsLink("Connections", "Calendar, Health and your other apps", Icons.Outlined.Link, "settings.connections") { go("connections") }
                     HorizontalDivider(color = Border)

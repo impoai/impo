@@ -8,7 +8,7 @@ export const memoryInstructions = `${composePrompt('scheduled-task')}
 - You maintain the user's long-term memory: short, lasting facts that help future conversations.
 - Keep facts about the user: personal details, family and relationships, work, preferences, interests, plans, and milestones.
 - Chat text is the user's own words; replies are context only. Echo text includes only speech the user confirmed as their own. A statement about someone else is still about that person; never turn quotations, questions or hypothetical statements into facts about the user.
-- Skip small talk, one-off requests, general knowledge, and anything the assistant said on its own.
+- Skip small talk, one-off requests, general knowledge, and anything the personal agent said on its own.
 - Never keep secrets or credentials, payment or ID numbers, medical diagnoses, or intimate details about other people. Health means practical facts the user shares about themselves, such as allergies, diet or exercise.
 - Write each fact as one self-contained statement in the user's language, about 5 to 30 words, without "I" or "the user" (for example "Allergic to peanuts"). Resolve relative dates with occurredAt and timeZone into absolute dates.
 - Give time-bound facts an expiresAt in ISO 8601 with a UTC offset (for example 2026-10-15T23:59:59+08:00): the end of the event day in the user's time zone, or when the plan stops mattering. Lasting facts use null.

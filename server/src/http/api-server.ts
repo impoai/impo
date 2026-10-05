@@ -1,4 +1,5 @@
 import { attachmentIds, attachmentTypes, maxAttachmentBytes, maxAttachments } from '../attachments/contract.js';
+import { catalogProfile, readCatalog } from '../commerce/catalog.js';
 import type { AttachmentService } from '../attachments/service.js';
 import type { ScheduledTaskRepository } from '../db/repositories/scheduled-task-repository.js';
 import { parseScheduledTask } from '../scheduling/contract.js';
@@ -34,7 +35,7 @@ import type { EchoScheduleRepository } from '../db/repositories/echo-schedule-re
 
 export type ApiRepository = Pick<RuntimeRepository,
   'health' | 'findUser' | 'findOrCreateUser' | 'acceptMessage' | 'getConversation' | 'getSubmission' | 'cancelSubmission' | 'readEvents'>
-  & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage'>>;
+  & Partial<Pick<RuntimeRepository, 'devices' | 'listTasks' | 'createUserTask' | 'getTaskConversation' | 'acceptTaskMessage' | 'findUserMessage' | 'productSelection'>>;
 
 export interface ApiOptions {
   attachments?: AttachmentService;
@@ -196,6 +197,11 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
     if (url.pathname === '/instant') url.pathname = '/';
     else if (url.pathname.startsWith('/instant/')) url.pathname = url.pathname.slice('/instant'.length);
     const method = req.method;
+    if (url.pathname === '/.well-known/ucp' && method === 'GET') {
+      // UCP discovery requires a cacheable public profile; user product responses remain private.
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+      res.end(JSON.stringify(catalogProfile)); return;
+    }
     if (url.pathname === '/health' && method === 'GET') {
       sendJSON(res, 200, { status: 'ok', mode: 'development', runtime: options.runtime === 'rebyte' ? 'rebyte' : 'deterministic' }); return;
     }
@@ -212,6 +218,17 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       sendJSON(res, 200, await options.accounts.status(uuid(receiptPath[1]), token)); return;
     }
     const user = await gadgetGatewayUser(req, path, method ?? '') ?? await authenticate(req, path === '/api/v1/account' && method === 'DELETE');
+    const productsPath = /^\/api\/v1\/messages\/([^/]+)\/products$/.exec(path);
+    if (productsPath && method === 'GET') {
+      if (!repository.productSelection) throw new ServiceError(503, 'catalog_unavailable', 'Product information is temporarily unavailable.', true);
+      if ([...url.searchParams.keys()].some(key => !['selectionId', 'productId'].includes(key))) throw new ServiceError(400, 'invalid_request', 'Unsupported product parameter');
+      const selectionId = url.searchParams.get('selectionId');
+      if (!selectionId || !/^[A-Za-z0-9_-]{1,200}$/.test(selectionId)) throw new ServiceError(400, 'invalid_request', 'A product selection is required');
+      const signal = requestSignal(res);
+      const selection = await repository.productSelection(user.id, uuid(productsPath[1]), selectionId, signal);
+      res.setHeader('Cache-Control', 'no-store');
+      sendJSON(res, 200, await readCatalog(selection, url.searchParams.get('productId') ?? undefined, signal)); return;
+    }
     if (path === '/api/v1/account/deletion-challenge' || path === '/api/v1/account') {
       if (!options.accounts || !options.accountDeletionEnabled) throw new ServiceError(503, 'account_deletion_unavailable', 'Account deletion is temporarily unavailable. Please try again.', true);
       if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');

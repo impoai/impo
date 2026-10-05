@@ -122,7 +122,7 @@ struct SettingsView: View {
                 case .notifications: NotificationSettingsView()
                 case .echoSchedule: EchoScheduleView()
                 case .profile: ProfileDetailView()
-                case .plan: LibraryInfoSheet(title: "Your Impo preview", symbol: "sparkles", text: "Explore your assistant, conversations, and personal space. Plans and billing are not available in this preview.")
+                case .plan: LibraryInfoSheet(title: "Your Impo preview", symbol: "sparkles", text: "Explore your personal agent, conversations, and personal space. Plans and billing are not available in this preview.")
                 case .usage: LibraryInfoSheet(title: "Monthly usage", symbol: "chart.bar.xaxis", text: "Usage information will appear here when plans are available. There is no subscription or allowance attached to this preview.")
                 }
             }.swipeToDismiss()
@@ -500,13 +500,13 @@ struct AssistantView: View {
                         }
                         Rectangle().fill(InstantStyle.border).frame(height: 0.5)
                         Text("Thoughtful, curious, and here to help.").font(InstantStyle.serif(22))
-                        Text("This is a place for your assistant’s character to take shape. Your name and appearance choices are saved on this device.")
+                        Text("This is a place for your personal agent’s character to take shape. Your name and appearance choices are saved on this device.")
                             .font(.system(size: 15)).foregroundStyle(libraryMuted).lineSpacing(4)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(23)
                 }
             }.padding(20).padding(.bottom, 25)
         }.scrollIndicators(.hidden).foregroundStyle(libraryInk)
-            .alert("What should I call your assistant?", isPresented: $editing) {
+            .alert("What should I call your personal agent?", isPresented: $editing) {
                 TextField("Name", text: $name).accessibilityIdentifier("assistant.name")
                 Button("Save") {
                     let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -666,7 +666,7 @@ private struct LibraryConnectionsView: View {
         LibrarySheet(title: "Connections", onBack: { dismiss() }) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Make a little more possible.").font(InstantStyle.serif(28))
-                Text("Choose what your assistant can read on this iPhone and from connected accounts. When you ask, the relevant results are sent to Impo and its AI service to answer you.")
+                Text("Choose what your personal agent can read on this iPhone and from connected accounts. When you ask, the relevant results are sent to Impo and its AI service to answer you.")
                     .font(.system(size: 15)).foregroundStyle(libraryMuted).lineSpacing(4)
                 DeviceAccessCard(kind: "calendar")
                 DeviceAccessCard(kind: "health")
