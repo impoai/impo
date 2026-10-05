@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Impo — Fully open source. Capture everything with Echo.</title>
-  <meta name="description" content="Meet Impo, an open personal agent that captures everything around your life. Capture conversations with Echo, revisit transcripts, and build personal memory. Fully open source, for Android and iPhone.">
-  <meta property="og:title" content="Impo — Fully open source. Capture everything with Echo.">
-  <meta property="og:description" content="An open personal agent that captures everything around your life. Echo turns conversations and spoken thoughts into transcripts and useful memory. Explore Impo for Android and iPhone.">
+  <title>Impo — Open source framework for personal agents</title>
+  <meta name="description" content="Impo is an open source framework for personal agents. Build with iPhone, Android, and web apps, a shared backend, and an open-source Gadget SDK for your hardware.">
+  <meta property="og:title" content="Impo — Open source framework for personal agents">
+  <meta property="og:description" content="Build personal agents for iPhone, Android, the web, and your own hardware. Open-source apps, backend, and Gadget SDK, all in one framework.">
   <meta property="og:image" content="https://impo.ai/assets/apple-touch-icon.png">
   <meta name="theme-color" content="#f4eee3">
   <link rel="icon" href="/assets/favicon.ico" sizes="any">
@@ -32,8 +32,9 @@
       <div class="wrap">
         <div>
           <p class="eyebrow">Meet Impo</p>
-          <h1><span>Fully <em>open source.</em></span><span>Capture everything<br>with <em>Echo.</em></span></h1>
-          <p class="lede">An open personal agent that captures everything around your life.</p>
+          <h1><em>Open source</em> framework for personal agents</h1>
+          <p class="lede">Build personal agents for iPhone, Android, the web, and your own hardware.</p>
+          <a class="hardware-link" href="#gadgets">Your hardware. Meet Impo Gadgets <span aria-hidden="true">↗</span></a>
           <div class="hero-actions" id="download" role="group" aria-label="Get Impo">
             <div class="download-option">
               <a class="action action-primary" href="/android.apk" aria-describedby="android-requirements">
@@ -84,13 +85,37 @@
       </div>
     </section>
 
+    <section class="section" id="gadgets" aria-labelledby="gadgets-heading">
+      <div class="wrap gadget-layout">
+        <div>
+          <p class="eyebrow">Impo Gadgets</p>
+          <h2 id="gadgets-heading">Your personal agent.<br>On your hardware.</h2>
+          <p class="intro">Connect a compatible ESP32 or Linux device to Impo. Pair it from your iPhone, then ask your agent to show a message or play a sound.</p>
+          <a class="action" href="https://github.com/impoai/impo-gadget-sdk">Explore Gadget SDK <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="gadget-platforms">
+          <dl>
+            <div>
+              <dt>ESP32</dt>
+              <dd>Open-source firmware for compatible boards, including the Espressif ESP-SparkBot.</dd>
+            </div>
+            <div>
+              <dt>Linux</dt>
+              <dd>A device SDK for Raspberry Pi and other Linux devices. Add commands for the hardware you build.</dd>
+            </div>
+          </dl>
+          <p class="platform-note">Available commands depend on your hardware and firmware. Gadget setup is currently available in the iOS app.</p>
+        </div>
+      </div>
+    </section>
+
     <section class="section" id="open-source">
       <div class="wrap">
         <h2>Every part. Fully open source.</h2>
-        <p class="intro">Native apps and backend, all open source. Explore the code, run your own setup, and help shape what comes next.</p>
+        <p class="intro">Native apps, web app, backend, and Gadget SDK, all open source. Explore the code, run your own setup, and help shape what comes next.</p>
         <div class="promise">
           <div><h3>The whole project</h3><p>Explore how the app, shared backend, background work, and agent integrations fit together. Follow the architecture and development on <a href="https://github.com/impoai/impo">GitHub</a>.</p></div>
-          <div><h3>Across your devices</h3><p>Native apps for Android and iPhone keep your conversations, tasks, and personal context connected to your account. A web app is planned.</p></div>
+          <div><h3>Across your devices</h3><p>Use Impo on Android, iPhone, and <a href="/app/">the web</a>, with conversations, tasks, and personal context connected to your account. Bring your own hardware with <a href="https://github.com/impoai/impo-gadget-sdk">Impo Gadgets</a>.</p></div>
           <div><h3>Built with the community</h3><p>Ask a question, suggest an idea, or help build the next feature. Join <a href="https://discord.gg/84ZYn3xcGV">the discussion on Discord</a> and shape Impo with us.</p></div>
         </div>
       </div>
@@ -100,7 +125,7 @@
   <footer class="site-footer">
     <div class="wrap">
       <span>© 2026 IMPO · impo.ai</span>
-      <nav aria-label="Footer navigation"><a href="https://github.com/impoai/impo">GitHub</a><a href="https://discord.gg/84ZYn3xcGV">Discord</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="mailto:cj@impo.ai">Contact</a></nav>
+      <nav aria-label="Footer navigation"><a href="https://github.com/impoai/impo">GitHub</a><a href="https://github.com/impoai/impo-gadget-sdk">Gadget SDK</a><a href="https://discord.gg/84ZYn3xcGV">Discord</a><a href="/privacy/">Privacy Policy</a><a href="/terms/">Terms of Service</a><a href="mailto:cj@impo.ai">Contact</a></nav>
     </div>
   </footer>
 </body>

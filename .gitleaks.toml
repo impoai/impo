@@ -1,0 +1,22 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "CryptoKit type annotation, not a private key value"
+  condition = "AND"
+  paths = ['''(^|/)ios/Packages/InstantClient/Sources/InstantClient/GadgetPairing\.swift$''']
+  regexTarget = "match"
+  regexes = ['''^privateKey: P256\.KeyAgreement\.PrivateKey$''']
+
+  [[rules.allowlists]]
+  description = "Exact public community keys from impo-gadget-sdk esp32/tests/vectors/link_pairing_v5.json"
+  condition = "AND"
+  paths = ['''(^|/)ios/Packages/InstantClient/Tests/InstantClientTests/GadgetPairingTests\.swift$''']
+  regexTarget = "secret"
+  regexes = [
+    '''^2208c6d80caa35cd71a5d89ae5f1bf0856e01def5a5e23c82aba926847631e0c$''',
+    '''^9abb2954b05e2f5f7112e9bfd41fd970602e27ed07453c1cff51f575de5d0b4e$''',
+  ]

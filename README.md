@@ -4,7 +4,7 @@
 
 # Impo
 
-**An open-source personal agent for iOS, Android, and the web.**
+**Open source framework for personal agents**
 
 Impo is a personal agent in the spirit of MUSE: a companion that understands your everyday
 context, helps you get things done, and follows up proactively. Talk to your agent,
