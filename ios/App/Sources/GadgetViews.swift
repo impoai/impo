@@ -49,13 +49,13 @@ struct GadgetsView: View {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(gadget.name).font(.system(size: 16, weight: .medium))
-                                    Text(gadget.online ? "Connected" : "Offline").font(.caption)
+                                    Text(gadget.online ? "Connected" : gadget.hasConnected ? "Offline" : "Hasn't connected yet").font(.caption)
                                         .foregroundStyle(gadget.online ? InstantStyle.forest : InstantStyle.muted)
                                 }
                                 Spacer(minLength: 8)
                                 Button("Remove") { removing = gadget }
                                     .font(.footnote).foregroundStyle(InstantStyle.muted).frame(minHeight: 44)
-                                    .accessibilityIdentifier("gadget.remove.\(gadget.nodeId)")
+                                    .accessibilityIdentifier("gadget.remove.\(gadget.pairingId)")
                             }.padding(.horizontal, 14).frame(minHeight: 58)
                         }
                     }.paperSurface(cornerRadius: 16)

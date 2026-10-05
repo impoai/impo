@@ -584,8 +584,11 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       res.setHeader('Cache-Control', 'no-store');
       if (path === '/api/v1/gadgets' && method === 'GET') { sendJSON(res, 200, await options.gadgets.list(user.subject)); return; }
       if (path === '/api/v1/gadgets/pairings' && method === 'POST') {
-        onlyFields(await readJSON(req, requestTimeoutMs), []);
-        sendJSON(res, 201, await options.gadgets.pair(user.subject)); return;
+        const input = await readJSON(req, requestTimeoutMs);
+        onlyFields(input, ['name']);
+        // Shown in the gadget list until the gadget registers under its own name.
+        const name = input.name === undefined ? undefined : requiredString(input, 'name', 64).trim();
+        sendJSON(res, 201, await options.gadgets.pair(user.subject, name || undefined)); return;
       }
       if (gadgetPath[1] && method === 'DELETE') {
         await options.gadgets.unpair(user.subject, uuid(gadgetPath[1]));

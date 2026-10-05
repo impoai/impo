@@ -395,7 +395,7 @@ is planned, not an implemented protocol feature.
 | Method and path | Request | Success |
 | --- | --- | --- |
 | `GET /gadgets` | No query | 200 `{gadgets: Gadget[]}` |
-| `POST /gadgets/pairings` | `{}` | 201 `GadgetPairing` |
+| `POST /gadgets/pairings` | `{name?: string}` | 201 `GadgetPairing` |
 | `DELETE /gadgets/pairings/{pairingId}` | No body | 200 `{}` |
 
 ```text
@@ -411,8 +411,11 @@ gateway route of the session's own account. `GadgetPairing` holds device
 credentials: the client sends them to the gadget in `provision_v2` over the
 encrypted BLE setup session and does not store them. Responses are
 `Cache-Control: no-store`. Delete a pairing whose setup did not finish.
-Issuing a pairing retires the account's pairings that no gadget used within an
-hour. `503 gadgets_unavailable` is retryable. Only the iOS client pairs gadgets.
+A pairing no gadget has connected with yet is listed with an empty `nodeId`,
+`online: false` and the `name` (at most 64 characters) given when it was issued,
+so its owner can remove it. A gadget is set up only once it is listed online:
+storing the pairing does not prove it can reach Impo from its Wi-Fi. Issuing a
+pairing retires the account's pairings that no gadget used within an hour. `503 gadgets_unavailable` is retryable. Only the iOS client pairs gadgets.
 
 ## Echo history and annotations
 

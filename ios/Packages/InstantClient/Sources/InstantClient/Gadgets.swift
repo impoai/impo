@@ -3,12 +3,15 @@ import Foundation
 /// A gadget paired to the signed-in account, as the gadget gateway last saw it.
 public struct Gadget: Decodable, Equatable, Identifiable, Sendable {
     public let pairingId: String
+    /// Empty until the gadget has connected once.
     public let nodeId: String
     public let name: String
     public let platform: String?
     public let version: String?
     public let online: Bool
     public var id: String { pairingId }
+    /// Whether the gadget has ever reached Impo with this pairing.
+    public var hasConnected: Bool { !nodeId.isEmpty }
 }
 
 /// Credentials the server issues for one gadget. They go to the gadget over the
@@ -42,9 +45,10 @@ public extension InstantClient {
         return list.gadgets
     }
 
-    /// Issues credentials for one new gadget on the signed-in account.
-    func createGadgetPairing() async throws -> GadgetPairingRecord {
-        try await send("POST", ["gadgets", "pairings"], body: .object([:]))
+    /// Issues credentials for one new gadget on the signed-in account. `name` labels
+    /// the gadget in the list until it connects and reports its own.
+    func createGadgetPairing(name: String? = nil) async throws -> GadgetPairingRecord {
+        try await send("POST", ["gadgets", "pairings"], body: .object(name.map { ["name": .string(String($0.prefix(64)))] } ?? [:]))
     }
 
     /// Unpairs a gadget: its credentials stop working and it is disconnected.

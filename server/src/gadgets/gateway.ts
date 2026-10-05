@@ -40,7 +40,7 @@ const withheld = (command: string) => /^(device\.ota|device\.unpair|system\.|lin
 
 export interface GadgetAPI {
   list(subject: string): Promise<{ gadgets: Gadget[] }>;
-  pair(subject: string): Promise<GadgetPairing>;
+  pair(subject: string, name?: string): Promise<GadgetPairing>;
   unpair(subject: string, pairingId: string): Promise<void>;
 }
 
@@ -67,16 +67,20 @@ export class GadgetGateway implements GadgetAPI, GadgetControl {
     }
   }
 
-  private async state(subject: string): Promise<{ pairings: { pairing_id: string; created_at: number }[]; devices: Record<string, unknown>[] }> {
+  private async state(subject: string): Promise<{ pairings: { pairing_id: string; created_at: number; label?: string | null }[]; devices: Record<string, unknown>[] }> {
     const response = await this.request(subject, '');
     if (!response.ok) throw new ServiceError(503, 'gadgets_unavailable', 'Gadgets are temporarily unavailable.', true);
-    return await response.json() as { pairings: { pairing_id: string; created_at: number }[]; devices: Record<string, unknown>[] };
+    return await response.json() as { pairings: { pairing_id: string; created_at: number; label?: string | null }[]; devices: Record<string, unknown>[] };
   }
 
   async commands(subject: string): Promise<(Gadget & { commands: GadgetCommand[] })[]> {
+    return this.registered((await this.state(subject)).devices);
+  }
+
+  private registered(devices: Record<string, unknown>[]): (Gadget & { commands: GadgetCommand[] })[] {
     const text = (value: unknown) => typeof value === 'string' && value ? value : null;
     const object = (value: unknown) => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-    return (await this.state(subject)).devices.flatMap(device => {
+    return devices.flatMap(device => {
       const pairingId = text(device.pairing_id), nodeId = text(device.node_id);
       if (!pairingId || !nodeId) return [];
       const commands = Object.entries(object(device.commands)).filter(([name]) => !withheld(name)).map(([name, spec]) => ({
@@ -87,7 +91,15 @@ export class GadgetGateway implements GadgetAPI, GadgetControl {
   }
 
   async list(subject: string): Promise<{ gadgets: Gadget[] }> {
-    return { gadgets: (await this.commands(subject)).map(({ commands: _, ...gadget }) => gadget) };
+    const { pairings, devices } = await this.state(subject);
+    const gadgets: Gadget[] = this.registered(devices).map(({ commands: _, ...gadget }) => gadget);
+    // A gadget that was given a pairing but has not reached the gateway yet must still be
+    // listed, or its owner could never remove it. It has no node id until it registers.
+    const seen = new Set(gadgets.map(gadget => gadget.pairingId));
+    for (const pairing of pairings) {
+      if (!seen.has(pairing.pairing_id)) gadgets.push({ pairingId: pairing.pairing_id, nodeId: '', name: pairing.label || 'Gadget', platform: null, version: null, online: false });
+    }
+    return { gadgets };
   }
 
   async invoke(subject: string, nodeId: string, command: string, params: Record<string, unknown>, timeoutMs: number): Promise<{ ok: boolean; payload?: unknown; error?: string }> {
@@ -98,14 +110,14 @@ export class GadgetGateway implements GadgetAPI, GadgetControl {
     return { ok: result.ok === true, ...(result.payload !== undefined ? { payload: result.payload } : {}), ...(typeof result.error === 'string' ? { error: result.error } : {}) };
   }
 
-  async pair(subject: string): Promise<GadgetPairing> {
+  async pair(subject: string, name?: string): Promise<GadgetPairing> {
     // Setups that never finished leave working credentials behind; retire them before issuing more.
     const { pairings, devices } = await this.state(subject);
     const used = new Set(devices.map(device => device.pairing_id));
     for (const pairing of pairings) {
       if (!used.has(pairing.pairing_id) && Date.now() - pairing.created_at > abandonedAfterMs) await this.unpair(subject, pairing.pairing_id).catch(() => {});
     }
-    const response = await this.request(subject, '/pairings', { method: 'POST', body: '{}' });
+    const response = await this.request(subject, '/pairings', { method: 'POST', body: JSON.stringify(name ? { label: name } : {}) });
     const created = response.ok ? await response.json() as { pairing_id?: string; pairing?: Record<string, unknown> } : undefined;
     const record = created?.pairing;
     if (!created?.pairing_id || typeof record?.access_token !== 'string' || typeof record.refresh_token !== 'string'

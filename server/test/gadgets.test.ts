@@ -27,16 +27,16 @@ test('gadget routes act on the signed-in account only', async t => {
   const calls: unknown[][] = [];
   const base = await listen(t, {
     list: async subject => { calls.push(['list', subject]); return { gadgets: [] }; },
-    pair: async subject => { calls.push(['pair', subject]); return pairing; },
+    pair: async (subject, name) => { calls.push(['pair', subject, name]); return pairing; },
     unpair: async (subject, id) => { calls.push(['unpair', subject, id]); },
   });
-  const created = await fetch(`${base}/api/v1/gadgets/pairings`, { method: 'POST', headers: alice, body: '{}' });
+  const created = await fetch(`${base}/api/v1/gadgets/pairings`, { method: 'POST', headers: alice, body: '{"name":"ImpoGadget-1"}' });
   assert.equal(created.status, 201);
   assert.equal(created.headers.get('cache-control'), 'no-store');
   assert.deepEqual(await created.json(), pairing);
   assert.equal((await fetch(`${base}/api/v1/gadgets`, { headers: alice })).status, 200);
   assert.equal((await fetch(`${base}/api/v1/gadgets/pairings/${pairingId}`, { method: 'DELETE', headers: alice })).status, 200);
-  assert.deepEqual(calls, [['pair', 'alice'], ['list', 'alice'], ['unpair', 'alice', pairingId]]);
+  assert.deepEqual(calls, [['pair', 'alice', 'ImpoGadget-1'], ['list', 'alice'], ['unpair', 'alice', pairingId]]);
 
   assert.equal((await fetch(`${base}/api/v1/gadgets/pairings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
   assert.equal((await fetch(`${base}/api/v1/gadgets/pairings`, { method: 'POST', headers: alice, body: '{"subject":"bob"}' })).status, 400);
@@ -49,7 +49,7 @@ test('gadget routes are unavailable without a gateway', async t => {
   assert.equal((await fetch(`${base}/api/v1/gadgets`, { headers: alice })).status, 503);
 });
 
-function gateway(state: { pairings: { pairing_id: string; created_at: number }[]; devices: Record<string, unknown>[] }) {
+function gateway(state: { pairings: { pairing_id: string; created_at: number; label?: string }[]; devices: Record<string, unknown>[] }) {
   const requests: string[] = [];
   const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input), method = init?.method ?? 'GET';
@@ -67,13 +67,19 @@ test('the gateway client issues a pairing and retires abandoned ones', async () 
     pairings: [
       { pairing_id: 'in-use', created_at: 0 },
       { pairing_id: 'abandoned', created_at: 0 },
-      { pairing_id: 'in-progress', created_at: Date.now() },
+      { pairing_id: 'in-progress', created_at: Date.now(), label: 'Kitchen' },
     ],
     devices: [{ node_id: 'homelink-1', pairing_id: 'in-use', online: true, display_name: 'Desk', platform: 'esp32', version: '1.2.3' }],
   });
   assert.deepEqual(await client.pair('user_a'), pairing);
   assert.deepEqual(requests, ['GET /admin/vms/user_a', 'DELETE /admin/vms/user_a/pairings/abandoned', 'POST /admin/vms/user_a/pairings']);
-  assert.deepEqual(await client.list('user_a'), { gadgets: [{ pairingId: 'in-use', nodeId: 'homelink-1', name: 'Desk', platform: 'esp32', version: '1.2.3', online: true }] });
+  // Pairings no gadget has registered with stay listed so they can be removed; the agent never sees them.
+  assert.deepEqual(await client.list('user_a'), { gadgets: [
+    { pairingId: 'in-use', nodeId: 'homelink-1', name: 'Desk', platform: 'esp32', version: '1.2.3', online: true },
+    { pairingId: 'abandoned', nodeId: '', name: 'Gadget', platform: null, version: null, online: false },
+    { pairingId: 'in-progress', nodeId: '', name: 'Kitchen', platform: null, version: null, online: false },
+  ] });
+  assert.deepEqual((await client.commands('user_a')).map(gadget => gadget.nodeId), ['homelink-1']);
 });
 
 test('the gateway client rejects bad subjects and reports missing gadgets', async () => {

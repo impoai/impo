@@ -46,6 +46,8 @@ final class GadgetSetupModel: NSObject, @preconcurrency CBCentralManagerDelegate
     @ObservationIgnored private var outgoing: [Data] = []
     @ObservationIgnored private var isWriting = false
     @ObservationIgnored private var record: GadgetPairingRecord?
+    /// The gadget has stored its pairing. From here it restarts and drops Bluetooth on its own.
+    @ObservationIgnored private var provisioned = false
     @ObservationIgnored private var timeout: Task<Void, Never>?
 
     private static let service = CBUUID(string: GadgetBLE.service)
@@ -60,7 +62,7 @@ final class GadgetSetupModel: NSObject, @preconcurrency CBCentralManagerDelegate
     func start() {
         stop()
         step = .searching
-        nearby = []; peripherals = [:]; networks = []; wifiError = nil
+        nearby = []; peripherals = [:]; networks = []; wifiError = nil; provisioned = false
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
@@ -88,7 +90,7 @@ final class GadgetSetupModel: NSObject, @preconcurrency CBCentralManagerDelegate
         Task {
             do {
                 // A retry after a wrong password reuses the pairing already issued for this gadget.
-                let record = if let record { record } else { try await client.createGadgetPairing() }
+                let record = if let record { record } else { try await client.createGadgetPairing(name: gadgetName) }
                 self.record = record
                 guard step == .joining("Preparing your gadget…") else { return }
                 send(sealed: GadgetPairingSession.provisionCommand(record.provisioning(ssid: ssid, password: password)))
@@ -121,6 +123,23 @@ final class GadgetSetupModel: NSObject, @preconcurrency CBCentralManagerDelegate
         guard step != .done else { return }
         stop()
         step = .failed(message)
+    }
+
+    private func awaitOnline(_ pairingId: String) {
+        timeout = Task { [weak self, client] in
+            for _ in 0..<30 {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                if (try? await client.gadgets())?.contains(where: { $0.pairingId == pairingId && $0.online }) == true {
+                    self?.step = .done
+                    return
+                }
+            }
+            guard !Task.isCancelled, let self else { return }
+            let name = self.gadgetName
+            self.stop()
+            self.step = .failed("\(name) joined that Wi-Fi but couldn't reach Impo from it. It stays in your Gadgets list and connects when it can. To use another network, remove it there and set it up again.")
+        }
     }
 
     private func expect(within seconds: Int, _ message: String) {
@@ -189,9 +208,13 @@ final class GadgetSetupModel: NSObject, @preconcurrency CBCentralManagerDelegate
         case "wifi_connecting": step = .joining("Joining Wi-Fi…")
         case "wifi_connected": step = .joining("Connecting to Impo…")
         case "auth_ok":
+            // The gadget has only stored the pairing. It is set up once it reaches Impo over its own Wi-Fi.
+            guard let pairingId = record?.pairingId else { return }
             timeout?.cancel()
-            step = .done
+            provisioned = true
             record = nil
+            step = .joining("Waiting for \(gadgetName) to come online…")
+            awaitOnline(pairingId)
         case "wifi_failed":
             timeout?.cancel()
             wifiError = "The gadget couldn't join that network. Check the name and password."
@@ -245,7 +268,8 @@ final class GadgetSetupModel: NSObject, @preconcurrency CBCentralManagerDelegate
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: (any Error)?) {
-        // The gadget turns Bluetooth off itself once setup is complete.
+        // The gadget turns Bluetooth off itself once it has stored its pairing.
+        if provisioned { return }
         if case .failed = step { return }
         fail("The gadget disconnected before setup finished. Try again.")
     }
