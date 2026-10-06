@@ -22,7 +22,7 @@ import { verifyToken } from '@clerk/backend';
 import { ServiceError } from '../errors.js';
 import type { GadgetAPI } from '../gadgets/gateway.js';
 import { boundedFileBytes, contentDisposition, type FileDownloads } from '../rebyte/files.js';
-import type { RuntimeRepository } from '../db/repositories/runtime-repository.js';
+import type { ConversationWindow, RuntimeRepository } from '../db/repositories/runtime-repository.js';
 import { clientContext } from '../tools/device-tools.js';
 import type { ConnectorAPI } from '../composio/connector-service.js';
 import type { ProfileRepository } from '../db/repositories/profile-repository.js';
@@ -77,6 +77,18 @@ function messageInput(data: Record<string, unknown>, maxLength: number) {
   const text = data.text === undefined && ids.length ? '' : data.text;
   if (typeof text !== 'string' || text.includes('\0') || text.length > maxLength || (!text.trim() && !ids.length)) throw new ServiceError(400, 'invalid_request', 'Enter a message or attach a file.');
   return { text, ...(ids.length ? { attachmentIds: ids } : {}) };
+}
+
+/** `afterSequence` reads forward, `beforeSequence` reads the newest page below a bound; never both. */
+function conversationWindow(url: URL): ConversationWindow {
+  for (const key of url.searchParams.keys()) {
+    if (key !== 'afterSequence' && key !== 'beforeSequence' && key !== 'limit') throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
+  }
+  if (url.searchParams.has('beforeSequence')) {
+    if (url.searchParams.has('afterSequence')) throw new ServiceError(400, 'invalid_request', 'Use afterSequence or beforeSequence, not both');
+    return { beforeSequence: integerQuery(url, 'beforeSequence', Number.MAX_SAFE_INTEGER, 1, Number.MAX_SAFE_INTEGER) };
+  }
+  return { afterSequence: integerQuery(url, 'afterSequence', 0, 0, Number.MAX_SAFE_INTEGER) };
 }
 
 /** Base64 audio plus a few small fields. */
@@ -627,12 +639,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       }
     }
     if (path === '/api/v1/conversation' && method === 'GET') {
-      for (const key of url.searchParams.keys()) {
-        if (key !== 'afterSequence' && key !== 'limit') throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
-      }
-      const after = integerQuery(url, 'afterSequence', 0, 0, Number.MAX_SAFE_INTEGER);
-      const limit = integerQuery(url, 'limit', 50, 1, 100);
-      sendJSON(res, 200, await repository.getConversation(user.id, after, limit)); return;
+      sendJSON(res, 200, await repository.getConversation(user.id, conversationWindow(url), integerQuery(url, 'limit', 50, 1, 100))); return;
     }
     if (path === '/api/v1/tasks' || path.startsWith('/api/v1/tasks/')) {
       const { listTasks, createUserTask, getTaskConversation, acceptTaskMessage } = repository;
@@ -652,11 +659,7 @@ export function createApiServer(repository: ApiRepository, options: ApiOptions =
       }
       const task = /^\/api\/v1\/tasks\/([^/]+)\/(conversation|messages)$/.exec(path);
       if (task?.[2] === 'conversation' && method === 'GET') {
-        for (const key of url.searchParams.keys()) {
-          if (key !== 'afterSequence' && key !== 'limit') throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');
-        }
-        sendJSON(res, 200, await getTaskConversation.call(repository, user.id, uuid(task[1]),
-          integerQuery(url, 'afterSequence', 0, 0, Number.MAX_SAFE_INTEGER), integerQuery(url, 'limit', 50, 1, 100))); return;
+        sendJSON(res, 200, await getTaskConversation.call(repository, user.id, uuid(task[1]), conversationWindow(url), integerQuery(url, 'limit', 50, 1, 100))); return;
       }
       if (task?.[2] === 'messages' && method === 'POST') {
         if (url.search) throw new ServiceError(400, 'invalid_request', 'Unsupported query parameter');

@@ -44,6 +44,8 @@ export function createAndroidFixture(
     voiceDelayMs?: number;
     files?: boolean;
     legacyProfile?: boolean;
+    /** Seed this many finished turns before the welcome pair, to exercise paged history. */
+    longHistory?: number;
   } = {},
 ) {
   if (process.env.NODE_ENV === 'production') throw new Error('Android fixtures are local development only');
@@ -194,13 +196,18 @@ export function createAndroidFixture(
     timers.add(timer);
     return receipt;
   };
-  const history = (userId: string, conversation: Json, after = 0, limit = 50) => {
-    const messages = conversation.messages.filter((m: Json) => m.sequence > after);
+  const history = (userId: string, conversation: Json, window: { afterSequence?: number; beforeSequence?: number } = {}, limit = 50) => {
+    const backward = window.beforeSequence !== undefined;
+    const all = conversation.messages as Json[];
+    const selected = backward ? all.filter((m: Json) => m.sequence < window.beforeSequence!).slice(-limit - 1) : all.filter((m: Json) => m.sequence > (window.afterSequence ?? 0)).slice(0, limit + 1);
+    const page = backward ? selected.slice(-limit) : selected.slice(0, limit);
+    console.log(JSON.stringify({ event: 'fixture.conversation', window, limit, returned: page.length }));
     return {
       conversationId: conversation.conversationId,
-      messages: messages.slice(0, limit),
-      hasMore: messages.length > limit,
-      nextAfterSequence: messages.slice(0, limit).at(-1)?.sequence ?? after,
+      messages: page,
+      hasMore: selected.length > limit,
+      nextAfterSequence: page.at(-1)?.sequence ?? (backward ? window.beforeSequence! - 1 : (window.afterSequence ?? 0)),
+      nextBeforeSequence: page[0]?.sequence ?? (backward ? window.beforeSequence! : (window.afterSequence ?? 0) + 1),
       activeSubmissions: [...submissions.values()]
         .filter(
           (run) =>
@@ -213,14 +220,20 @@ export function createAndroidFixture(
   };
   for (const user of users.values()) {
     const conversationId = id(`${user.id}:main`);
+    const earlier = Array.from({ length: options.longHistory ?? 0 }, (_, index) => {
+      const role = index % 2 ? 'assistant' : 'user';
+      const text = `${role === 'user' ? 'Question' : 'Answer'} ${index + 1} of the long history`;
+      return { id: id(`${user.id}:history-${index + 1}`), role, sequence: index + 1, text, parts: [{ type: 'text', text }], status: 'completed', createdAt: stamp };
+    });
     conversations.set(conversationId, {
       userId: user.id,
       conversationId,
       messages: [
+        ...earlier,
         {
           id: id(`${user.id}:welcome-user`),
           role: 'user',
-          sequence: 1,
+          sequence: earlier.length + 1,
           text: 'Help me make room for a good day.',
           parts: [{ type: 'text', text: 'Help me make room for a good day.' }],
           status: 'completed',
@@ -229,7 +242,7 @@ export function createAndroidFixture(
         {
           id: id(`${user.id}:welcome-answer`),
           role: 'assistant',
-          sequence: 2,
+          sequence: earlier.length + 2,
           text: richText,
           parts: [{ type: 'text', text: richText }, ...(options.files ? [filePart(user.id)] : [])],
           status: 'completed',
@@ -437,8 +450,8 @@ export function createAndroidFixture(
       const message = conversation.messages.find((row: Json) => row.id === accepted.receipt.messageId && row.role === 'user');
       return message ? { text: message.text } : undefined;
     },
-    getConversation: async (userId: string, after: number, limit: number) =>
-      history(userId, main(userId), after, limit),
+    getConversation: async (userId: string, window: { afterSequence?: number; beforeSequence?: number }, limit: number) =>
+      history(userId, main(userId), window, limit),
     getSubmission: async (userId: string, runId: string) => runView(own(submissions, userId, runId)),
     cancelSubmission: async (userId: string, runId: string) => {
       const run = own(submissions, userId, runId);
@@ -469,12 +482,12 @@ export function createAndroidFixture(
       }
       return { taskId, conversationId, ...accept(userId, own(conversations, userId, conversationId), input) };
     },
-    getTaskConversation: async (userId: string, taskId: string, after: number, limit: number) => {
+    getTaskConversation: async (userId: string, taskId: string, window: { afterSequence?: number; beforeSequence?: number }, limit: number) => {
       const task = own(tasks, userId, taskId);
       return {
         taskId,
         title: task.title,
-        ...history(userId, own(conversations, userId, task.conversationId), after, limit),
+        ...history(userId, own(conversations, userId, task.conversationId), window, limit),
       };
     },
     acceptTaskMessage: async (userId: string, taskId: string, input: Json) => {
@@ -994,7 +1007,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     !['127.0.0.1', 'localhost', '10.0.2.2'].includes(publicHost)
   )
     throw new Error('Use a local port and loopback/emulator public host');
-  const server = createAndroidFixture({ publicHost, files: process.argv.includes('--files'), legacyProfile: process.argv.includes('--legacy-profile') });
+  const longHistory = argument('--long-history');
+  const server = createAndroidFixture({ publicHost, files: process.argv.includes('--files'), legacyProfile: process.argv.includes('--legacy-profile'),
+    ...(longHistory ? { longHistory: Number(longHistory) } : {}) });
   server.listen(port, '127.0.0.1');
   await once(server, 'listening');
   console.log(

@@ -232,17 +232,29 @@ private struct ChatView: View {
                             }.padding(15).frame(maxWidth: .infinity, alignment: .leading).paperSurface(cornerRadius: 14)
                         } else { scenarioCard }
                     }
+                    if search.isEmpty, model.hasOlderMessages || model.isLoadingOlder {
+                        // Older messages load as the reader reaches the top; the first visible row triggers it.
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.mini)
+                            Text("Loading earlier messages…").font(.system(size: 13))
+                        }.foregroundStyle(InstantStyle.muted).frame(maxWidth: .infinity).padding(.vertical, 6)
+                        .accessibilityIdentifier("chat.loadingOlder")
+                    }
                     ForEach(model.messages.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) }) { message in
                         // A voice message shows "…" until the server returns its transcript.
-                        if message.role == "user" && message.text.isEmpty && message.files.isEmpty { TranscribingBubble().id(message.id) }
-                        else {
-                            VStack(alignment: .leading, spacing: 8) {
-                                if !message.text.isEmpty { bubble(message.text, user: message.role == "user") }
-                                if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
-                                if message.role == "assistant" && !message.actions.isEmpty { ClientActionsView(actions: message.actions) }
-                                if !message.products.isEmpty { ProductResultsView(messageID: message.id, selections: message.products) }
-                            }.id(message.id)
+                        Group {
+                            if message.role == "user" && message.text.isEmpty && message.files.isEmpty { TranscribingBubble() }
+                            else {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if !message.text.isEmpty { bubble(message.text, user: message.role == "user") }
+                                    if !message.files.isEmpty { DeliveredFilesView(files: message.files) }
+                                    if message.role == "assistant" && !message.actions.isEmpty { ClientActionsView(actions: message.actions) }
+                                    if !message.products.isEmpty { ProductResultsView(messageID: message.id, selections: message.products) }
+                                }
+                            }
                         }
+                        .id(message.id)
+                        .onAppear { if search.isEmpty, message.id == model.messages.first?.id { model.loadOlderMessages() } }
                     }
                     if !search.isEmpty && !model.messages.contains(where: { $0.text.localizedCaseInsensitiveContains(search) }) {
                         Text("No messages found").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 50)
@@ -262,6 +274,11 @@ private struct ChatView: View {
                 }.padding(.horizontal, 19).padding(.top, 2).padding(.bottom, 10)
             }
             .scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
+            // Prepended pages must not move what the reader is looking at: keep the row that was first where it was.
+            .onChange(of: model.messages.first?.id) { previous, current in
+                guard let previous, let current, previous != current, model.messages.contains(where: { $0.id == previous }) else { return }
+                proxy.scrollTo(previous, anchor: .top)
+            }
             .followsBottom(proxy, content: [AnyHashable(model.messages.count), AnyHashable(model.messages.last?.text.count ?? 0), AnyHashable(model.messages.last?.files.count ?? 0), AnyHashable(model.messages.last?.products.count ?? 0), AnyHashable(model.isThinking), AnyHashable(model.chatError), AnyHashable(model.liveSteps.count), AnyHashable(model.awaitingTranscript)],
                            enabled: search.isEmpty, identifier: "chat.scrollToBottom")
         }

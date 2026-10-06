@@ -37,6 +37,9 @@ const missing = () => new ServiceError(404, 'not_found', 'Resource not found');
 const ownedSubmission = (userId: string, id: string) => and(eq(runtimeSubmissions.userId, userId), eq(runtimeSubmissions.id, id));
 
 /** Durable commands, projections, leases and receipts, all scoped by user ownership. */
+/** Which part of a conversation to read; at most one bound. */
+export interface ConversationWindow { afterSequence?: number; beforeSequence?: number }
+
 export class RuntimeRepository {
   readonly devices: DeviceRepository;
   constructor(protected readonly db: Database, readonly runtime: RuntimeOptions = { provider: 'development' }) { this.devices = new DeviceRepository(db); }
@@ -301,19 +304,19 @@ export class RuntimeRepository {
     return binding?.sessionId ?? undefined;
   }
 
-  async getConversation(userId: string, afterSequence = 0, limit = 50) {
+  async getConversation(userId: string, window: ConversationWindow = {}, limit = 50) {
     // Initialize separately: the read snapshot must not mix message/worker commits.
     const identity = await this.db.transaction(tx => this.conversation(tx, userId));
-    return this.readConversation(userId, identity.id, afterSequence, limit);
+    return this.readConversation(userId, identity.id, window, limit);
   }
 
-  async getTaskConversation(userId: string, taskId: string, afterSequence = 0, limit = 50) {
+  async getTaskConversation(userId: string, taskId: string, window: ConversationWindow = {}, limit = 50) {
     const [task] = await this.db.select({ id: conversations.id, goal: actions.goal }).from(conversations)
       .innerJoin(actions, eq(actions.id, conversations.actionId))
       .where(and(eq(conversations.userId, userId), eq(conversations.kind, 'task'), eq(conversations.actionId, taskId)));
     if (!task) throw missing();
     const title = (await taskTitles(this.db, this.runtime.history, userId, [task.id])).get(task.id) ?? task.goal;
-    return { taskId, title, ...(await this.readConversation(userId, task.id, afterSequence, limit)) };
+    return { taskId, title, ...(await this.readConversation(userId, task.id, window, limit)) };
   }
 
   /** Most recently modified first; activity includes follow-ups and run progress. */
@@ -347,19 +350,38 @@ export class RuntimeRepository {
     };
   }
 
-  private async readConversation(userId: string, conversationId: string, afterSequence: number, limit: number) {
+  private async readConversation(userId: string, conversationId: string, window: ConversationWindow, limit: number) {
     // Read ordering/status in one snapshot, then fill finished text from Rebyte outside the transaction.
-    const view = await this.readConversationRows(userId, conversationId, afterSequence, limit);
+    const view = await this.readConversationRows(userId, conversationId, window, limit);
     return { ...view, messages: await hydrateMessages(this.db, this.runtime.history, userId, view.messages, undefined, { files: true }) };
   }
 
-  private async readConversationRows(userId: string, conversationId: string, afterSequence: number, limit: number) {
+  /**
+   * One page of a conversation, always in ascending sequence order. A window
+   * reads forward from `afterSequence` (incremental sync) or backward from
+   * `beforeSequence` (the newest page first, then older ones as the user
+   * scrolls up). `hasMore` refers to the direction read.
+   */
+  private async readConversationRows(userId: string, conversationId: string, window: ConversationWindow, limit: number) {
     return this.db.transaction(async tx => {
       const [conversation] = await tx.select().from(conversations).where(and(eq(conversations.userId, userId), eq(conversations.id, conversationId)));
       if (!conversation) throw missing();
-      const page = await tx.select().from(messages).where(and(eq(messages.userId, userId), eq(messages.conversationId, conversation.id), gt(messages.sequence, afterSequence))).orderBy(asc(messages.sequence)).limit(limit + 1);
+      const backward = window.beforeSequence !== undefined;
+      const owned = and(eq(messages.userId, userId), eq(messages.conversationId, conversation.id));
+      const rows = await tx.select().from(messages)
+        .where(backward ? and(owned, lt(messages.sequence, window.beforeSequence!)) : and(owned, gt(messages.sequence, window.afterSequence ?? 0)))
+        .orderBy(backward ? desc(messages.sequence) : asc(messages.sequence)).limit(limit + 1);
+      const page = rows.slice(0, limit);
+      if (backward) page.reverse();
       const active = await tx.select({ submissionId: runtimeSubmissions.id, status: runtimeSubmissions.status, messageId: runtimeSubmissions.assistantMessageId }).from(runtimeSubmissions).where(and(eq(runtimeSubmissions.userId, userId), eq(runtimeSubmissions.conversationId, conversation.id), inArray(runtimeSubmissions.status, ['queued', 'running', 'waiting_device'])));
-      return { conversationId: conversation.id, messages: page.slice(0, limit).map(message => ({ id: message.id, role: message.role, sequence: message.sequence, text: message.text, parts: message.parts, status: message.status, createdAt: message.createdAt })), activeSubmissions: active, hasMore: page.length > limit, nextAfterSequence: page.slice(0, limit).at(-1)?.sequence ?? afterSequence };
+      return {
+        conversationId: conversation.id,
+        messages: page.map(message => ({ id: message.id, role: message.role, sequence: message.sequence, text: message.text, parts: message.parts, status: message.status, createdAt: message.createdAt })),
+        activeSubmissions: active,
+        hasMore: rows.length > limit,
+        nextAfterSequence: page.at(-1)?.sequence ?? (backward ? (window.beforeSequence! - 1) : (window.afterSequence ?? 0)),
+        nextBeforeSequence: page[0]?.sequence ?? (backward ? window.beforeSequence! : (window.afterSequence ?? 0) + 1),
+      };
     }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
   }
 

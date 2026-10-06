@@ -125,7 +125,7 @@ Account-owned one-time/daily/weekly plans use the [scheduled task contract](sche
 
 | Method and path | Request | Success |
 | --- | --- | --- |
-| `GET /conversation` | `afterSequence=0`, `limit=50` (1–100) | 200 `ConversationPage` |
+| `GET /conversation` | `afterSequence=0` or `beforeSequence`, `limit=50` (1–100) | 200 `ConversationPage` |
 | `POST /conversation/messages` | `MessageCommand`, optional `deviceId` | 202 `MessageReceipt` |
 | `POST /conversation/voice-messages` | `VoiceMessageCommand`, optional `deviceId` | 202 `VoiceMessageReceipt` |
 | `POST /voice/transcriptions` | `VoiceClip` | 200 `{text: string}` |
@@ -156,7 +156,7 @@ Message = { id: UUID, role: string, sequence: integer, text: string,
 ActiveSubmission = { submissionId: UUID, messageId: UUID, status: string }
 ConversationPage = { conversationId: UUID, messages: Message[],
                      activeSubmissions: ActiveSubmission[], hasMore: boolean,
-                     nextAfterSequence: integer }
+                     nextAfterSequence: integer, nextBeforeSequence: integer }
 TaskConversationPage = ConversationPage + { taskId: UUID, title: string }
 TaskSummary = { taskId: UUID, conversationId: UUID, title: string, status: string,
                 createdAt: timestamp, updatedAt?: timestamp,
@@ -195,9 +195,16 @@ still active. Continue observing until terminal; do not infer completion from
 the cancel response alone. `parts` in history is optional for clients and does
 not promise reconstruction of the full live progress UI.
 
-Load history from sequence zero; follow `nextAfterSequence` while `hasMore`.
-Merge by message ID in sequence order. On reconnect/relaunch, refresh history
-and subscribe to active submissions. A sequence cursor only finds later messages;
+Messages are always returned in ascending sequence order. `afterSequence`
+reads forward from a cursor; `beforeSequence` reads the newest page below a
+bound (pass a very large value for the newest page). Never send both. `hasMore`
+refers to the direction read; `nextAfterSequence` is the page's last sequence
+and `nextBeforeSequence` its first, so a client can continue in either
+direction. Open with one `beforeSequence` page, cache finished messages
+locally by sequence, then sync with `afterSequence` from the newest cached
+sequence; load older pages only when the user scrolls to them. Merge by message
+ID in sequence order. On reconnect/relaunch, sync forward and subscribe to
+active submissions. A sequence cursor only finds later messages;
 it does not refresh an earlier running assistant message. Do not rely solely on
 incremental history to recover its final contents. Recover the accepted run
 instead of submitting its prompt again.

@@ -298,8 +298,11 @@ final class InstantUITests: XCTestCase {
         wait(for: [dismissed], timeout: 5)
         XCTAssertTrue(require("settings.back").exists)
 
-        // A short drag or one away from the edge does not go back.
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+        // A short drag or one away from the edge does not go back. It starts on a
+        // section label: a settings row there would open its sheet and hide Settings.
+        let label = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Mode'")).firstMatch
+        XCTAssertTrue(label.waitForExistence(timeout: 5))
+        let start = label.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.55)))
         XCTAssertTrue(require("settings.back").exists)
 

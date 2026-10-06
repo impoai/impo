@@ -28,6 +28,27 @@ final class ConversationTests: XCTestCase {
         XCTAssertEqual(second.activeSubmissions[0].messageId, "assistant-3")
         XCTAssertFalse(second.hasMore)
         XCTAssertEqual(second.nextAfterSequence, 4)
+        // Older servers omit nextBeforeSequence; the page's first sequence stands in.
+        XCTAssertEqual(second.nextBeforeSequence, 3)
+        // Raw messages decode back to the same message, so finished ones can be stored as sent.
+        XCTAssertEqual(second.rawMessages.count, 2)
+        let restored = try JSONDecoder().decode(ConversationMessage.self, from: second.rawMessages[1])
+        XCTAssertEqual(restored.id, "assistant-2")
+        XCTAssertEqual(restored.text, "Partial reply")
+        XCTAssertEqual(restored.status, "cancelled")
+    }
+
+    func testTheNewestPageReadsBackward() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ConversationURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let client = InstantClient(baseURL: URL(string: "http://instant-history.test")!, bearerToken: "history-test", session: session)
+        let tail = try await client.conversation(beforeSequence: nil, limit: 2)
+        XCTAssertEqual(tail.messages.map(\.sequence), [3, 4], "the newest page, still oldest first")
+        XCTAssertTrue(tail.hasMore, "older messages remain")
+        XCTAssertEqual(tail.nextBeforeSequence, 3)
+        XCTAssertEqual(tail.nextAfterSequence, 4)
     }
 }
 
@@ -43,14 +64,17 @@ private final class ConversationURLProtocol: URLProtocol, @unchecked Sendable {
               request.value(forHTTPHeaderField: "Authorization") == "Bearer history-test",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.queryItems?.first(where: { $0.name == "limit" })?.value == "2",
-              let after = components.queryItems?.first(where: { $0.name == "afterSequence" })?.value,
-              ["0", "2"].contains(after) else {
+              let after = components.queryItems?.first(where: { $0.name == "afterSequence" })?.value
+                ?? components.queryItems?.first(where: { $0.name == "beforeSequence" }).map({ _ in "tail" }),
+              ["0", "2", "tail"].contains(after) else {
             client?.urlProtocol(self, didFailWithError: InstantClientError.invalidResponse)
             return
         }
         let body: String
         if after == "0" {
             body = #"{"conversationId":"conversation-1","messages":[{"id":"user-1","role":"user","sequence":1,"text":"你好 👋","status":"completed","createdAt":"2026-09-22T00:00:00.000Z"},{"id":"assistant-1","role":"assistant","sequence":2,"text":"","status":"failed","createdAt":"2026-09-22T00:00:00.000Z","parts":[]}],"activeSubmissions":[],"hasMore":true,"nextAfterSequence":2}"#
+        } else if after == "tail" {
+            body = #"{"conversationId":"conversation-1","messages":[{"id":"user-2","role":"user","sequence":3,"text":"Try again","status":"completed","createdAt":"2026-09-22T00:01:00.000Z"},{"id":"assistant-2","role":"assistant","sequence":4,"text":"Partial reply","status":"cancelled","createdAt":"2026-09-22T00:01:00.000Z"}],"activeSubmissions":[],"hasMore":true,"nextAfterSequence":4,"nextBeforeSequence":3}"#
         } else {
             body = #"{"conversationId":"conversation-1","messages":[{"id":"user-2","role":"user","sequence":3,"text":"Try again","status":"completed","createdAt":"2026-09-22T00:01:00.000Z"},{"id":"assistant-2","role":"assistant","sequence":4,"text":"Partial reply","status":"cancelled","createdAt":"2026-09-22T00:01:00.000Z"}],"activeSubmissions":[{"submissionId":"run-3","messageId":"assistant-3","status":"running"},{"submissionId":"run-4","messageId":"assistant-4","status":"queued"}],"hasMore":false,"nextAfterSequence":4}"#
         }

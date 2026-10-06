@@ -210,6 +210,36 @@ test('persistent server and independent Worker survive real process boundaries',
       assert.equal((await request('/profile')).body.onboarded, true, 'An account that has chatted skips onboarding');
     });
 
+    await t.test('the newest page reads backward and joins up with forward paging', async () => {
+      const full = await request('/conversation?limit=100');
+      assert.equal(full.status, 200);
+      const all = full.body.messages as { id: string; sequence: number }[];
+      assert.ok(all.length >= 2, JSON.stringify(full.body));
+      assert.equal(full.body.hasMore, false);
+      assert.equal(full.body.nextBeforeSequence, all[0]!.sequence);
+
+      const tail = await request(`/conversation?beforeSequence=${Number.MAX_SAFE_INTEGER}&limit=1`);
+      assert.equal(tail.status, 200, JSON.stringify(tail.body));
+      assert.deepEqual(tail.body.messages.map((m: any) => m.id), [all.at(-1)!.id], 'the newest message comes first when reading backward');
+      assert.equal(tail.body.hasMore, true, 'older messages remain');
+      assert.equal(tail.body.nextBeforeSequence, all.at(-1)!.sequence);
+      assert.equal(tail.body.nextAfterSequence, all.at(-1)!.sequence);
+      assert.deepEqual(tail.body.activeSubmissions, full.body.activeSubmissions);
+
+      const older = await request(`/conversation?beforeSequence=${tail.body.nextBeforeSequence}&limit=100`);
+      assert.deepEqual(older.body.messages.map((m: any) => m.id), all.slice(0, -1).map(m => m.id), 'the older page is everything before the tail, in order');
+      assert.equal(older.body.hasMore, false);
+
+      const beyond = await request(`/conversation?beforeSequence=${all[0]!.sequence}`);
+      assert.deepEqual(beyond.body.messages, []);
+      assert.equal(beyond.body.hasMore, false);
+
+      const forward = await request(`/conversation?afterSequence=${older.body.nextAfterSequence}`);
+      assert.deepEqual(forward.body.messages.map((m: any) => m.id), [all.at(-1)!.id], 'forward sync from the older page yields exactly the tail');
+      assert.equal((await request('/conversation?afterSequence=0&beforeSequence=5')).status, 400);
+      assert.equal((await request('/conversation?beforeSequence=0')).status, 400);
+    });
+
     await t.test('user-started tasks run in their own conversation and never replace the main one', async () => {
       const mainBefore = await request('/conversation');
       assert.equal(mainBefore.status, 200, JSON.stringify(mainBefore.body));

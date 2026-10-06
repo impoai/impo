@@ -11,8 +11,21 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     var files: [DeliveredFile] = []
     var actions: [ClientAction] = []
     var products: [ProductSelection] = []
+    /// Server order; nil for input not yet accepted and for the offline Demo.
+    var sequence: Int?
+    var status: String?
 
     private enum CodingKeys: String, CodingKey { case id, role, text }
+
+    init(id: String = UUID().uuidString, role: String, text: String, files: [DeliveredFile] = [], actions: [ClientAction] = [], products: [ProductSelection] = [], sequence: Int? = nil, status: String? = nil) {
+        self.id = id; self.role = role; self.text = text; self.files = files; self.actions = actions; self.products = products; self.sequence = sequence; self.status = status
+    }
+
+    init(_ message: ConversationMessage) {
+        self.init(id: message.id, role: message.role, text: message.text, files: message.files, actions: message.actions, products: message.products, sequence: message.sequence, status: message.status)
+    }
+
+    var hasContent: Bool { !text.isEmpty || !files.isEmpty || !actions.isEmpty || !products.isEmpty }
 }
 
 @MainActor @Observable
@@ -88,6 +101,9 @@ final class AppModel {
     var notificationBriefID: String?
     var transcriptNavigationID = UUID()
     var messages: [ChatMessage] = []
+    /// Older messages exist that are not loaded; the chat offers to load them at its top.
+    private(set) var hasOlderMessages = false
+    private(set) var isLoadingOlder = false
     var selectedScenario: String?
     var isThinking = false
     var chatError: String?
@@ -226,7 +242,9 @@ final class AppModel {
         modeRevision += 1; modeBusy = false; modeLoaded = false; modeError = nil
         assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; mode = "Balanced"
         messages = []; liveSteps = []; selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil
+        hasOlderMessages = false
         DeliveredFileCache.clear()
+        ConversationStore.removeAll()
         calendarEnabled = false; healthEnabled = false; remindersEnabled = false; contactsEnabled = false
     }
 
@@ -471,7 +489,8 @@ final class AppModel {
         stopDeviceConnection()
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("instant.") && !key.hasPrefix("instant.listening.") && key != "instant.installationID" && key != Self.debugModeKey { defaults.removeObject(forKey: key) }
         isOnboarded = false; onboardingStep = 0; selectedTab = 0
-        assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; messages = []
+        assistantName = "Momo"; displayName = ""; avatarIndex = 3; connectedServices = []; messages = []; hasOlderMessages = false
+        ConversationStore.removeAll()
         selectedScenario = nil; isThinking = false; chatError = nil; activeSubmission = nil
         useLiveBackend = false; mode = "Balanced"; backendURL = "http://127.0.0.1:3001"
         calendarEnabled = false; healthEnabled = false; remindersEnabled = false; contactsEnabled = false
@@ -789,39 +808,70 @@ final class AppModel {
         return task
     }
 
+    /// Shows the stored tail of the conversation at once, fetches only what this
+    /// iPhone has not seen, then follows any reply still running.
     private func recover(api: InstantClient, context: LiveContext) async throws {
+        let store = ConversationStore(scope: context.scope)
         while true {
             try check(context)
-            var all: [ConversationMessage] = []
-            var active: [ActiveSubmission] = []
-            var after = 0
-            var finishedPages = false
-            for _ in 0..<1000 {
-                let page = try await api.conversation(afterSequence: after)
-                try check(context)
-                all.append(contentsOf: page.messages)
-                active = page.activeSubmissions
-                if !page.hasMore { finishedPages = true; break }
-                guard page.nextAfterSequence > after else { throw InstantClientError.invalidResponse }
-                after = page.nextAfterSequence
+            if !messages.contains(where: { $0.sequence != nil }) {
+                let cached = store.latest()
+                merge(cached.map(ChatMessage.init))
+                if let first = cached.first { hasOlderMessages = !store.reachedStart || !store.before(first.sequence, limit: 1).isEmpty }
             }
-            guard finishedPages else { throw InstantClientError.invalidResponse }
-            let ordered = all.sorted { $0.sequence < $1.sequence }
-            var seen = Set<String>()
-            messages = ordered.filter { (!$0.text.isEmpty || !$0.files.isEmpty || !$0.actions.isEmpty || !$0.products.isEmpty) && seen.insert($0.id).inserted }
-                .map { ChatMessage(id: $0.id, role: $0.role, text: $0.text, files: $0.files, actions: $0.actions, products: $0.products) }
+            var fetched: [ConversationMessage] = []
+            var active: [ActiveSubmission] = []
+            var conversationId: String?
+            if let newest = store.newestSequence {
+                // Everything after the newest stored message: new turns and any reply still open.
+                var after = newest
+                var finishedPages = false
+                for _ in 0..<1000 {
+                    let page = try await api.conversation(afterSequence: after)
+                    try check(context)
+                    conversationId = page.conversationId
+                    fetched.append(contentsOf: page.messages)
+                    active = page.activeSubmissions
+                    store.store(page)
+                    if !page.hasMore { finishedPages = true; break }
+                    guard page.nextAfterSequence > after else { throw InstantClientError.invalidResponse }
+                    after = page.nextAfterSequence
+                }
+                guard finishedPages else { throw InstantClientError.invalidResponse }
+            } else {
+                let page = try await api.conversation(beforeSequence: nil)
+                try check(context)
+                conversationId = page.conversationId
+                fetched = page.messages
+                active = page.activeSubmissions
+                store.store(page)
+                if !page.hasMore { store.reachedStart = true }
+                hasOlderMessages = page.hasMore
+            }
+            if let known = store.conversationId, let conversationId, known != conversationId {
+                // The account's conversation was replaced; what this iPhone stored is another conversation's.
+                store.reset()
+                messages.removeAll { $0.sequence != nil }
+                continue
+            }
+            if let conversationId { store.conversationId = conversationId }
+            merge(fetched.map(ChatMessage.init))
             chatError = nil
             failedReplyInput = nil
+            // A failed or cancelled reply has no content, so it is never stored and always
+            // arrives in `fetched`; the input it answered is in the list, stored or fetched.
+            let ordered = fetched.sorted { $0.sequence < $1.sequence }
             if active.isEmpty, let lastReply = ordered.last, lastReply.role == "assistant" {
+                let input = messages.last(where: { $0.role == "user" && ($0.sequence ?? .max) < lastReply.sequence })?.text
                 if lastReply.status == "failed" {
                     // The original submission was acknowledged and is terminal.
                     // Retry must create a NEW submission for its original input;
                     // replaying its old id would only return the failed receipt.
-                    failedReplyInput = ordered.last(where: { $0.role == "user" && $0.sequence < lastReply.sequence })?.text
+                    failedReplyInput = input
                     chatError = "The last reply couldn't be completed. Tap Retry to try your request again."
                     ListeningDiagnostics.shared.record("chat.reply_failed", ["messageId":lastReply.id,"phase":"history"])
                 } else if lastReply.status == "cancelled" {
-                    failedReplyInput = ordered.last(where: { $0.role == "user" && $0.sequence < lastReply.sequence })?.text
+                    failedReplyInput = input
                     chatError = "The last reply was cancelled. Tap Retry to try your request again."
                 }
             }
@@ -833,6 +883,52 @@ final class AppModel {
                 activeSubmission = submission.submissionId
                 try await consume(api: api, submissionID: submission.submissionId, context: context)
             }
+        }
+    }
+
+    /// Adds server messages to the visible list: known ids are updated in place,
+    /// the rest inserted in sequence order ahead of input that has no sequence yet.
+    private func merge(_ incoming: [ChatMessage]) {
+        var updated = messages
+        for message in incoming {
+            if let index = updated.firstIndex(where: { $0.id == message.id }) {
+                updated[index] = message
+            } else if message.hasContent {
+                updated.append(message)
+            }
+        }
+        var seen = Set<String>()
+        let sequenced = updated.filter { $0.sequence != nil && seen.insert($0.id).inserted }.sorted { $0.sequence! < $1.sequence! }
+        let pending = updated.filter { $0.sequence == nil && seen.insert($0.id).inserted }
+        messages = sequenced + pending
+    }
+
+    /// Loads the page before the oldest visible message, from this iPhone when
+    /// it has it and from the server otherwise.
+    func loadOlderMessages() {
+        guard useLiveBackend, hasOlderMessages, !isLoadingOlder, let endpoint = try? endpoint(),
+              let oldest = messages.compactMap(\.sequence).min() else { return }
+        let scope = endpoint.absoluteString + "|" + activeIdentityTag
+        let store = ConversationStore(scope: scope)
+        let api = InstantClient(baseURL: endpoint, tokenProvider: activeTokenProvider, session: session)
+        isLoadingOlder = true
+        Task { [self] in
+            defer { isLoadingOlder = false }
+            var older = store.before(oldest)
+            if older.count < ConversationStore.pageSize, !store.reachedStart {
+                do {
+                    let page = try await api.conversation(beforeSequence: older.first?.sequence ?? oldest)
+                    store.store(page)
+                    if !page.hasMore { store.reachedStart = true }
+                    older = page.messages + older
+                } catch {
+                    if older.isEmpty { return }
+                }
+            }
+            guard scope == endpoint.absoluteString + "|" + activeIdentityTag, useLiveBackend else { return }
+            merge(older.map(ChatMessage.init))
+            let first = messages.compactMap(\.sequence).min() ?? oldest
+            hasOlderMessages = !store.reachedStart || !store.before(first, limit: 1).isEmpty
         }
     }
 

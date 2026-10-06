@@ -104,12 +104,43 @@ public struct ActiveSubmission: Decodable, Sendable {
     public let messageId: String
     public let status: String
 }
+/// One page of a conversation in ascending sequence order. `hasMore` refers to
+/// the direction the page was read in.
 public struct ConversationPage: Decodable, Sendable {
     public let conversationId: String
     public let messages: [ConversationMessage]
+    /// Each message exactly as the server sent it, in `messages` order, so a
+    /// client can store finished messages and decode them again later.
+    public let rawMessages: [Data]
     public let activeSubmissions: [ActiveSubmission]
     public let hasMore: Bool
     public let nextAfterSequence: Int
+    /// The first sequence on the page; read older messages below it.
+    public let nextBeforeSequence: Int
+
+    private enum CodingKeys: String, CodingKey { case conversationId, messages, activeSubmissions, hasMore, nextAfterSequence, nextBeforeSequence }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        conversationId = try container.decode(String.self, forKey: .conversationId)
+        let values = try container.decode([JSONValue].self, forKey: .messages)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let decoder = JSONDecoder()
+        var raw: [Data] = [], decoded: [ConversationMessage] = []
+        for value in values {
+            let data = try encoder.encode(value)
+            raw.append(data)
+            decoded.append(try decoder.decode(ConversationMessage.self, from: data))
+        }
+        rawMessages = raw
+        messages = decoded
+        activeSubmissions = try container.decode([ActiveSubmission].self, forKey: .activeSubmissions)
+        hasMore = try container.decode(Bool.self, forKey: .hasMore)
+        nextAfterSequence = try container.decode(Int.self, forKey: .nextAfterSequence)
+        // Older servers do not send it; the first message's sequence is the same bound.
+        nextBeforeSequence = try container.decodeIfPresent(Int.self, forKey: .nextBeforeSequence) ?? decoded.first?.sequence ?? nextAfterSequence + 1
+    }
 }
 public struct TaskSummary: Decodable, Equatable, Sendable, Identifiable {
     public let taskId: String
@@ -241,9 +272,18 @@ public struct InstantClient: Sendable {
         try await send("GET", ["submissions", id])
     }
 
+    /// Messages after a sequence, oldest first: the incremental sync.
     public func conversation(afterSequence: Int = 0, limit: Int = 100) async throws -> ConversationPage {
         try await send("GET", ["conversation"], query: [
             URLQueryItem(name: "afterSequence", value: String(afterSequence)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+    }
+
+    /// The newest messages below a sequence; `nil` reads the end of the conversation.
+    public func conversation(beforeSequence: Int?, limit: Int = 50) async throws -> ConversationPage {
+        try await send("GET", ["conversation"], query: [
+            URLQueryItem(name: "beforeSequence", value: String(beforeSequence ?? 9_007_199_254_740_991)),
             URLQueryItem(name: "limit", value: String(limit)),
         ])
     }
