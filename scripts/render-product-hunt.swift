@@ -17,14 +17,14 @@ struct Scene {
     var ink: Color { dark ? paper : forest }
 }
 let scenes = [
-    Scene(id: "01-meet-impo", eyebrow: "YOUR OPEN-SOURCE PERSONAL AGENT", title: "A little more\nroom for life.", detail: "Remember what matters.\nGet things done.\nFind your next good buy.", note: "Start on the web · impo.ai/app", screens: ["chat", "shopping-results"], dark: true),
+    Scene(id: "01-meet-impo", eyebrow: "YOUR PERSONAL AGENT", title: "A little more\nroom for life.", detail: "Remember what matters.\nGet things done.\nFind your next good buy.", note: "Start on the web · impo.ai/app", screens: ["chat", "shopping-results"], dark: true),
     Scene(id: "02-shopping", eyebrow: "SHOPPING · START WITH WHAT YOU NEED", title: "Your needs.\nYour budget.\nYour next buy.", detail: "Find products, compare options,\nand explore the details together.", note: "Browse in Impo. Complete your purchase at the merchant.", screens: ["shopping-results", "shopping-detail"], dark: false),
     Scene(id: "03-echo", eyebrow: "ECHO · CAPTURE THE MOMENT", title: "Good thoughts.\nKept close.", detail: "Start Echo on your phone.\nReturn to your words as a transcript.\nChoose which speech is yours.", note: "Recording starts when you choose.", screens: ["echo"], dark: false),
     Scene(id: "04-memory", eyebrow: "MEMORY · CONTEXT YOU CONTROL", title: "Less repeating.\nMore remembering.", detail: "Useful context from your conversations\nand confirmed Echo speech.\nBrowse it. Keep it. Forget it.", note: "Personal context for a more useful next conversation.", screens: ["memory"], dark: true),
     Scene(id: "05-tasks", eyebrow: "TASKS · HAND IT OFF", title: "Give the work\nits own space.", detail: "Research, plan, or get a first draft.\nCome back to the result.\nSchedule work that repeats.", note: "Server-side work continues when you leave the app.", screens: ["task"], dark: false),
     Scene(id: "06-feed", eyebrow: "FEED · FOLLOW THROUGH", title: "A little\nperspective\nfor your day.", detail: "Useful next steps, shaped by\nthe context you choose to share.", note: "Real Web interface · sample account content", screens: ["web-feed"], dark: false),
-    Scene(id: "07-your-choice", eyebrow: "CONNECTIONS · OPEN SOURCE", title: "Your context.\nYour choice.", detail: "Connect the services you need.\nChoose your phone permissions.\nExplore the clients and backend.", note: "github.com/impoai/impo", screens: ["connections"], dark: true),
-    Scene(id: "08-start", eyebrow: "MEET IMPO", title: "What can we\nhelp with today?", detail: "Try the Web app.\nGet the Android app.\nHelp shape an open-source personal agent.", note: "impo.ai/app · iOS TestFlight public access pending", screens: ["chat"], dark: false),
+    Scene(id: "07-your-choice", eyebrow: "CONNECTIONS · SOURCE AVAILABLE", title: "Your context.\nYour choice.", detail: "Connect the services you need.\nChoose your phone permissions.\nExplore the clients and backend.", note: "github.com/impoai/impo", screens: ["connections"], dark: true),
+    Scene(id: "08-start", eyebrow: "MEET IMPO", title: "What can we\nhelp with today?", detail: "Try the Web app.\nGet the Android app.\nHelp shape your personal agent.", note: "impo.ai/app · iOS TestFlight public access pending", screens: ["chat"], dark: false),
 ]
 
 struct Capture: View {

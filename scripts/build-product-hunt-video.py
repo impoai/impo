@@ -9,13 +9,13 @@ KIT = ROOT / "docs/product-hunt"
 WORK = ROOT / ".local/product-hunt/video"
 WORK.mkdir(parents=True, exist_ok=True)
 SCENES = [
-    ("01-meet-impo", "Meet Impo, your open-source personal agent. Remember what matters, get things done, and find your next good buy."),
+    ("01-meet-impo", "Meet Impo, your personal agent. Remember what matters, get things done, and find your next good buy."),
     ("02-shopping", "Looking for a commuter backpack under a hundred and fifty dollars? Impo finds products and helps you compare. Explore photos, prices, and details, then open the merchant to buy."),
     ("03-echo", "Capture a thought with Echo on your phone. Come back to the transcript, and choose which speech is yours before it becomes personal context."),
     ("04-memory", "Impo brings useful memories into your next conversation. You can browse what it remembers and forget what you no longer want kept."),
     ("05-tasks", "Give research, planning, or a first draft its own task. Work continues when you leave the app. Schedule recurring tasks, too."),
     ("06-feed", "Your Feed turns the context you share into useful next steps. A little perspective for the day ahead."),
-    ("07-your-choice", "Connections and phone permissions are optional. The clients and backend are open source, so you can explore how Impo works."),
+    ("07-your-choice", "Connections and phone permissions are optional. The source code for the clients and backend is available, so you can explore how Impo works."),
     ("08-start", "Try Impo on the web or Android. iOS is in TestFlight, with public access pending. What can your personal agent help with today?"),
 ]
 

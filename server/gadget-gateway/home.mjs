@@ -79,7 +79,7 @@ const page = `<!doctype html>
       <li>Not yet verified or implemented: ESP32 firmware, voice, reply streaming, and the home-network tunnel.</li>
     </ul>
 
-    <p class="fine">Muse is a trademark of Meta Platforms, Inc. Impo is an independent open-source project and is not affiliated with or endorsed by Meta.</p>
+    <p class="fine">Muse is a trademark of Meta Platforms, Inc. Impo is an independent source-available project and is not affiliated with or endorsed by Meta.</p>
   </main>
 </body>
 </html>

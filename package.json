@@ -1,6 +1,7 @@
 {
   "name": "instant",
   "private": true,
+  "license": "Elastic-2.0",
   "type": "module",
   "engines": {
     "node": ">=22"

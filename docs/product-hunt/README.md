@@ -2,6 +2,13 @@
 
 Prepared on October 4, 2026. Public launch copy is in English and uses **personal agent**.
 
+Historical materials: this kit predates the October 10, 2026 switch to
+[Elastic License 2.0](../../LICENSE). Its saved listing, screenshots, captions,
+video and submission receipts describe the earlier MIT release. Do not reuse
+their open-source claims for the current source-available release. Refresh the
+copy and regenerate the media before a new launch; the render scripts use the
+current terminology.
+
 ## Positioning
 
 **Open source Muse**

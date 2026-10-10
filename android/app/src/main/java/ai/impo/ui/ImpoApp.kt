@@ -90,7 +90,7 @@ fun openWeb(context: Context, raw: String) {
         PaperCard {
             Text("Capture everything with Echo.", style = MaterialTheme.typography.titleLarge)
             Text("Keep the spoken moments you choose to record. Talk things through, delegate tasks and find your daily perspective in Brief.", color = Muted)
-            Text("Fully open source.", color = Forest, style = MaterialTheme.typography.labelLarge)
+            Text("Source code available.", color = Forest, style = MaterialTheme.typography.labelLarge)
         }
         ErrorNotice(error ?: auth.error)
         Button(onClick = { signIn(SignInProvider.Google) }, enabled = connecting == null,

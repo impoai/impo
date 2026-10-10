@@ -4,7 +4,7 @@
 
 # Impo
 
-**Open source framework for personal agents**
+**Source-available framework for personal agents**
 
 Impo gives you a personal agent that lives across your phone, the web and your
 own hardware. Talk to it, hand it tasks, let it remember what matters, and let
@@ -126,5 +126,21 @@ before configuring provider credentials.
 
 ## License
 
-[MIT](LICENSE). Third-party materials keep their own licenses; see
-[third-party notices](THIRD_PARTY_NOTICES.md).
+[Elastic License 2.0 (ELv2)](LICENSE), with SPDX identifier `Elastic-2.0`.
+Impo is source-available, not OSI-approved open source.
+
+You can read, modify and redistribute the code, and self-host it for personal
+or internal business use, subject to the license terms. You may not offer Impo
+to third parties as a hosted or managed service that exposes a substantial set
+of its features or functionality without a separate license from the rights
+holders. This restriction applies whether the service is paid or free.
+
+Keep licensing, copyright and other notices intact, do not bypass license-key
+protections, and identify your changes when distributing modified copies.
+This summary does not replace the full [license](LICENSE).
+
+Copies previously distributed under MIT retain their original MIT permissions;
+this change does not revoke those rights. Third-party materials keep their own
+licenses; see [third-party notices](THIRD_PARTY_NOTICES.md). The separately
+maintained [Gadget SDK](https://github.com/impoai/impo-gadget-sdk) follows its own
+repository license.

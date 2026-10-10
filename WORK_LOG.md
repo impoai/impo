@@ -493,3 +493,10 @@
 
 - Investigated the reported "package info is none" installation error without assuming its cause. Fresh public and emulator Chrome downloads of 0.1.15 (16) matched the release's SHA-256 and 132952423-byte size; ZIP integrity, package metadata and the original signing certificate verified. The API 35 system Package Installer successfully updated Impo from Chrome's Downloads screen, preserving installed data. Restored Chrome's previous install-source permission after testing.
 - Validation: all 19 download-route tests passed. The reported error was not reproduced; the user's phone model, OS, screenshot and download source are still needed for device-specific diagnosis. No APK or download-service change was made. Private evidence: `.local/android-install-check/`.
+
+
+## 2026-10-10 — Adopt Elastic License 2.0
+
+- Replaced MIT with canonical ELv2, retained the Impo contributors copyright notice, and added consistent SPDX metadata to the root, server and Web manifests and lockfile. Documented personal/internal self-hosting, restrictions on third-party hosted services, third-party exceptions and continuing rights for previously distributed MIT copies.
+- Updated current repository, website, Android onboarding, App Store metadata and marketing render copy to source-available terminology. Marked the earlier Product Hunt kit as historical. Prepared this focused change from the GitHub main branch; unrelated local feature work and unpublished handbook files are excluded.
+- Validation: 19 download/static-route tests and seven Gadget gateway tests passed; the public file inventory and reachable Git history secret scans passed. Verified canonical license text, unchanged dependency metadata, JSON syntax and diff whitespace. The separate Gadget SDK and archived history repositories retain their existing licenses. No application deployment or native release was requested.
